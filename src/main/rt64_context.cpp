@@ -333,16 +333,24 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
 
     high_precision_fb_enabled = app->shaderLibrary->usesHDR;
 
-    // Texture packs from settings.json, looked up in <data>/texture-packs. One that isn't there is reported and skipped:
-    // the default list names the HD UI pack, which only exists once tools/hdui has built it on this machine.
+    // Texture packs from settings.json, looked up in <data>/texture-packs, then in texture-packs next to the executable
+    // (a release ships its own packs there). One that isn't in either is reported and skipped: the default list names
+    // the HD packs, which only exist once they have been built or copied to this machine.
     std::vector<RT64::ReplacementDirectory> packs;
+    std::error_code ec;
+    const std::filesystem::path beside = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
     for (const std::string& name : aidyn::settings::graphics().texture_packs) {
-        std::filesystem::path pack = aidyn::settings::folder() / "texture-packs" / name;
-        if (!std::filesystem::exists(pack) && std::filesystem::exists(pack.string() + ".rtz")) {
-            pack += ".rtz";
+        std::filesystem::path pack;
+        for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
+            for (const std::filesystem::path& candidate : { dir / name, dir / (name + ".rtz") }) {
+                if (pack.empty() && !dir.empty() && std::filesystem::exists(candidate, ec)) {
+                    pack = candidate;
+                }
+            }
         }
-        if (!std::filesystem::exists(pack)) {
-            fprintf(stderr, "Texture pack \"%s\" not found in %s (skipped)\n", name.c_str(), (aidyn::settings::folder() / "texture-packs").c_str());
+        if (pack.empty()) {
+            fprintf(stderr, "Texture pack \"%s\" not found in %s or %s (skipped)\n", name.c_str(),
+                    (aidyn::settings::folder() / "texture-packs").c_str(), beside.c_str());
             continue;
         }
         packs.emplace_back(pack);

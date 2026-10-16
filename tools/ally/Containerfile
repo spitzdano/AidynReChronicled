@@ -1,0 +1,23 @@
+# tools/ally/Containerfile: the build environment for the portable build (tools/ally/build_portable.sh).
+# Ubuntu 24.04 (glibc 2.39) so the executable runs on any newer distribution, Bazzite included. Pinned by digest.
+FROM docker.io/library/ubuntu@sha256:496754492fb28b4d3049432f2ca787449331e23fb14f0dd3fffea86bf5a93eb4
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      clang lld cmake ninja-build pkg-config make curl \
+      libsdl2-dev libdbus-1-dev libx11-dev libxrandr-dev \
+      libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxkbcommon-dev \
+      libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgbm-dev libdrm-dev \
+      libpulse-dev libasound2-dev libpipewire-0.3-dev libudev-dev \
+      python3 file patchelf ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# The SDL2 that ships with the game: built here with every backend (X11, Wayland, PulseAudio, PipeWire, ALSA, udev...)
+# loaded at run time, so the library itself needs only libc and works with whatever the target system has. The game
+# is compiled against Ubuntu's SDL2 2.30 headers; 2.32 is ABI-compatible. Checksum checked against both download hosts.
+RUN curl -fsSL -o /tmp/SDL2.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz \
+ && echo "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165  /tmp/SDL2.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/SDL2.tar.gz -C /tmp \
+ && cmake -S /tmp/SDL2-2.32.10 -B /tmp/sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang \
+      -DCMAKE_INSTALL_PREFIX=/opt/sdl2 -DSDL_STATIC=OFF -DSDL_TEST=OFF -DSDL_RPATH=OFF \
+ && cmake --build /tmp/sdl-build && cmake --install /tmp/sdl-build \
+ && rm -rf /tmp/SDL2* /tmp/sdl-build

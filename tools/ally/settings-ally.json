@@ -1,0 +1,21 @@
+{
+    "game": {
+        "rom_patch": "none",
+        "skip_intro": true
+    },
+    "graphics": {
+        "render_height": 1080,
+        "aspect": "16:9",
+        "msaa": 2,
+        "supersampling": 1,
+        "fps_limit": 120,
+        "draw_distance": 2.0,
+        "fullscreen": true,
+        "menus_4_3": true,
+        "right_stick_camera": true,
+        "overscan_borders": false,
+        "hud_at_edges": true,
+        "smooth_animation_loops": true,
+        "texture_packs": ["hd-ui", "hd-world", "rechronicled"]
+    }
+}

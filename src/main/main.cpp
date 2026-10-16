@@ -30,6 +30,7 @@
 #include "rt64_context.h"
 #include "input.h"
 #include "audio.h"
+#include "nfd.h"
 
 extern RspUcodeFunc aspMain;
 extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
@@ -45,10 +46,14 @@ static void quit() {
     ultramodern::quit();
 }
 
+// Stops the program with a message: on stderr, and in a message box, since a game started from a launcher has no
+// terminal to show it.
 [[noreturn]] static void fatal(const char* fmt, const char* arg = "") {
-    fprintf(stderr, fmt, arg);
-    fputc('\n', stderr);
+    char text[1024];
+    snprintf(text, sizeof(text), fmt, arg);
+    fprintf(stderr, "%s\n", text);
     std::fflush(stderr);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Aidyn ReChronicled", text, window);
     std::exit(EXIT_FAILURE);
 }
 
@@ -218,6 +223,61 @@ void aidyn::switch_version(bool aidyn_patch) {
     fprintf(stderr, "Could not restart: %s\n", strerror(errno));
 }
 
+// Checks a ROM the player gave and stores it in the data folder (librecomp keeps a copy): the 1.0 release or Aidyn
+// Patch, whichever it is. Stops with the reason when it is neither.
+static void store_rom(const std::filesystem::path& rom_path) {
+    recomp::RomValidationError result = recomp::select_rom(rom_path, game_id);
+    const char* stored = "the NTSC-U 1.0 ROM";
+    if (result == recomp::RomValidationError::IncorrectVersion || result == recomp::RomValidationError::OtherError) {
+        if (recomp::select_rom(rom_path, game_id_aidyn_patch) == recomp::RomValidationError::Good) {
+            result = recomp::RomValidationError::Good;
+            stored = "the Aidyn Patch ROM";
+        }
+    }
+    switch (result) {
+    case recomp::RomValidationError::Good:
+        printf("Stored %s.\n", stored);
+        fflush(stdout);
+        break;
+    case recomp::RomValidationError::FailedToOpen:
+        fatal("Could not open ROM: %s", rom_path.c_str());
+    case recomp::RomValidationError::NotARom:
+        fatal("Not an N64 ROM (a zipped ROM must be unzipped first): %s", rom_path.c_str());
+    case recomp::RomValidationError::IncorrectVersion:
+        fatal("This is Aidyn Chronicles, but neither the NTSC-U 1.0 release (version byte 0) nor Aidyn Patch applied "
+              "to it: %s", rom_path.c_str());
+    default:
+        fatal("This is not Aidyn Chronicles (NTSC-U 1.0): %s", rom_path.c_str());
+    }
+}
+
+// The first start: explains what is wanted, then a file picker. Empty when cancelled or when no picker works here.
+static std::filesystem::path pick_rom(bool aidyn_patch) {
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Aidyn ReChronicled",
+                             aidyn_patch ? "Choose your Aidyn Chronicles ROM with Aidyn Patch applied (.z64).\n\n"
+                                           "It is checked and kept, so this is only asked once."
+                                         : "Choose your Aidyn Chronicles ROM: the North American 1.0 cartridge (.z64).\n\n"
+                                           "It is checked and kept, so this is only asked once.",
+                             nullptr);
+    if (NFD_Init() != NFD_OKAY) {
+        fprintf(stderr, "No file picker: %s\n", NFD_GetError());
+        return {};
+    }
+    std::filesystem::path chosen;
+    nfdu8char_t* out = nullptr;
+    const nfdu8filteritem_t filters[] = { { "N64 ROM", "z64,n64,v64" } };
+    const nfdresult_t r = NFD_OpenDialogU8(&out, filters, 1, nullptr);
+    if (r == NFD_OKAY) {
+        chosen = std::filesystem::path(reinterpret_cast<const char8_t*>(out));
+        NFD_FreePathU8(out);
+    }
+    else if (r == NFD_ERROR) {
+        fprintf(stderr, "File picker failed: %s\n", NFD_GetError());
+    }
+    NFD_Quit();
+    return chosen;
+}
+
 int main(int argc, char** argv) {
     g_args.assign(argv, argv + argc);
     std::filesystem::path rom_path;
@@ -285,38 +345,25 @@ int main(int argc, char** argv) {
     aidyn_register_overlays();
 
     if (!rom_path.empty()) {
-        // Either ROM is accepted and remembered; settings.json decides which one runs.
-        recomp::RomValidationError result = recomp::select_rom(rom_path, game_id);
-        const char* stored = "the NTSC-U 1.0 ROM";
-        if (result == recomp::RomValidationError::IncorrectVersion || result == recomp::RomValidationError::OtherError) {
-            if (recomp::select_rom(rom_path, game_id_aidyn_patch) == recomp::RomValidationError::Good) {
-                result = recomp::RomValidationError::Good;
-                stored = "the Aidyn Patch ROM";
-            }
-        }
-        switch (result) {
-        case recomp::RomValidationError::Good:
-            printf("Stored %s.\n", stored);
-            fflush(stdout);
-            break;
-        case recomp::RomValidationError::FailedToOpen:
-            fatal("Could not open ROM: %s", rom_path.c_str());
-        case recomp::RomValidationError::NotARom:
-            fatal("Not an N64 ROM: %s", rom_path.c_str());
-        case recomp::RomValidationError::IncorrectVersion:
-            fatal("This is Aidyn Chronicles, but neither the NTSC-U 1.0 release (version byte 0) nor Aidyn Patch applied "
-                  "to it: %s", rom_path.c_str());
-        default:
-            fatal("This is not Aidyn Chronicles (NTSC-U 1.0): %s", rom_path.c_str());
-        }
+        store_rom(rom_path);
     }
     recomp::check_all_stored_roms();
+    if (!recomp::is_rom_valid(chosen_id) && rom_path.empty()) {
+        // First start without --rom: ask for the ROM with a file picker (RT64's nativefiledialog: the desktop portal in
+        // the portable build, GTK otherwise).
+        rom_path = pick_rom(aidyn_patch);
+        if (!rom_path.empty()) {
+            store_rom(rom_path);
+            recomp::check_all_stored_roms();
+        }
+    }
     if (!recomp::is_rom_valid(chosen_id)) {
         if (aidyn_patch) {
-            fatal("settings.json picks Aidyn Patch (game.rom_patch), but no Aidyn Patch ROM is stored yet. Run once with "
-                  "--rom <your 1.0 ROM with Aidyn Patch applied>.");
+            fatal("settings.json picks Aidyn Patch (game.rom_patch), but no Aidyn Patch ROM is stored yet. Start the "
+                  "game with --rom <your 1.0 ROM with Aidyn Patch applied>, or set game.rom_patch to \"none\".");
         }
-        fatal("No ROM yet. Run once with --rom <path to your NTSC-U 1.0 Aidyn Chronicles ROM>.");
+        fatal("No ROM yet. Start the game again and choose your NTSC-U 1.0 Aidyn Chronicles ROM (.z64), or start it "
+              "with --rom <path to the ROM>.");
     }
     printf("Game: %s\n", aidyn_patch ? "Aidyn Patch" : "Aidyn Chronicles (NTSC-U 1.0)");
     fflush(stdout);

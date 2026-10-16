@@ -16,6 +16,18 @@ checks it against this SHA-1:
 > **AI disclosure.** This project was built with AI assistance (Claude Code). Scaffolded by
 > the n64-recomp-toolkit's `new-game.sh`.
 
+## Download and play
+
+[Releases](https://github.com/spitzdano/AidynReChronicled/releases) have a ready-to-run Linux build
+(`AidynReChronicled-<version>-linux-x86_64.tar.gz`: x86_64, glibc 2.38 or newer, a Vulkan driver). Unpack it and run
+`bash install.sh` (app menu entries and, if wanted, a Steam shortcut) or `game/aidyn-rechronicled.sh` in place. The
+first start asks for your ROM in a file dialog and keeps it; nothing else is needed. The README in the download covers
+controls, Aidyn Patch and settings. Releases carry no game data, and not yet the HD menu and world texture packs.
+
+A release is made with `tools/release/make_release.sh <version> --publish`: it builds the portable executable
+(`tools/ally/build_portable.sh`), packages it with the installer, launcher, icon and title branding pack, tags the
+pushed `main` and creates the GitHub release.
+
 ## Building
 
 Needs the [n64-recomp-toolkit](https://github.com/spitzdano/n64-recomp-toolkit) (private) cloned and built on this machine
@@ -112,6 +124,10 @@ Switching versions, once both ROMs are stored:
 
 These are the game's own controls (from its 2001 instruction booklet) on the port's buttons; the manual has them per
 screen.
+
+**Handheld (Bazzite, ROG Xbox Ally X).** `tools/ally/` builds a copy that runs on other Linux systems (in a container,
+glibc 2.38, its own SDL2), Steam art, and a one-file package for a USB stick with an installer that adds the game to
+Steam: see `tools/ally/HANDOFF.md`.
 
 **Manual.** `tools/manual/build_manual.py` builds a PC edition of the instruction booklet (HTML and an A5 PDF) into
 `~/.local/share/AidynReChronicled/manual`: new text following the original booklet's chapters, with the spell list,

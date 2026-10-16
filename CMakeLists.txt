@@ -64,6 +64,7 @@ target_include_directories(AidynReChronicled PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/rt64/src/rhi
     ${CMAKE_SOURCE_DIR}/lib/rt64/src/render
     ${CMAKE_BINARY_DIR}/rt64/src
+    ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/nativefiledialog-extended/src/include
 )
 
 find_package(SDL2 REQUIRED)
@@ -72,7 +73,7 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 target_link_libraries(AidynReChronicled PRIVATE
-    RecompiledFuncs librecomp ultramodern rt64 SDL2::SDL2
+    RecompiledFuncs librecomp ultramodern rt64 nfd SDL2::SDL2
     "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads
 )
 
