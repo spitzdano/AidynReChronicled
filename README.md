@@ -76,7 +76,7 @@ cmake -S . -B build/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER
 cmake --build build/cmake --target AidynReChronicled
 build/cmake/AidynReChronicled --rom /path/to/aidyn-chronicles-ntsc-u-1.0.z64    # remembered after the first run
 ```
-F11 / Alt+Enter: fullscreen. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
+F1: the manual. F11 / Alt+Enter: fullscreen. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
 ROMs, texture packs) lives in `~/.local/share/AidynReChronicled`; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
@@ -95,19 +95,29 @@ Switching versions, once both ROMs are stored:
 
 | N64 | Xbox controller | Keyboard | In the game |
 |---|---|---|---|
-| Control stick | Left stick | Arrows | walk, menus |
+| Control stick | Left stick | Arrows | walk, move in combat, menus |
 | (camera) | Right stick | | turn the camera around the party (left/right), look up or down (up/down); once turned, the camera keeps that direction while walking |
 | (camera) | Right stick click | | camera back behind the party (the original follow camera) |
-| A | A | Z | confirm, talk, attack |
-| B | B | X | back |
-| C-down | X | K | Details; page down in lists |
-| C-up | Y | I | page up in lists; close pop-ups |
-| C-left | View | J | top of a list |
-| C-right | RT | L | bottom of a list |
-| Z | LT | C | sneak; previous menu page |
-| L / R | LB / RB | Q / E | previous / next menu page; R + stick: the game's own camera control |
-| Start | Menu | Enter | pause menu |
+| A | A | Z | talk, open, confirm; in combat: attack, then act on the target |
+| B | B | X | back, cancel; walking: show the party's portraits |
+| C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one) |
+| C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one) |
+| C-left | View | J | pause menu: previous party member; title screen: switch Original / Aidyn Patch |
+| C-right | RT | L | pause menu: next party member |
+| Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu: previous page |
+| L | LB | Q | combat: end the turn; pause menu: previous page |
+| R | RB | E | pause menu: next page; hold + stick: the game's own camera control |
+| Start | Menu | Enter | pause menu; back to the game |
 | D-pad | D-pad | keypad 8 4 5 6 | menus |
+
+These are the game's own controls (from its 2001 instruction booklet) on the port's buttons; the manual has them per
+screen.
+
+**Manual.** `tools/manual/build_manual.py` builds a PC edition of the instruction booklet (HTML and an A5 PDF) into
+`~/.local/share/AidynReChronicled/manual`: new text following the original booklet's chapters, with the spell list,
+portraits and icons read from your own ROM (and a table of what Aidyn Patch changes, when that ROM is stored), and
+screenshots from `tools/manual/shots.sh`. F1 in the game and the launchers' Manual action open it. See
+`tools/manual/README.md`.
 
 With the HD UI pack, the button icons in the game's text are drawn as these Xbox buttons.
 
@@ -148,7 +158,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels |
-| `hud_at_edges` | with a wider aspect: the time-of-day dial and portraits at the picture's left edge, the compass at its right edge (`false`: in the middle 4:3, as the original) |
+| `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
 | `right_stick_camera` | `false` turns the right-stick camera off |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
@@ -188,8 +198,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   centre cell's map hides some on purpose) is skipped. To make room the game is told it has 15 MB of RAM instead of
   8 (`MemoryCheck`): its heap grows from 6.2 to 13 MB and its framebuffers move up; nothing in the game assumes 8 MB.
   Leaving the field frees the rings through the game's free queue.
-- **Field HUD.** With `hud_at_edges` the dial and portraits are drawn aligned to the picture's left edge and the
-  compass to its right edge (RT64 extended GBI). The dial's pieces (rays, moon phases, suns) are redrawn as clean
+- **Field HUD.** With `hud_at_edges` the dial is drawn aligned to the picture's left edge and the compass to its right
+  edge (RT64 extended GBI); the party portraits stay centred, where the game puts them. The dial's pieces (rays, moon phases, suns) are redrawn as clean
   shapes in the HD UI pack (`tools/hdui/hudart.py`): upscaled they were lumpy and the moon was cut flat.
 - **Big pictures.** Images too big for one texture load (page backgrounds, title cards, the Controller Pak screen, map
   pieces, clouds) are drawn as the same full-width strips whatever part of them is shown, then clipped, so the HD pack

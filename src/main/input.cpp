@@ -106,8 +106,8 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         if (pad != nullptr) {
             auto down = [&](SDL_GameControllerButton btn) { return SDL_GameControllerGetButton(pad, btn) != 0; };
             // Xbox-style pad -> N64. The right stick is the camera (src/game/patches.cpp), so the C buttons are on
-            // face buttons: X = C-down (Details; page down in lists), Y = C-up (page up; closes pop-ups), View = C-left
-            // and RT = C-right (jump to the top / bottom of a list).
+            // face buttons and RT: X = C-down (Details; in combat, spells), Y = C-up (in combat, items and potions),
+            // View = C-left and RT = C-right (previous / next party member in the pause menu).
             if (down(SDL_CONTROLLER_BUTTON_A)) b |= A;
             if (down(SDL_CONTROLLER_BUTTON_B)) b |= B;
             if (down(SDL_CONTROLLER_BUTTON_X)) b |= CD;

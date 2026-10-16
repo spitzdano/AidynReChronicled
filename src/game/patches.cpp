@@ -1164,10 +1164,10 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     return g;
 }
 
-// Field HUD at the screen edges. draw_hud_elements draws the time-of-day dial (Sundial::Draw) and the party portraits
-// (Portraits::Draw) at the bottom left and the compass (Compass::Draw) at the bottom right, in 320x240 coordinates,
-// which RT64 keeps in the middle 4:3 of a widescreen picture. With settings.json hud_at_edges (default) each is drawn
-// with RT64's rectangle alignment set to the picture's left or right edge (aidyn.us.toml hooks on entry, display list
+// Field HUD at the screen edges. draw_hud_elements draws the time-of-day dial (Sundial::Draw) at the bottom left, the
+// party portraits (Portraits::Draw) centred and the compass (Compass::Draw) at the bottom right, in 320x240
+// coordinates, which RT64 keeps in the middle 4:3 of a widescreen picture. With settings.json hud_at_edges (default)
+// the dial and the compass are drawn with RT64's rectangle alignment set to the picture's left or right edge (aidyn.us.toml hooks on entry, display list
 // in a0, and before the return, display list in v0), so they keep their place relative to that edge: the dial 19
 // texels from the left, the compass ring 19 from the right. The scissor is widened meanwhile and put back after.
 namespace {

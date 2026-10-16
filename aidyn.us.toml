@@ -192,7 +192,8 @@ before_vram = 0x8000AE84
 text = "extern void aidyn_far_cells_free_all(uint8_t* rdram, recomp_context* ctx); aidyn_far_cells_free_all(rdram, ctx);"
 
 # Field HUD at the screen edges (src/game/patches.cpp, "Field HUD at the screen edges"): on entry (display list in a0)
-# and before the return (in v0) of the dial, portraits (left edge) and compass (right edge).
+# and before the return (in v0) of the dial (left edge) and the compass (right edge). The party portraits
+# (Portraits__Draw) stay where the game puts them, centred on the screen.
 [[patches.hook]]
 func = "Sundial__Draw"
 before_vram = 0x800248A4
@@ -201,16 +202,6 @@ text = "extern void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int rig
 [[patches.hook]]
 func = "Sundial__Draw"
 before_vram = 0x800254AC
-text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
-
-[[patches.hook]]
-func = "Portraits__Draw"
-before_vram = 0x8002569C
-text = "extern void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int right); aidyn_hud_begin(rdram, ctx, 0);"
-
-[[patches.hook]]
-func = "Portraits__Draw"
-before_vram = 0x800256F8
 text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
 
 [[patches.hook]]

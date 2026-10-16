@@ -87,6 +87,26 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
     return ultramodern::renderer::WindowHandle{ window };
 }
 
+static std::filesystem::path data_folder();
+
+// F1: the manual (tools/manual/build_manual.py writes it into the data folder) in the default browser. Fullscreen is
+// left first, so the browser's window isn't hidden behind the game.
+static void open_manual() {
+    const std::filesystem::path page = data_folder() / "manual" / "index.html";
+    std::error_code ec;
+    if (!std::filesystem::exists(page, ec)) {
+        fprintf(stderr, "No manual in %s yet: build it with tools/manual/build_manual.py\n", page.parent_path().c_str());
+        return;
+    }
+    if (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) {
+        SDL_SetWindowFullscreen(window, 0);
+    }
+    const std::string url = "file://" + page.string();
+    if (SDL_OpenURL(url.c_str()) != 0) {
+        fprintf(stderr, "Could not open %s: %s\n", url.c_str(), SDL_GetError());
+    }
+}
+
 static void update_gfx(void*) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -102,6 +122,9 @@ static void update_gfx(void*) {
             else if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE && (event.key.keysym.mod & KMOD_SHIFT)) {
                 quit();
                 return;
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_F1 && !event.key.repeat) {
+                open_manual();
             }
             break;
         default:
@@ -215,7 +238,7 @@ int main(int argc, char** argv) {
                    "              remembered after the first run\n"
                    "  --patch     play Aidyn Patch this time; --original: play the 1.0 release this time\n"
                    "              (otherwise settings.json game.rom_patch; View on the title screen switches and remembers)\n"
-                   "  F11 or Alt+Enter: fullscreen   Shift+Esc: quit\n", argv[0]);
+                   "  F1: the manual   F11 or Alt+Enter: fullscreen   Shift+Esc: quit\n", argv[0]);
             return 0;
         }
         else {

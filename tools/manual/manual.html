@@ -1,0 +1,752 @@
+<!doctype html>
+<!--
+  tools/manual/manual.html: the source of the Aidyn ReChronicled manual. build_manual.py fills it in and writes the
+  finished page (and a PDF) to the player's data folder. Written for this port; the game facts follow the original
+  2001 instruction booklet, the wording is new. Markers the build replaces:
+    {{TOC}} {{SPELLS}} {{PATCH}} {{BUILT}}   generated sections
+    <img data-art="Name">                    a Borg8 picture from the ROM, upscaled (tools/manual/romart.py)
+    <figure data-shot="name">                a screenshot from tools/manual/shots.sh; left out when there is none
+  The first letter of every chapter title becomes an illuminated initial.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aidyn ReChronicled Manual</title>
+<style>
+@font-face { font-family: "Uncial Antiqua"; src: url(fonts/UncialAntiqua-Regular.ttf); }
+@font-face { font-family: "Marcellus SC"; src: url(fonts/MarcellusSC-Regular.ttf); }
+@font-face { font-family: "Alegreya Sans"; src: url(fonts/AlegreyaSans-Regular.ttf); }
+@font-face { font-family: "Alegreya Sans"; src: url(fonts/AlegreyaSans-Italic.ttf); font-style: italic; }
+@font-face { font-family: "Alegreya Sans"; src: url(fonts/AlegreyaSans-Bold.ttf); font-weight: bold; }
+@font-face { font-family: "Alegreya Sans"; src: url(fonts/AlegreyaSans-BoldItalic.ttf); font-weight: bold; font-style: italic; }
+
+:root {
+  --cloth: #345f24;
+  --cloth-dark: #24451a;
+  --gold: #f0b52e;
+  --gold-light: #f7d77c;
+  --gold-dark: #9a6a12;
+  --ink: #f5f1e3;
+  --ink-dim: #d9d3bd;
+  --bar: #d8a623;
+  --bar-ink: #24200c;
+  --parchment: #ead9b0;
+  --parchment-ink: #3a2a12;
+  --a: #5cb531; --b: #d8442f; --x: #3f7ee0; --y: #e2b522;
+}
+* { box-sizing: border-box; }
+html {
+  background: var(--cloth-dark);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+body {
+  margin: 0;
+  color: var(--ink);
+  font: 17px/1.5 "Alegreya Sans", sans-serif;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px),
+    var(--cloth);
+}
+main { max-width: 900px; margin: 0 auto; padding: 0 16px 64px; }
+a { color: var(--gold-light); }
+img { max-width: 100%; }
+
+/* Chapters */
+.chapter { padding: 56px 0 8px; border-top: 1px solid rgba(240, 181, 46, .25); }
+.chapter:first-of-type { border-top: 0; }
+h2 {
+  display: flex; align-items: center; gap: 18px;
+  margin: 0 0 28px;
+  font: 400 52px/1.1 "Uncial Antiqua", serif;
+  color: var(--gold);
+  text-shadow: 0 2px 0 rgba(0,0,0,.35);
+}
+.initial {
+  flex: none;
+  display: grid; place-items: center;
+  width: 92px; height: 92px;
+  font: 400 68px/1 "Marcellus SC", serif;
+  color: #fff6d6;
+  text-shadow: 0 0 2px var(--gold-dark), 0 2px 3px rgba(80, 50, 0, .8);
+  border: 3px double var(--gold-dark);
+  outline: 2px solid var(--gold-light); outline-offset: -8px;
+  background: #e9b443 url(art/initial.png) center / cover; /* initial.svg, rendered by the build */
+  box-shadow: 0 3px 8px rgba(0,0,0,.45);
+}
+h3 {
+  margin: 30px 0 10px;
+  font: 400 23px/1.2 "Marcellus SC", serif;
+  color: var(--gold);
+  letter-spacing: .02em;
+}
+h4 {
+  margin: 20px 0 6px;
+  font: italic bold 18px/1.3 "Alegreya Sans", sans-serif;
+  color: var(--gold);
+}
+p { margin: 0 0 12px; }
+.note { font-style: italic; color: var(--gold-light); }
+.port {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-left: 4px solid var(--gold);
+  background: rgba(0, 0, 0, .18);
+}
+.port::before {
+  content: "On PC";
+  display: block;
+  font: 400 15px/1.2 "Marcellus SC", serif;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+ul { margin: 0 0 12px; padding-left: 22px; }
+li { margin: 0 0 6px; }
+li::marker { color: var(--gold); }
+dl { margin: 0 0 12px; }
+dt { font-weight: bold; color: var(--gold-light); }
+dd { margin: 0 0 10px 0; }
+code {
+  font: 0.92em/1 ui-monospace, monospace;
+  background: rgba(0,0,0,.25);
+  padding: 1px 5px; border-radius: 3px;
+  color: var(--gold-light);
+}
+pre {
+  background: rgba(0,0,0,.28); padding: 12px 14px; border-radius: 4px;
+  overflow-x: auto; color: var(--gold-light); font: 14px/1.45 ui-monospace, monospace;
+}
+
+/* Pictures */
+figure { margin: 20px 0; break-inside: avoid; }
+figure img {
+  display: block; width: 100%;
+  border: 3px solid var(--gold-dark);
+  outline: 1px solid var(--gold-light); outline-offset: -6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  background: #000;
+}
+figcaption { margin-top: 6px; font-size: 15px; font-style: italic; color: var(--ink-dim); }
+.half { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.half figure { margin: 0; }
+.icon { width: 1.5em; height: 1.5em; vertical-align: -0.35em; image-rendering: auto; }
+.icon-big { width: 44px; height: 44px; }
+
+/* Buttons */
+kbd {
+  display: inline-block; min-width: 1.7em;
+  padding: 0 .4em;
+  font: 600 0.85em/1.6 "Alegreya Sans", sans-serif;
+  text-align: center;
+  color: #1d1d1d; background: #ece6d2;
+  border-radius: 4px; border-bottom: 2px solid #9d9580;
+  white-space: nowrap;
+}
+kbd.pad { color: #fff; background: #3a3a3a; border-color: #111; border-radius: 1em; }
+kbd.pad.a { background: var(--a); } kbd.pad.b { background: var(--b); }
+kbd.pad.x { background: var(--x); } kbd.pad.y { background: var(--y); color: #222; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; font-size: 16px; }
+th {
+  text-align: left; padding: 6px 8px;
+  font: 400 15px/1.2 "Marcellus SC", serif; color: var(--gold);
+  border-bottom: 2px solid var(--gold);
+}
+td { padding: 5px 8px; vertical-align: top; }
+tbody tr:nth-child(odd) { background: var(--bar); color: var(--bar-ink); }
+tbody tr:nth-child(odd) code { color: #3a2604; background: rgba(255,255,255,.35); }
+tbody tr:nth-child(odd) .dim { color: #4a3e14; }
+.dim { color: var(--ink-dim); }
+td.n { text-align: right; white-space: nowrap; }
+.controls td:first-child, .controls td:nth-child(2) { white-space: nowrap; }
+.scroll { overflow-x: auto; }
+
+/* Characters */
+.character { display: grid; grid-template-columns: 112px 1fr; gap: 18px; align-items: start; margin: 0 0 22px; break-inside: avoid; }
+.character img {
+  width: 112px; height: 112px;
+  border: 3px solid var(--gold-dark); outline: 1px solid var(--gold-light); outline-offset: -6px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.4);
+}
+.character h4 { margin-top: 0; }
+
+/* Spells: a row of figures and a description row per spell, shaded per spell */
+table.spells tbody.spell:nth-of-type(odd) { background: var(--bar); color: var(--bar-ink); }
+table.spells tbody.spell:nth-of-type(odd) .dim { color: #4a3e14; }
+table.spells tbody tr { background: none !important; color: inherit !important; }
+table.spells tbody.spell { break-inside: avoid; }
+.spells tr:first-child td:first-child { font-weight: bold; white-space: nowrap; }
+.spells td.desc { padding-top: 0; padding-bottom: 7px; font-size: 15px; }
+.school { display: flex; align-items: center; gap: 10px; }
+table.changes { table-layout: fixed; }
+table.changes td:first-child { font-weight: bold; }
+table.changes th:nth-child(1) { width: 21%; }
+table.changes th:nth-child(2) { width: 8%; }
+table.changes th:nth-child(3) { width: 13%; }
+table.changes th:nth-child(4) { width: 8%; }
+table.changes th:nth-child(5) { width: 8%; }
+table.changes th:nth-child(6) { width: 15%; }
+table.changes th:nth-child(7) { width: 11%; }
+table.changes th:nth-child(8) { width: 16%; }
+table.changes s { opacity: .65; margin-right: 2px; }
+
+/* Cover */
+.cover { text-align: center; padding: 40px 0 24px; }
+.cover img { width: 100%; border: 3px solid var(--gold-dark); box-shadow: 0 8px 26px rgba(0,0,0,.5); }
+.cover .title {
+  margin: 26px 0 4px;
+  font: 400 54px/1.05 "Uncial Antiqua", serif; color: var(--gold);
+  text-shadow: 0 2px 0 rgba(0,0,0,.4);
+}
+.cover .sub { font: 400 24px/1.3 "Marcellus SC", serif; color: var(--gold-light); letter-spacing: .06em; }
+.cover .small { margin-top: 18px; font-size: 14px; color: var(--ink-dim); }
+
+/* Contents */
+.toc {
+  margin: 0 auto; max-width: 560px;
+  padding: 34px 44px;
+  color: var(--parchment-ink);
+  background: radial-gradient(ellipse at center, #f3e6c3, var(--parchment) 70%, #d7bf86);
+  border-radius: 6px;
+  box-shadow: inset 0 0 26px rgba(120, 80, 20, .45), 0 8px 22px rgba(0,0,0,.45);
+}
+.toc h2 { color: #6b4210; text-shadow: none; justify-content: center; }
+.toc h2 .initial { width: 64px; height: 64px; font-size: 46px; }
+.toc ol { list-style: none; padding: 0; margin: 0; font: 400 19px/1.75 "Marcellus SC", serif; }
+.toc ol ol { font-size: 16px; line-height: 1.5; padding-left: 22px; margin-bottom: 4px; }
+.toc a { color: var(--parchment-ink); text-decoration: none; }
+.toc a:hover { color: #8c2a10; }
+
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  h2 { font-size: 36px; gap: 12px; }
+  .initial { width: 64px; height: 64px; font-size: 46px; }
+  .half { grid-template-columns: 1fr; }
+  .character { grid-template-columns: 72px 1fr; }
+  .character img { width: 72px; height: 72px; }
+  .toc { padding: 24px 20px; }
+  .cover .title { font-size: 38px; }
+}
+
+/* Print / PDF: A5 pages like the booklet, every chapter on a new page */
+@page {
+  size: A5;
+  margin: 12mm 11mm 14mm;
+  background: var(--cloth);
+  @bottom-center { content: counter(page); font: 10pt "Marcellus SC", serif; color: #f0b52e; }
+}
+@page :first { @bottom-center { content: none; } }
+@media print {
+  html, body { background: var(--cloth); }
+  * { box-shadow: none !important; text-shadow: none !important; } /* Chromium prints shadows as images */
+  body { font-size: 9.6pt; line-height: 1.42; }
+  main { max-width: none; padding: 0; }
+  .chapter { break-before: page; padding: 0; border: 0; }
+  .cover { padding: 0; }
+  .cover + .chapter { break-before: page; }
+  h2 { font-size: 27pt; margin-bottom: 14pt; gap: 10pt; }
+  .initial { width: 50pt; height: 50pt; font-size: 37pt; }
+  h3 { font-size: 13.5pt; margin-top: 14pt; break-after: avoid; }
+  h4 { font-size: 10.5pt; break-after: avoid; }
+  table { font-size: 8.6pt; }
+  th { font-size: 8.4pt; }
+  .spells td.desc { font-size: 8.2pt; }
+  table.spells, table.changes { font-size: 8.2pt; }
+  table.spells td, table.changes td { padding: 2.5pt 4pt; }
+  figure { margin: 10pt 0; }
+  figcaption { font-size: 8.4pt; }
+  tr, .character, .port { break-inside: avoid; }
+  .character { grid-template-columns: 60pt 1fr; gap: 10pt; margin-bottom: 10pt; }
+  .character img { width: 60pt; height: 60pt; }
+  .toc { padding: 18pt 22pt; }
+  .toc ol { font-size: 11.5pt; line-height: 1.6; }
+  .toc ol ol { font-size: 9.6pt; }
+  .cover .title { font-size: 30pt; }
+  .cover .sub { font-size: 14pt; }
+  a { text-decoration: none; }
+  .scroll { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<header class="cover">
+  <figure data-shot="title" data-fallback="TitleCard"><img alt="The Aidyn ReChronicled title screen"></figure>
+  <div class="title">Aidyn Chronicles</div>
+  <div class="sub">The First Mage · ReChronicled</div>
+  <div class="sub">Instruction Manual · PC Edition</div>
+  <p class="small">For the native Linux port of the Nintendo 64 game. Pictures in this manual come from your own copy of the game.<br>{{BUILT}}</p>
+</header>
+
+<section class="chapter toc-chapter">
+  <nav class="toc">
+    <h2>Contents</h2>
+    {{TOC}}
+  </nav>
+</section>
+
+<section class="chapter" id="getting-started">
+<h2>Getting Started</h2>
+<p>Aidyn ReChronicled is <em>Aidyn Chronicles: The First Mage</em> (Nintendo 64, 2001) rebuilt as a native PC program. The
+game's own code was translated into C, so it plays exactly as it did on the console. On top of that it runs at high
+resolution, in widescreen and at high frame rates, with redrawn menus and textures.</p>
+
+<h3>What you need</h3>
+<ul>
+  <li>Your own dump of the North American 1.0 cartridge (<code>.z64</code>). The port contains no game data, and it checks
+  the dump before it will run it.</li>
+  <li>Optionally, the same dump with the community <a href="#aidyn-patch">Aidyn Patch</a> applied.</li>
+  <li>A graphics card with Vulkan, and an Xbox-style controller (the keyboard works too).</li>
+</ul>
+
+<h3>The first start</h3>
+<p>Start the game once with your dump:</p>
+<pre>AidynReChronicled --rom /path/to/aidyn-chronicles.z64</pre>
+<p>The dump is checked, copied into the game's data folder and remembered, so after that the game starts without it. It
+goes straight to the title screen. Press <kbd class="pad">≡</kbd> (Menu) or <kbd>Enter</kbd> to begin.</p>
+
+<div class="port">
+  <p><kbd>F1</kbd> opens this manual in your browser at any time (the game leaves fullscreen so you can see it).
+  <kbd>F11</kbd> or <kbd>Alt</kbd>+<kbd>Enter</kbd> switches fullscreen on and off, and <kbd>Shift</kbd>+<kbd>Esc</kbd>
+  quits. The app launchers have a Manual entry too.</p>
+  <p>Everything the game keeps lives in <code>~/.local/share/AidynReChronicled</code>: your saves
+  (<code>aidyn.mpk</code>), <code>settings.json</code>, the stored dumps, the HD texture packs and this manual.</p>
+</div>
+</section>
+
+<section class="chapter" id="controls">
+<h2>Controls</h2>
+<p>The N64 controller's buttons are spread over an Xbox controller and the keyboard. The right stick, which the N64 didn't
+have, turns the camera.</p>
+
+<h3>Trek Mode</h3>
+<p class="dim">Travelling the realm, in towns and in the wild.</p>
+<table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
+<tr><td>Left stick</td><td><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></td><td>Move Alaron (he leads the whole party)</td></tr>
+<tr><td>Right stick</td><td></td><td>Turn the camera around the party; up and down tilts it</td></tr>
+<tr><td>Right stick click</td><td></td><td>Put the camera back behind the party</td></tr>
+<tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Talk, open doors and chests, choose in menus</td></tr>
+<tr><td><kbd class="pad b">B</kbd></td><td><kbd>X</kbd></td><td>Show the party's portraits; back out of a menu; cancel</td></tr>
+<tr><td><kbd class="pad">≡</kbd> Menu</td><td><kbd>Enter</kbd></td><td>Pause the game (the pause menu)</td></tr>
+<tr><td><kbd class="pad">LT</kbd> + left stick</td><td><kbd>C</kbd> + arrows</td><td>Sneak</td></tr>
+<tr><td><kbd class="pad">RB</kbd> + left stick</td><td><kbd>E</kbd> + arrows</td><td>The game's own camera control</td></tr>
+</tbody></table>
+
+<h3>Combat Mode</h3>
+<h4>Choosing an action</h4>
+<table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
+<tr><td>Left stick</td><td>Arrows</td><td>Move the character whose turn it is</td></tr>
+<tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Attack in close combat (then choose a target)</td></tr>
+<tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Cast a spell: hold to list the spells, pick one with the stick and let go</td></tr>
+<tr><td><kbd class="pad y">Y</kbd></td><td><kbd>I</kbd></td><td>Use an item or potion: hold to list them, pick one with the stick and let go</td></tr>
+<tr><td><kbd class="pad">LT</kbd> or <kbd class="pad">LB</kbd></td><td><kbd>C</kbd> or <kbd>Q</kbd></td><td>End this character's turn</td></tr>
+<tr><td><kbd class="pad">RB</kbd> + left stick</td><td><kbd>E</kbd> + arrows</td><td>Camera control</td></tr>
+</tbody></table>
+<h4>Choosing a target</h4>
+<table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
+<tr><td>Left stick</td><td>Arrows</td><td>Pick the target of the attack, spell or item</td></tr>
+<tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Act on the target</td></tr>
+<tr><td><kbd class="pad b">B</kbd></td><td><kbd>X</kbd></td><td>Back to choosing an action</td></tr>
+<tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Tap: cast the last spell again. Hold + stick: pick another spell</td></tr>
+<tr><td><kbd class="pad y">Y</kbd></td><td><kbd>I</kbd></td><td>Tap: use the last item again. Hold + stick: pick another item</td></tr>
+</tbody></table>
+
+<h3>Pause Menu</h3>
+<table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
+<tr><td><kbd class="pad">RB</kbd></td><td><kbd>E</kbd></td><td>Next page (the scroll moves right)</td></tr>
+<tr><td><kbd class="pad">LT</kbd> or <kbd class="pad">LB</kbd></td><td><kbd>C</kbd> or <kbd>Q</kbd></td><td>Previous page (the scroll moves left)</td></tr>
+<tr><td>Left stick</td><td>Arrows</td><td>Highlight; move between inventory, stats, spells and skills</td></tr>
+<tr><td><kbd class="pad">View</kbd> / <kbd class="pad">RT</kbd></td><td><kbd>J</kbd> / <kbd>L</kbd></td><td>Previous / next party member</td></tr>
+<tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Details of a skill, spell, item or stat</td></tr>
+<tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Equip or take off; use potions, items and spells</td></tr>
+<tr><td><kbd class="pad b">B</kbd></td><td><kbd>X</kbd></td><td>Leave the pause menu</td></tr>
+<tr><td><kbd class="pad">≡</kbd> Menu</td><td><kbd>Enter</kbd></td><td>Back to the game</td></tr>
+</tbody></table>
+<p class="note">To cast a spell from a scroll, or to drink a potion outside combat, open the inventory page and choose
+the item there.</p>
+
+<div class="port">
+  <p>On the title screen, <kbd class="pad">View</kbd> (<kbd>J</kbd>) switches between the original game and Aidyn
+  Patch when both are installed. In menus the D-pad works as on the N64; on the keyboard it is keypad
+  <kbd>8</kbd> <kbd>4</kbd> <kbd>5</kbd> <kbd>6</kbd>. The buttons shown in the game's own text are drawn as Xbox
+  buttons.</p>
+</div>
+</section>
+
+<section class="chapter" id="main-menu">
+<h2>Main Menu</h2>
+<figure data-shot="main-menu"><img alt="The main menu"></figure>
+<dl>
+  <dt>New Game</dt><dd>Start a new adventure.</dd>
+  <dt>Load Game</dt><dd>Carry on from a save (see <a href="#saving">Saving and Loading</a>).</dd>
+  <dt>Options</dt><dd>Sound and graphics settings.</dd>
+</dl>
+</section>
+
+<section class="chapter" id="options">
+<h2>Options</h2>
+<figure data-shot="options"><img alt="The Options page"></figure>
+<dl>
+  <dt>Audio</dt><dd>Push the stick left or right to turn the sound effects and the music down or up.</dd>
+  <dt>Graphics</dt><dd>Normal or high resolution. On the N64 the high-resolution mode needed the Expansion Pak.</dd>
+  <dt>Rename Character</dt><dd>Give Alaron a new name (from the pause menu's Options).</dd>
+</dl>
+<div class="port">
+  <p>Leave Graphics on <strong>Normal Resolution</strong>. The PC version already draws the game at your screen's
+  resolution; the old high-resolution mode only stretches the menus and the HUD. The PC's own settings are in
+  <a href="#settings">PC Settings</a>.</p>
+</div>
+</section>
+
+<section class="chapter" id="playing">
+<h2>Playing the Game</h2>
+<p>Choose New Game on the main menu and name the hero. His name is Alaron unless you change it: press
+<kbd class="pad">≡</kbd> to keep it, or pick letters with the stick or D-pad and <kbd class="pad a">A</kbd>
+(<kbd class="pad b">B</kbd> deletes a letter). Choose OK to accept the name, or the X to go back to the main menu
+unchanged.</p>
+
+<h3 id="saving">Saving and Loading</h3>
+<p>Your progress is kept on a Controller Pak, the N64's memory card. Save from the pause menu whenever you like;
+load from the main menu or the pause menu.</p>
+<figure data-shot="load-game"><img alt="The Load Game page"></figure>
+<h4>Save Game</h4>
+<ul>
+  <li><strong>Save</strong>: choose a save with the stick left and right and press <kbd class="pad a">A</kbd>. Saving over
+  an old game replaces it.</li>
+  <li><strong>Delete</strong>: choose a save and press <kbd class="pad a">A</kbd> to remove it from the pak.</li>
+  <li><strong>Exit</strong>: back to the pause menu.</li>
+</ul>
+<h4>Load Game</h4>
+<ul>
+  <li><strong>Load</strong>: choose a save with the stick left and right and press <kbd class="pad a">A</kbd>.</li>
+  <li><strong>Delete</strong> and <strong>Exit</strong> work as above.</li>
+</ul>
+<div class="port">
+  <p>The Controller Pak is a file, <code>aidyn.mpk</code> in the data folder (<code>aidyn-patch.mpk</code> for Aidyn
+  Patch). It is written the moment the game saves. It is the same kind of file N64 emulators use, so a pak can be
+  copied in or out. Back it up like any save file.</p>
+</div>
+
+<h3>The Display</h3>
+<p>The game has two modes. <strong>Trek Mode</strong> is travel: walking between towns, exploring, talking. When enemies
+attack you switch to <a href="#combat">Combat Mode</a>.</p>
+<figure data-shot="field"><img alt="Trek Mode: the sun dial at the left, the party in the middle, the compass at the right"></figure>
+<dl>
+  <dt>Alaron</dt><dd>Alaron stands for the whole party while it travels.</dd>
+  <dt>Sun dial</dt><dd>The sun and moon circle a twelve-hour dial as the day passes. The roads are dangerous after dark.</dd>
+  <dt>Compass</dt><dd>The direction you face is lit; the others are shaded.</dd>
+  <dt>The party</dt><dd>Press <kbd class="pad b">B</kbd> to show everyone's portraits along the bottom.</dd>
+</dl>
+<div class="port"><p>In widescreen the sun dial moves to the left edge and the compass to the right edge, leaving the
+middle of the picture clear. The party portraits stay in the middle.</p></div>
+
+<h3>Dialogue</h3>
+<p>Walk up to a friendly character and press <kbd class="pad a">A</kbd> to talk. The two of you take turns until the
+conversation is over. When Alaron has several things he could say, pick one with the stick and press
+<kbd class="pad a">A</kbd>. Once a topic is finished new questions may appear, but there is no going back to an earlier
+list, so choose with care.</p>
+
+<h3>Buying and Selling</h3>
+<p>Talk to a merchant with <kbd class="pad a">A</kbd> to buy, sell, train or leave. Before buying, press
+<kbd class="pad y">Y</kbd> to see whether the price is fair. On the trading page, move the stick left and right to
+switch between Buy and Sell, and up and down to choose an item. Your gold is shown at the top. Under Buy you see what
+an item costs; under Sell, what you would be paid for it.</p>
+<p class="note">Not every merchant trains. See <a href="#after-combat">After Combat</a> for how characters improve.</p>
+</section>
+
+<section class="chapter" id="combat">
+<h2>Combat</h2>
+<p>When enemies attack, the whole party appears on a battlefield facing them. Fights are turn-based: each character
+moves and acts in turn, and how far they can move depends on their stats. A heavily armoured knight is slow but hits
+hard face to face. A thief darts around a slower enemy to strike from behind. A spellcaster with many spells can catch
+enemies in the open. High ground gives a bonus, and a bow strikes from a distance.</p>
+
+<h3>Turn-Based Attacks</h3>
+<p>On a character's turn, move them with the stick and press <kbd class="pad a">A</kbd> to attack.
+Spellcasters can cast with <kbd class="pad x">X</kbd> instead. A character who can't attack ends the turn with
+<kbd class="pad">LT</kbd>, <kbd class="pad">LB</kbd> or <kbd class="pad a">A</kbd>.</p>
+
+<h3>The Battlefield</h3>
+<dl>
+  <dt>The character in play</dt><dd>Your party is lined up along one side of the screen; the character whose turn it
+  is stands in the middle.</dd>
+  <dt>Enemies</dt><dd>Each enemy in the fight is shown along the other side.</dd>
+  <dt>Health bars</dt><dd>Next to each portrait, a bar shows hit points. It shrinks and changes colour as the character
+  is hurt; when it is gone the character falls. Enemies have bars too.</dd>
+  <dt>Messages</dt><dd>The bottom of the screen says whose turn it is and whether an attack hit or missed.</dd>
+  <dt>Spells and items</dt><dd>Hold <kbd class="pad x">X</kbd> (spells) or <kbd class="pad y">Y</kbd> (items) and move
+  the stick up and down to choose; let go and press <kbd class="pad a">A</kbd> to use it.</dd>
+</dl>
+
+<h3 id="after-combat">After Combat</h3>
+<h4>Level Up</h4>
+<p>After a victory the Level Up page lets you spend experience on stats, skills and spells: choose one and press
+<kbd class="pad a">A</kbd>. Move up and down to see the <strong>XP Cost</strong> of each next step; it can't be bought
+when the cost is higher than your <strong>XP Remaining</strong>. More victories bring more experience.
+<kbd class="pad">≡</kbd> or <kbd class="pad b">B</kbd> closes the page. See <a href="#stats">Player Stats</a>.</p>
+<h4>Treasure</h4>
+<p>Next comes the treasure the enemies dropped. Highlight an item and press <kbd class="pad a">A</kbd> to take it; you
+can also drop things you carry to make room. The gold you won is shown at the bottom. <kbd class="pad">≡</kbd> or
+<kbd class="pad b">B</kbd> returns to the journey.</p>
+</section>
+
+<section class="chapter" id="magic">
+<h2>Magic</h2>
+<p>A character who knows spells can cast them in battle. On their turn, hold <kbd class="pad x">X</kbd> to list their
+spells, choose one with the stick and let go. Then press <kbd class="pad a">A</kbd> to start casting. Every spell uses
+up stamina, and most also use up an ingredient: spice <img class="icon" data-art="IconItemSpice" alt="">,
+herb <img class="icon" data-art="IconItemHerb" alt=""> or gemstone <img class="icon" data-art="IconItemGem" alt="">.</p>
+
+<h3>Attack Spells</h3>
+<p>Choose a damaging spell, steer the cursor onto the enemy you want with the stick and press <kbd class="pad a">A</kbd>.</p>
+
+<h3>Spells for the Party</h3>
+<p>To heal, protect or strengthen, choose the spell and, if it is for one character, highlight them and press
+<kbd class="pad a">A</kbd>. A spell for several characters shows a large circle instead: everyone inside it is
+affected.</p>
+
+<h3>Schools and Aspects</h3>
+<p>Every spell belongs to a school: Elemental <img class="icon" data-art="IconSchoolElem" alt="">, Naming
+<img class="icon" data-art="IconSchoolName" alt="">, Necromancy <img class="icon" data-art="IconSchoolNecro" alt="">,
+Star <img class="icon" data-art="IconSchoolStar" alt=""> or neutral. Most are also
+Solar <img class="icon" data-art="IconAsSolar" alt=""> or Lunar <img class="icon" data-art="IconAsLunar" alt="">.
+Characters have an aspect too. An aspected spell is harder to resist when the caster's aspect differs from the
+target's, and easier when they are the same.</p>
+<p>Learning a spell, and raising its rank, costs experience and needs enough skill in Wizard. Every spell in the game is
+in the <a href="#spells">Spell List</a>.</p>
+</section>
+
+<section class="chapter" id="pausing">
+<h2>Pausing the Game</h2>
+<p>Press <kbd class="pad">≡</kbd> at any time to pause. <kbd class="pad b">B</kbd> or <kbd class="pad">≡</kbd> returns
+to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the inventory, then the calendar.
+<kbd class="pad">LB</kbd> or <kbd class="pad">LT</kbd> turns it back.</p>
+
+<h3>Pause Menu</h3>
+<figure data-shot="pause"><img alt="The pause menu"></figure>
+<dl>
+  <dt>Load Game</dt><dd>Load a save from the Controller Pak.</dd>
+  <dt>Save Game</dt><dd>Save your progress at any time.</dd>
+  <dt>Options</dt><dd>Sound, graphics and renaming Alaron (see <a href="#options">Options</a>).</dd>
+  <dt>Theater</dt><dd>Watch the story scenes you have already seen.</dd>
+  <dt>Credits</dt><dd>The people who made the game.</dd>
+  <dt>Help</dt><dd>Hints and tips.</dd>
+</dl>
+
+<h3>Inventory</h3>
+<figure data-shot="inventory"><img alt="The inventory page"></figure>
+<dl>
+  <dt>The party</dt><dd>Everyone's portraits are at the top left. The selected character's is the largest, with their
+  name above it. <kbd class="pad">View</kbd> and <kbd class="pad">RT</kbd> move through the party.</dd>
+  <dt>Hit Points</dt><dd>A healthy character has plenty. One who is low needs rest and a healing potion or two.</dd>
+  <dt>Level</dt><dd>Experience raises a character's level; the higher it is, the stronger they are.</dd>
+  <dt>Gold</dt><dd>The gold the whole party carries.</dd>
+  <dt>Inventory, Stats, Skills, Spells</dt><dd>The party's items, with an icon beside anything a character is using. Move
+  the stick left and right to see each character's stats, skills and spells. <kbd class="pad x">X</kbd> shows details.</dd>
+  <dt>Equipment</dt><dd>The figure at the bottom left shows what the character wears and carries, one slot for each
+  place: head, neck, body, back, waist, fingers, hands and feet.</dd>
+</dl>
+
+<h3>Calendar</h3>
+<figure data-shot="calendar"><img alt="The calendar page with the map"></figure>
+<dl>
+  <dt>Map</dt><dd>The land seen from above.</dd>
+  <dt>Calendar</dt><dd>Today is marked with a square. The phases of the moon are shown too.</dd>
+  <dt>Camp</dt><dd>Rest the party (see <a href="#camping">Camping</a>).</dd>
+  <dt>Journal</dt><dd>Alaron's journal keeps track of side quests and what he has done.</dd>
+</dl>
+</section>
+
+<section class="chapter" id="camping">
+<h2>Camping</h2>
+<p>Camping lets the party rest and win back hit points and anything else that recovers with time. Pause with
+<kbd class="pad">≡</kbd>, turn to the calendar page with <kbd class="pad">RB</kbd>, choose <strong>Camp</strong> and press
+<kbd class="pad a">A</kbd>.</p>
+<p>Monsters can find a camp at night. A party member with a high Ranger skill <img class="icon" data-art="IconSkRanger" alt="">
+makes an ambush much less likely.</p>
+</section>
+
+<section class="chapter" id="stats">
+<h2>Player Stats</h2>
+<p>Characters learn from every battle. Each defeated enemy brings experience, which buys higher stats and skills (on
+the Level Up page after a fight). There are six stats. Skills are learned and trained with masters and teachers in
+towns and villages.</p>
+<dl>
+  <dt>Intelligence</dt><dd>Strengthens a mage's spells and a warrior's ranged attacks.</dd>
+  <dt>Willpower</dt><dd>Resistance to enemy magic.</dd>
+  <dt>Dexterity</dt><dd>Quickness: extra attacks, a better chance to dodge, and more ground covered in battle.</dd>
+  <dt>Endurance</dt><dd>Wounds that can kill come off Endurance: when it reaches zero, death is close. Raising it also
+  adds to a character's hit points.</dd>
+  <dt>Strength</dt><dd>Harder blows, and a better chance to hit.</dd>
+  <dt>Stamina</dt><dd>Used up by casting spells, disarming traps, picking locks and making armour and potions. If it runs
+  out, further strain comes off Endurance, so rest to keep it up.</dd>
+</dl>
+<h3>Skills</h3>
+<table><tbody>
+<tr><td><img class="icon" data-art="IconSkAlchemist" alt=""> Alchemist</td><td><img class="icon" data-art="IconSkDiplomat" alt=""> Diplomat</td><td><img class="icon" data-art="IconSkHealer" alt=""> Healer</td></tr>
+<tr><td><img class="icon" data-art="IconSkLoremaster" alt=""> Loremaster</td><td><img class="icon" data-art="IconSkMechanic" alt=""> Mechanic</td><td><img class="icon" data-art="IconSkMerchant" alt=""> Merchant</td></tr>
+<tr><td><img class="icon" data-art="IconSkRanger" alt=""> Ranger</td><td><img class="icon" data-art="IconSkStealth" alt=""> Stealth</td><td><img class="icon" data-art="IconSkTheif" alt=""> Thief</td></tr>
+<tr><td><img class="icon" data-art="IconSkTroubador" alt=""> Troubadour</td><td><img class="icon" data-art="IconSkWarrior" alt=""> Warrior</td><td><img class="icon" data-art="IconSkWizard" alt=""> Wizard</td></tr>
+</tbody></table>
+<p>A few to remember: Ranger keeps camps safe, Thief opens locks and disarms traps, and Wizard decides which spells a
+character can learn.</p>
+</section>
+
+<section class="chapter" id="items">
+<h2>Weapons &amp; Items</h2>
+<p>Alaron will find things to use, wear and sell everywhere he goes.</p>
+<dl>
+  <dt><img class="icon" data-art="IconItemSword" alt=""> <img class="icon" data-art="IconItemAxe" alt="">
+      <img class="icon" data-art="IconItemPike" alt=""> <img class="icon" data-art="IconItemBowArrow" alt=""> Weapons</dt>
+  <dd>Swords, hafted weapons, pole arms, thrown weapons and missile weapons, from shops or from the field after a
+  battle. A fast weapon can beat a heavy one, because quick attacks hit more often. Give each character weapons that
+  suit their skills.</dd>
+  <dt><img class="icon" data-art="IconItemChestArmor1" alt=""> <img class="icon" data-art="IconItemShield1" alt=""> Armour</dt>
+  <dd>Protection against enemy blows. Equip the best you can for everyone, but heavy armour slows quick characters
+  down.</dd>
+  <dt><img class="icon" data-art="IconItemRing1" alt=""> Rings</dt>
+  <dd>Change a character's protection, spellcasting or fighting ability.</dd>
+  <dt><img class="icon" data-art="IconItemPotion" alt=""> Potions</dt>
+  <dd>Healing and curing potions save lives deep in the forest. Remember them in combat.</dd>
+  <dt><img class="icon" data-art="IconItemScroll" alt=""> Scrolls</dt>
+  <dd>Spells written down. Equip a scroll and its spell can be cast in battle with <kbd class="pad x">X</kbd>; use it from
+  the inventory page to learn the spell for good.</dd>
+</dl>
+<h3>Treasure Chests</h3>
+<p>Beaten enemies drop items, and chests are hidden all over the realm, usually off the beaten path. They hold anything
+from gold to armour and weapons. Press <kbd class="pad a">A</kbd> to open one. If it is trapped you are asked whether to
+disarm the trap; fail, and the whole party is hurt when the chest opens. A locked chest needs a party member to pick the
+lock. Without enough Thief skill, a chest stays shut.</p>
+<p class="note">Send the party member with the best Thief skill to open chests.</p>
+</section>
+
+<section class="chapter" id="characters">
+<h2>Characters</h2>
+<div class="character"><img data-art="PortraitAlaron" alt="Alaron"><div><h4>Alaron</h4><p>A young squire with a quick temper,
+orphaned as a baby and raised at the King's court. He is training to be a knight, if he can keep out of trouble. He has
+no idea that his life is about to change for good.</p></div></div>
+<div class="character"><img data-art="PortraitBrenna" alt="Brenna"><div><h4>Brenna</h4><p>Orphaned young, Brenna looked
+after herself until the King took her in. She is a gifted thief (never say so to her face) and Alaron's oldest friend,
+though the two argue all the time.</p></div></div>
+<div class="character"><img data-art="PortraitAbrecan" alt="Abrecan"><div><h4>Abrecan</h4><p>Captain of the King's
+guard and a knight through and through, sworn to honour and duty. Under the gruff manner he worries that Alaron will
+never live up to his promise. Nobody handles a weapon better.</p></div></div>
+<div class="character"><img data-art="PortraitRheda" alt="Rheda"><div><h4>Rheda</h4><p>One of the youngest wizards in
+the kingdom and Alaron's teacher in magic. Her passion runs away with her at times; above all she wants to cure her
+friend Niesen of a necromancer's curse.</p></div></div>
+<div class="character"><img data-art="PortraitGodrik" alt="Godric"><div><h4>Godric</h4><p>The castle alchemist:
+brilliant, scatterbrained, and dangerous to stand next to while he works. Nobody knows more about herbs and potions.</p></div></div>
+<div class="character"><img data-art="PortraitBecan" alt="Becan"><div><h4>Becan</h4><p>A knight who once saved the
+King's life in battle and then turned his back on war, to live alone as a tracker and woodsman. He wants to help
+Alaron, but going back to the fighting troubles him.</p></div></div>
+<div class="character"><img data-art="PortraitArturo" alt="Arturo"><div><h4>Arturo</h4><p>A walking fortress in armour
+with not much going on inside. All he wants is to be a knight, and he will do anything to become one. A loyal friend,
+even if his idea of tactics needs work.</p></div></div>
+<div class="character"><img data-art="PortraitKeelin" alt="Keelin"><div><h4>Keelin</h4><p>A beautiful thief who gets
+people what they want, for a price. Now she wants something for herself: Alaron. Useful, and sometimes more trouble
+than she is worth.</p></div></div>
+<div class="character"><img data-art="PortraitNiesen" alt="Niesen"><div><h4>Niesen</h4><p>Rheda's friend from the
+Wizards' School in Talewok, cursed by a necromancer to turn slowly undead. He joins Alaron looking for a cure, and his
+fate turns out to be bound up with Alaron's own.</p></div></div>
+<div class="character"><img data-art="PortraitDonovan" alt="Donovan"><div><h4>Donovan</h4><p>A swaggering duelist who
+has never heard of surrender or caution. His sword arm may be as good as he says, but not every danger ahead can be
+fought with a blade.</p></div></div>
+<div class="character"><img data-art="PortraitBaird" alt="Baird"><div><h4>Baird</h4><p>Half poet, half barbarian, and
+the hero of his own epic, at least in his own mind. He bursts into verse at the worst moments, but he is very good to
+have around in a fight.</p></div></div>
+<div class="character"><img data-art="PortraitDougal" alt="Dougal"><div><h4>Dougal</h4><p>A travelling troubadour who
+fights and casts spells as well as he sings. Friendly to everyone, and strangely quiet about where he comes from.</p></div></div>
+<div class="character"><img data-art="PortraitSholeh" alt="Sholeh"><div><h4>Sholeh</h4><p>One of the Jundar, a
+mysterious people who look down on humans, though Sholeh finds them oddly interesting. A Star mage and seasoned warrior
+whose loyalty is hard to read.</p></div></div>
+</section>
+
+<section class="chapter" id="spells">
+<h2>Spell List</h2>
+<p>Every spell in the game, read from your copy of it. <strong>Rank</strong> is the Wizard skill needed to learn the
+spell; <strong>ST</strong> is the stamina each casting uses; <strong>Dmg</strong> is its base damage. Rank
+<em>n</em> of a spell costs its <strong>XP</strong> figure &times; <em>n</em>&sup2; experience. The descriptions follow
+the original booklet; spells it left out are marked with a dash.</p>
+{{SPELLS}}
+</section>
+
+<section class="chapter" id="aidyn-patch">
+<h2>Aidyn Patch</h2>
+<p>Aidyn Patch is a community patch for the 1.0 cartridge by u/halibabica (r/Aidyn). It rebalances the game: potion
+recipes and prices, how fast skills and weapons gain experience, and much of the item, spell and enemy data. It changes
+data only, not the game's code, so the PC version runs it as it is.</p>
+<h3>Installing and switching</h3>
+<ul>
+  <li>Apply the patch to your own 1.0 dump and start the game once with <code>--rom</code> and the patched file. Both
+  dumps are then kept.</li>
+  <li>On the title screen the bottom left reads <em>Original · Aidyn Patch</em>, with the one you are playing lit.
+  <kbd class="pad">View</kbd> (<kbd>J</kbd>) switches: the game restarts in the other version and remembers the
+  choice.</li>
+  <li><code>--patch</code> or <code>--original</code> on the command line picks a version for one run. The launchers
+  "Aidyn ReChronicled" and "Aidyn ReChronicled (Aidyn Patch)" do the same.</li>
+  <li>Each version has its own Controller Pak (<code>aidyn.mpk</code>, <code>aidyn-patch.mpk</code>). Copy one over
+  the other to carry a save across.</li>
+</ul>
+{{PATCH}}
+</section>
+
+<section class="chapter" id="rechronicled">
+<h2>ReChronicled</h2>
+<p>What is new in this edition, compared with playing the cartridge:</p>
+<dl>
+  <dt>Sharp at any resolution</dt><dd>The game is drawn at 1080 lines or more (supersampled for smoother edges) with 4x
+  anti-aliasing, instead of the N64's 240.</dd>
+  <dt>Widescreen</dt><dd>16:9, 21:9 or any width. The 3D view widens and the field HUD moves to the screen edges. The
+  pause menu and shops stay 4:3, the shape they were made for.</dd>
+  <dt>Smooth motion</dt><dd>The game itself runs at 60 frames a second (the N64 managed 15 to 20). Above that, frames
+  are drawn in between, up to 120 by default. Walking and running no longer stop for a moment every stride.</dd>
+  <dt>HD menus and textures</dt><dd>Menus, pictures, icons and portraits are upscaled from the game's own art; the text
+  is redrawn in a clean font, and the button prompts show Xbox buttons. The world's textures are upscaled too.</dd>
+  <dt>Further draw distance</dt><dd>Outdoors, more of the land around you is loaded and drawn, and trees and other
+  objects show from further away.</dd>
+  <dt>A free camera</dt><dd>The right stick turns the camera around the party and tilts it.</dd>
+  <dt>Straight to the title</dt><dd>The start-up logos are skipped.</dd>
+  <dt>Aidyn Patch on the title screen</dt><dd>See <a href="#aidyn-patch">Aidyn Patch</a>.</dd>
+</dl>
+
+<h3 id="settings">PC Settings</h3>
+<p><code>settings.json</code> in the data folder holds the PC's own settings. It is written with the defaults the first
+time the game runs; edit it while the game is closed.</p>
+<div class="scroll"><table><thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead><tbody>
+<tr><td><code>aspect</code></td><td><code>"16:9"</code></td><td><code>"4:3"</code> as on a TV; any width such as <code>"16:9"</code> or <code>"21:9"</code>; <code>"window"</code> to fill the window</td></tr>
+<tr><td><code>render_height</code></td><td>1080</td><td>Drawing resolution in lines; 0 picks the largest that fits the window</td></tr>
+<tr><td><code>supersampling</code></td><td>2</td><td>1 to 4: draw that many times larger and scale down, for smoother edges</td></tr>
+<tr><td><code>msaa</code></td><td>4</td><td>Anti-aliasing: 0, 2, 4 or 8</td></tr>
+<tr><td><code>fps_limit</code></td><td>120</td><td>Frames shown a second (30 to 1000); 0 follows the display</td></tr>
+<tr><td><code>draw_distance</code></td><td>2.0</td><td>1 (the original) to 3</td></tr>
+<tr><td><code>fullscreen</code></td><td><code>false</code></td><td>Start in fullscreen (<kbd>F11</kbd> switches at any time)</td></tr>
+<tr><td><code>hud_at_edges</code></td><td><code>true</code></td><td>Widescreen: sun dial and compass at the screen edges</td></tr>
+<tr><td><code>menus_4_3</code></td><td><code>true</code></td><td>Widescreen: show the pause menu and shops at 4:3</td></tr>
+<tr><td><code>right_stick_camera</code></td><td><code>true</code></td><td>The right-stick camera</td></tr>
+<tr><td><code>smooth_animation_loops</code></td><td><code>true</code></td><td>No pause in the walk and run cycles</td></tr>
+<tr><td><code>overscan_borders</code></td><td><code>false</code></td><td>The black frame the N64 drew for old TVs</td></tr>
+<tr><td><code>texture_packs</code></td><td>HD packs</td><td>The HD menus, world textures and title art; remove one to see the original</td></tr>
+<tr><td><code>skip_intro</code></td><td><code>true</code></td><td><code>false</code> brings back the start-up logos</td></tr>
+<tr><td><code>rom_patch</code></td><td><code>"none"</code></td><td><code>"aidyn-patch"</code> plays Aidyn Patch (the title screen switch sets it)</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="chapter" id="about">
+<h2>About This Manual</h2>
+<p><em>Aidyn Chronicles: The First Mage</em> &copy; 2001 THQ Inc., developed by H2O Entertainment Corporation. THQ, H2O
+and Nintendo 64 are trademarks of their owners. Aidyn ReChronicled is an unofficial fan project, not connected with or
+endorsed by them, and it contains none of the game's data: you supply your own copy.</p>
+<p>This manual was written for the PC edition. Its chapters follow the game's original instruction booklet, in new
+words. The spell list, portraits, icons and screenshots are taken from your own copy of the game each time the manual
+is built.</p>
+<p>Aidyn Patch is by u/halibabica. The decompilation project by blackgamma7 made this port possible.</p>
+<p>The PC edition and this manual were made with AI assistance (Claude Code). Fonts: Uncial Antiqua and Marcellus SC
+(Astigmatic) and Alegreya Sans (Huerta Tipográfica), under the SIL Open Font License.</p>
+</section>
+
+</main>
+</body>
+</html>

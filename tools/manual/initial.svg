@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="92" height="92" viewBox="0 0 92 92">
+  <!-- Background of the manual's illuminated initials: a gold tile with a vine pattern. -->
+  <defs>
+    <radialGradient id="g" cx="35%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#fbe39a"/>
+      <stop offset=".55" stop-color="#e9b443"/>
+      <stop offset="1" stop-color="#c98d1c"/>
+    </radialGradient>
+    <g id="v" fill="none" stroke="#a8741a" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".75">
+      <path d="M3 23c6-10 14-10 20 0s14 10 20 0"/>
+      <path d="M23 3c-10 6-10 14 0 20s10 14 0 20"/>
+      <circle cx="23" cy="23" r="3.2"/>
+      <path d="M9 9c4 1 6 3 7 7M37 9c-4 1-6 3-7 7M9 37c4-1 6-3 7-7M37 37c-4-1-6-3-7-7"/>
+    </g>
+  </defs>
+  <rect width="92" height="92" fill="url(#g)"/>
+  <use href="#v"/><use href="#v" x="46"/><use href="#v" y="46"/><use href="#v" x="46" y="46"/>
+</svg>
