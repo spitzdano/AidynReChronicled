@@ -29,8 +29,11 @@ namespace {
 // the TV overscan area (16 px at the sides, 12 at the top and bottom; 20 at the sides in 640-wide mode), which a
 // CRT hid but a modern display shows as a frame, and which widescreen moves into the middle of the picture.
 // They are drawn only when settings.json has "overscan_borders": true; everything else is as the original.
+gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
+
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     gpr g = ctx->r4;
+    g = aidyn_ff_marker(rdram, g);
     if (aidyn::settings::graphics().overscan_borders) {
         const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager);
         const uint32_t v = MEM_HU(kVres1, (gpr)gGfxManager);
@@ -205,10 +208,11 @@ extern "C" void aidyn_menu_opened(uint8_t* rdram, gpr scroll) {
 // Actor::Move (aidyn.us.toml hook at 0x8001532C) calls aidyn_camera_stick for every actor with s3 = the player handler
 // (camera pointer at +4) and s2 = the actor. For the player, the right stick's x turns the camera itself (pos and
 // posTarget) around the player, and y changes the height angle (+0x48 and the resting angle +0x4C it is reset to),
-// within the camera's own limits (+0x50, +0x54), by game ticks (not the host clock, so each shown frame turns
-// evenly). Once the camera has been turned, func_800A68E0 (replaced below) keeps
+// both at the same rate, by game ticks (not the host clock, so each shown frame turns evenly). The height angle goes
+// the same distance up and down from where the camera rests (walking: 15 degrees, so -15 to 45; the game itself only
+// allowed 0 to 45, a third of the way up and two thirds down). graphics.camera_invert_x / camera_invert_y flip them. Once the camera has been turned, func_800A68E0 (replaced below) keeps
 // the camera's own direction as its "behind" point, so the camera stays where it was put and follows at the same
-// distance; pressing the right stick (R3) puts it back behind the player, as the original. Movement is relative to
+// distance; pressing the right stick (R3) puts it back behind the player at its resting height, as the original. Movement is relative to
 // the camera, so an angle relative to the player's facing would make the camera chase itself round in circles.
 #include "input.h"
 #include <algorithm>
@@ -229,8 +233,9 @@ namespace {
         MEM_W(0, addr) = (int32_t)bits;
     }
 
-    constexpr float kTurnSpeed = 150.0f;   // degrees a second at full tilt
-    constexpr float kHeightSpeed = 60.0f;  // degrees a second at full tilt
+    constexpr float kTurnSpeed = 150.0f;   // degrees a second at full tilt, both axes
+    constexpr float kTiltRange = 30.0f;    // degrees up and down from the resting height angle
+    float rest_angle = NAN;                // the camera's resting height angle before the stick moved it
     constexpr float kDegToRad = 3.14159265f / 180.0f;
     std::atomic_bool free_camera{ false };  // turned by the right stick since the last recentre
 }
@@ -249,11 +254,22 @@ extern "C" void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor) {
     const bool clicked = aidyn::input::right_stick_click();
     if (clicked && !was_clicked) {
         free_camera = false;  // back behind the player (the original follow camera)
+        if (!std::isnan(rest_angle)) {
+            write_f32(rdram, cam + 0x48, rest_angle);
+            write_f32(rdram, cam + 0x4C, rest_angle);
+            rest_angle = NAN;
+        }
     }
     was_clicked = clicked;
 
     float rx, ry;
     aidyn::input::right_stick(&rx, &ry);
+    if (aidyn::settings::graphics().camera_invert_x) {
+        rx = -rx;
+    }
+    if (aidyn::settings::graphics().camera_invert_y) {
+        ry = -ry;
+    }
     if (rx != 0.0f) {
         const float a = rx * kTurnSpeed * dt * kDegToRad;  // stick right: the view turns right
         const float c = std::cos(a), s = std::sin(a);
@@ -266,13 +282,19 @@ extern "C" void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor) {
         free_camera = true;
     }
     if (ry != 0.0f) {
-        const float lo = read_f32(rdram, cam + 0x50), hi = read_f32(rdram, cam + 0x54);
-        float angle = read_f32(rdram, cam + 0x48) - ry * kHeightSpeed * dt;  // stick up: the camera dips, looking up
-        if (lo < hi) {
-            angle = std::clamp(angle, lo, hi);
+        if (std::isnan(rest_angle)) {
+            rest_angle = read_f32(rdram, cam + 0x4C);
         }
+        const float lo = rest_angle - kTiltRange, hi = rest_angle + kTiltRange;
+        float angle = read_f32(rdram, cam + 0x48) - ry * kTurnSpeed * dt;  // stick up: the camera dips, looking up
+        angle = std::clamp(angle, lo, hi);
         write_f32(rdram, cam + 0x48, angle);
         write_f32(rdram, cam + 0x4C, angle);
+        static const bool log = std::getenv("AIDYN_CAMERA_LOG") != nullptr;
+        if (log) {
+            fprintf(stderr, "camera: height angle %.1f (limits %.1f..%.1f), distance %.1f\n", angle, lo, hi,
+                    read_f32(rdram, cam + 0x5C));
+        }
     }
 }
 
@@ -1205,5 +1227,221 @@ extern "C" void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int right) 
 extern "C" void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx) {
     if (hud_wide()) {
         ctx->r2 = hud_end(rdram, ctx->r2);
+    }
+}
+
+// Fast-forward. Every mode of the game (walking, combat, menus, cutscenes) measures its frame's time step by counting
+// the controller samples queued since the last frame: Controller::GetInput pops one and returns 1, and the frame calls
+// it until it returns 0, then steps that many ticks of 1/60 s (capped at 6: made for the N64's 10 to 20 frames a
+// second). aidyn.us.toml hooks GetInput's entry (the port) and its return: while fast-forward is on, every real sample
+// is followed by (speed - 1) quiet ones, copies of it without its new presses (same stick, held buttons and hold
+// times), so the game runs that many ticks a frame and no press is handled twice. Fast-forward is L3 or a held Tab
+// (src/main/input.cpp), at game.fast_forward_speed; enemy turns in combat get game.combat_enemy_speed on their own:
+// combat_controls (the combat frame's sample loop) is hooked on entry and looks at gCombatP->current_Ent->aiP (set for
+// enemies and the AI-led Sholeh). While the player's fast-forward is on, a marker shows at the top right.
+namespace {
+    constexpr gpr kQuietSample = (gpr)(int32_t)0x80F20000;  // one ControllerFull (0x34 bytes), above the game's 15 MB
+    constexpr int kControllerFull = 0x34;
+    constexpr int kPressed = 0x8;                            // controller_aidyn.pressed
+    constexpr gpr kCombatP = (gpr)(int32_t)0x800E0BF0;       // gCombatP
+    constexpr int kCurrentEnt = 0x2C, kAiP = 0x44;           // CombatStruct.current_Ent, CombatEntity.aiP
+    int ff_port = 0;
+    int ff_pending = 0;   // quiet samples still to hand out this frame
+    int ff_combat = 1;    // speed for the combat_controls call under way (an enemy's turn)
+}
+
+std::atomic_uint32_t aidyn_game_ticks{ 0 };  // samples handed out on port 1: game ticks (AIDYN_FPS prints the rate)
+
+extern "C" void aidyn_ff_input_begin(int port) {
+    ff_port = port;
+}
+
+// a0 (the caller's controller_aidyn**) was kept in s3; popped is GetInput's result.
+extern "C" uint32_t aidyn_ff_input_end(uint8_t* rdram, gpr input_ptr, uint32_t popped) {
+    if (ff_port != 0) {
+        return popped;
+    }
+    const int speed = std::max(aidyn::input::fast_forward() ? aidyn::settings::game().fast_forward_speed : 1, ff_combat);
+    if (popped) {
+        if (speed > 1) {
+            const gpr sample = (gpr)(int32_t)MEM_W(0, input_ptr);
+            for (int i = 0; i < kControllerFull; i += 2) {
+                MEM_H(i, kQuietSample) = MEM_H(i, sample);
+            }
+            MEM_W(kPressed, kQuietSample) = 0;
+            ff_pending += speed - 1;
+        }
+        aidyn_game_ticks.fetch_add(1, std::memory_order_relaxed);
+        return 1;
+    }
+    if (ff_pending > 0) {
+        ff_pending--;
+        MEM_W(0, input_ptr) = (int32_t)kQuietSample;
+        aidyn_game_ticks.fetch_add(1, std::memory_order_relaxed);
+        return 1;
+    }
+    ff_combat = 1;  // the queue is empty: the combat frame's sample loop (if that is where we are) is over
+    return 0;
+}
+
+extern "C" void aidyn_ff_combat(uint8_t* rdram) {
+    int speed = 1;
+    const gpr combat = (gpr)(int32_t)MEM_W(0, kCombatP);
+    if (combat != 0) {
+        const gpr ent = (gpr)(int32_t)MEM_W(kCurrentEnt, combat);
+        if (ent != 0 && MEM_W(kAiP, ent) != 0) {
+            speed = aidyn::settings::game().combat_enemy_speed;
+        }
+    }
+    ff_combat = speed;
+}
+
+// Graphics__EndList (the end of every frame's display list) draws this: the chevrons (branding image 4), 8 texels in
+// from the top right of the picture, while the player's fast-forward is on.
+gpr aidyn_ff_marker(uint8_t* rdram, gpr g) {
+    if (!aidyn::input::fast_forward()) {
+        return g;
+    }
+    copy_branding(rdram);
+    const auto& img = aidyn::branding::kImages[4];
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
+    g = hud_begin(rdram, g, true);
+    cmd(0xE7000000, 0);                  // gDPPipeSync
+    cmd(0xE3000A01, 0x00000000);         // gDPSetCycleType(G_CYC_1CYCLE)
+    cmd(0xE3000C00, 0x00000000);         // gDPSetTexturePersp(G_TP_NONE)
+    cmd(0xE3001001, 0x00000000);         // gDPSetTextureLUT(G_TT_NONE)
+    cmd(0xE3001201, 0x00002000);         // gDPSetTextureFilter(G_TF_BILERP)
+    cmd(0xE2001E01, 0x00000000);         // gDPSetAlphaCompare(G_AC_NONE)
+    cmd(0xE200001C, 0x00504240);         // gDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2)
+    cmd(0xFCFFFFFF, 0xFFFCF279);         // gDPSetCombineMode(G_CC_DECALRGBA, G_CC_DECALRGBA)
+    g = draw_rgba16(rdram, g, 4, (320 - 8 - img.w) * hs, 8 * vs, hs, vs);
+    return hud_end(rdram, g);
+}
+
+// Combat HUD at the screen edges. The combat screen draws the enemies' column at the left (slots at x 21 to 47) and the
+// party's at the right (x 270 to 298) in 320x240 coordinates, which RT64 keeps in the middle 4:3 of a widescreen
+// picture: each slot a WidgetBorg8Combat frame, each fighter's portrait a WidgetBorg8Combat that flies in from the
+// centre to its slot (crossbones are its child), the health bars drawn beside the slots by CombatDrawHealthbar, and
+// the radar (WidgetCombatRadar, func_8008DF04) at the bottom right. With hud_at_edges, aidyn.us.toml hooks the entry
+// and return of the two Render functions and the bar drawing, and each piece is drawn with RT64's rectangle alignment
+// on its side: a slot frame by where it stands, a portrait by the slot it goes to (so its fly-in ends at the edge
+// instead of jumping sides halfway), a bar by its x, the radar on the right. The message box and menus stay centred.
+namespace {
+    constexpr gpr kCombatPortraitCount = (gpr)(int32_t)0x800E3144;  // u8
+    constexpr gpr kCombatPortraits = (gpr)(int32_t)0x800E3148;      // CombatPortrait* (0x18 each: widget, ..., blipIndex at 0x10)
+    constexpr gpr kCombatRadarBlips = (gpr)(int32_t)0x800E314C;     // CombatRadarBlip* (0x18 each: widget, s16 x at 4)
+    constexpr int kWidgetPosX = 0x60;                               // BaseWidget.posX
+    int combat_depth = 0;
+    bool combat_aligned[64];
+    bool radar_aligned = false, bar_aligned = false;
+
+    // Which edge a combat widget belongs to: false left, true right.
+    bool combat_right(uint8_t* rdram, gpr widget) {
+        const gpr portraits = (gpr)(int32_t)MEM_W(0, kCombatPortraits);
+        const gpr blips = (gpr)(int32_t)MEM_W(0, kCombatRadarBlips);
+        const int count = MEM_BU(0, kCombatPortraitCount);
+        for (int i = 0; portraits != 0 && i < count; i++) {
+            const gpr p = portraits + i * 0x18;
+            if ((gpr)(int32_t)MEM_W(0, p) == widget) {
+                const int blip = MEM_BU(0x10, p);
+                if (blip != 0xFF && blips != 0) {
+                    return (int16_t)MEM_H(4, blips + blip * 0x18) >= 160;
+                }
+                break;
+            }
+        }
+        return (int16_t)MEM_H(kWidgetPosX, widget) >= 160;
+    }
+}
+
+// WidgetBorg8Combat::Render(this, g, ...): this in a0, g in a1; returns g in v0. Only the outermost of nested renders
+// (a portrait and its crossbones) sets the alignment.
+extern "C" void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx) {
+    const int d = combat_depth++;
+    if (d >= (int)std::size(combat_aligned)) {
+        return;
+    }
+    combat_aligned[d] = d == 0 && hud_wide();
+    if (combat_aligned[d]) {
+        ctx->r5 = hud_begin(rdram, ctx->r5, combat_right(rdram, ctx->r4));
+    }
+}
+
+extern "C" void aidyn_combat_widget_end(uint8_t* rdram, recomp_context* ctx) {
+    const int d = --combat_depth;
+    if (d >= 0 && d < (int)std::size(combat_aligned) && combat_aligned[d]) {
+        ctx->r2 = hud_end(rdram, ctx->r2);
+    }
+    if (combat_depth < 0) {
+        combat_depth = 0;
+    }
+}
+
+extern "C" void aidyn_combat_radar_begin(uint8_t* rdram, recomp_context* ctx) {
+    radar_aligned = hud_wide();
+    if (radar_aligned) {
+        ctx->r5 = hud_begin(rdram, ctx->r5, true);
+    }
+}
+
+extern "C" void aidyn_combat_radar_end(uint8_t* rdram, recomp_context* ctx) {
+    if (radar_aligned) {
+        ctx->r2 = hud_end(rdram, ctx->r2);
+        radar_aligned = false;
+    }
+}
+
+// CombatDrawHealthbar: each bar is two DrawRectangle calls; g in s6 and the bar's x in s4 before them, g in v0 after.
+extern "C" gpr aidyn_combat_bar_begin(uint8_t* rdram, gpr g, int x) {
+    bar_aligned = hud_wide();
+    return bar_aligned ? hud_begin(rdram, g, x >= 160) : g;
+}
+
+extern "C" gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g) {
+    if (bar_aligned) {
+        bar_aligned = false;
+        return hud_end(rdram, g);
+    }
+    return g;
+}
+
+// HD text widths. The game measures every letter's width from the original font sheet when it loads a face
+// (Font::LoadFace, func_800AA474, through Font::SetupBorg8) and both draws that many columns of the letter's cell
+// and advances by it. The original pixel font is wide and loosely spaced, so the HD pack's letters (tools/hdui/font.py)
+// have their own proportions and these widths (src/game/font_widths.h, generated with them). aidyn.us.toml hooks
+// LoadFace right after SetupBorg8 (s4 = the face's Borg8 index, s0 = its FontSubstruct, widths at +0x10) and the two
+// font sheets (BORG8_MainFont 28, BORG8_SlimFont 29) get them, only when the HD UI pack is in use: with the original
+// letters the original widths stay.
+#include "font_widths.h"
+
+namespace {
+    bool hd_text() {
+        static const bool on = [] {
+            const auto& packs = aidyn::settings::graphics().texture_packs;
+            if (std::find(packs.begin(), packs.end(), "hd-ui") == packs.end()) {
+                return false;
+            }
+            std::error_code ec;
+            const std::filesystem::path beside =
+                std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
+            for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
+                if (std::filesystem::exists(dir / "hd-ui", ec) || std::filesystem::exists(dir / "hd-ui.rtz", ec)) {
+                    return true;
+                }
+            }
+            return false;
+        }();
+        return on;
+    }
+}
+
+extern "C" void aidyn_font_widths(uint8_t* rdram, uint32_t borg, gpr face) {
+    if ((borg != 28 && borg != 29) || !hd_text()) {
+        return;
+    }
+    const gpr sizes = (gpr)(int32_t)MEM_W(0x10, face);
+    for (const auto& w : aidyn::font::kWidths) {
+        MEM_H(w.cell * 2, sizes) = w.width;
     }
 }

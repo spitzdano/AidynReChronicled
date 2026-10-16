@@ -33,6 +33,8 @@ namespace {
     // The right stick as last polled, for the camera (src/game/patches.cpp).
     std::atomic<float> right_x{ 0.0f }, right_y{ 0.0f };
     std::atomic_bool right_click{ false };
+    std::atomic_bool ff_toggled{ false }, ff_held{ false };
+    bool l3_was_down = false;
     std::atomic_bool c_left{ false };
 
     void open_first_pad() {
@@ -100,6 +102,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     uint16_t b = 0;
     float sx = 0.0f, sy = 0.0f, rx = 0.0f, ry = 0.0f;
     bool click = false;
+    bool l3 = false;
 
     {
         std::lock_guard lock{ pad_mutex };
@@ -123,6 +126,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
             if (down(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) b |= R;
             if (axis(SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 0.3f) b |= Z;
             click = down(SDL_CONTROLLER_BUTTON_RIGHTSTICK);  // recentre the camera
+            l3 = down(SDL_CONTROLLER_BUTTON_LEFTSTICK);       // fast-forward on / off
             float cx = axis(SDL_CONTROLLER_AXIS_RIGHTX), cy = axis(SDL_CONTROLLER_AXIS_RIGHTY);
             sx = apply_deadzone(axis(SDL_CONTROLLER_AXIS_LEFTX));
             sy = -apply_deadzone(axis(SDL_CONTROLLER_AXIS_LEFTY));
@@ -152,7 +156,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     if (keys[SDL_SCANCODE_DOWN]) sy = -1.0f;
 
     // Test aid for automated play-testing: AIDYN_PAD_FILE names a text file holding "<hex buttons> <x> <y> [<rx> <ry>]"
-    // (N64 button bits as above, plus 0x10000 for R3; sticks -1..1, the right stick optional). Read on every poll and
+    // (N64 button bits as above, plus 0x10000 for R3 and 0x20000 for L3; sticks -1..1, the right stick optional). Read on every poll and
     // ORed in; absent or unreadable means nothing.
     static const char* pad_file = std::getenv("AIDYN_PAD_FILE");
     if (pad_file != nullptr) {
@@ -162,6 +166,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         if (f >> std::hex >> fb >> std::dec >> fx >> fy) {
             b |= static_cast<uint16_t>(fb);
             click = click || (fb & 0x10000) != 0;
+            l3 = l3 || (fb & 0x20000) != 0;
             if (fx != 0.0f || fy != 0.0f) {
                 sx = fx;
                 sy = fy;
@@ -175,6 +180,11 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     right_x.store(rx, std::memory_order_relaxed);
     right_y.store(ry, std::memory_order_relaxed);
     right_click.store(click, std::memory_order_relaxed);
+    if (l3 && !l3_was_down) {
+        ff_toggled.store(!ff_toggled.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
+    l3_was_down = l3;
+    ff_held.store(keys[SDL_SCANCODE_TAB] != 0, std::memory_order_relaxed);
     c_left.store((b & CL) != 0, std::memory_order_relaxed);
 
     *buttons = b;
@@ -190,6 +200,10 @@ void aidyn::input::right_stick(float* x, float* y) {
 
 bool aidyn::input::c_left_held() {
     return c_left.load(std::memory_order_relaxed);
+}
+
+bool aidyn::input::fast_forward() {
+    return ff_toggled.load(std::memory_order_relaxed) || ff_held.load(std::memory_order_relaxed);
 }
 
 bool aidyn::input::right_stick_click() {

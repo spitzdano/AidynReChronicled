@@ -430,6 +430,7 @@ def main():
     # Every letter of both font sheets, whole and clipped (Font::PrintMain trims a letter's box at a text box's
     # edges: any left/right part at full height, any top/bottom part at full width). Checked against capture: 321 of 321.
     glyph_jobs, glyph_rects = [], []
+    new_widths = fontsheet.widths(args.font) if args.font != "none" else {}  # what the game is given (font_widths.h)
     for key, pixels in font_raw.items():
         img = images[key]
         for cell in range(fontsheet.COLS * fontsheet.ROWS):
@@ -437,6 +438,8 @@ def main():
             base, kern = cy * img["w"] + cx, fontsheet.CW
             while kern > 1 and pixels[base + kern - 2] == pixels[base + fontsheet.CW - 1]:
                 kern -= 1  # the letter's advance, as Font::SetupBorg8 measures it
+            if cell in new_widths and fontsheet.ink_box(img["rgba"], img["w"], cell) is not None:
+                kern = new_widths[cell]  # redrawn letters: the width the game is given instead
             rects = {(cx + a, b - a, cy, fontsheet.CH) for a in range(kern) for b in range(a + 1, kern + 1)}
             rects |= {(cx, kern, cy + c, d - c) for c in range(fontsheet.CH) for d in range(c + 1, fontsheet.CH + 1)}
             for x0, tw, y0, th in sorted(rects):

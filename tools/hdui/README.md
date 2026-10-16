@@ -33,10 +33,13 @@ How it works:
   upscaler repainted faces from so few pixels that a one-pixel blue iris came out white; as 2x2 blocks the eyes survive.
 - Text: both font sheets (MainFont, SlimFont: 3x46 cells of 12x9) are redrawn with `--font` (default
   `fonts/MarcellusSC-Regular.ttf`, SIL Open Font License, see `fonts/OFL.txt`): Roman small capitals like the game's
-  own "HitPoints / Level / Gold" labels. `font.py` draws each letter, digit and punctuation mark inside the original
-  letter's box (the game measures letter widths from the original sheet, so spacing can't change), capitals 7 texels
-  tall, lowercase as small capitals. Controller-button icons keep the smoothed original. `--font none` keeps the
-  original pixel font (smoothed).
+  own "HitPoints / Level / Gold" labels. `font.py` draws each letter, digit and punctuation mark with the font's own
+  proportions: its width is the font's advance plus 0.6 texels, the glyph unstretched and centred in it, capitals 7
+  texels tall, lowercase as small capitals. The game measures letter widths from the original (wide, loosely spaced)
+  sheet, so it is given these widths instead (`font.py --header` writes `src/game/font_widths.h`, which the game
+  applies when the hd-ui pack is in use; re-run it and rebuild the game after changing the font or `TRACK`), and the
+  letter textures are generated for them. Controller-button icons keep the smoothed original. `--font none` keeps
+  the original pixel font (smoothed); then also leave `hd-ui` out or the widths won't match.
 - Words drawn as pictures (map place names, CAMP, JOURNAL, PRESS START) are listed in `labels.json` by image key and
   redrawn with the text font in their original colour and place (`labels.py`; town dots become rings). Numbers painted
   into a picture (the journal calendar, `"numbers"` region) are removed before the upscale and redrawn after it
@@ -89,3 +92,17 @@ of itself as it repeats in game (wrap, mirror or clamp), upscaled 4x with Real-E
 flattens stone and grass), then fine detail the AI smoothed away is put back from a bicubic upscale, pixel by pixel
 (`keep_grain`). Mipmap levels are found as textures loaded together whose pixels are a shrunken copy of the largest,
 and are rebuilt from the upscaled image. The world pack streams in as textures are first used.
+
+## Art for redrawing
+
+```sh
+python3 tools/hdui/export_art.py        # portraits, item and slot icons -> build/art-export/AidynArt(.zip)
+python3 tools/hdui/export_textures.py   # world textures -> build/art-export/AidynTextures(.zip); --no-hd: smaller
+```
+
+Packages of the game's art for redrawing it some other way, each with original, 8x nearest-neighbour and current-HD
+versions, empty `redone/` folders, contact sheets, a manifest and a README with the rules a new version has to follow
+(`export_art_README.md`, `export_textures_README.md`). `export_textures.py` sorts the 2,115 distinct world textures by
+what uses them, found the way the game loads them: characters (Borg7 actors → Borg6 → Borg5 models), areas (map
+chunks, and the props each area's Borg9 maps place), items, spell effects (the decomp's spell visuals), other. Both
+are made from the ROM, so they stay in build/. Importing redone pictures into the packs isn't built yet.

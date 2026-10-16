@@ -1,13 +1,19 @@
 """font.py: redraw the game's two font sheets (36x414 IA8, 3 columns x 46 rows of 12x9 cells) with a TrueType font.
 
 Used by build_pack.py. Only letters, digits and plain punctuation are redrawn; the controller-button icons and the
-rarer symbols keep the smoothed original. Each glyph keeps the game's metrics: the game measures every glyph's
-advance from row 0 of its cell in the original sheet (Font::SetupBorg8), which a texture pack can't change, so the
-new letter is drawn inside the original letter's ink box (narrowed when the font's letter is wider), capitals 7
-texels tall from row 0, lowercase as the font's small capitals. Rendering is done by ImageMagick at 16 pixels per
-texel and box-filtered down to the pack's scale.
+rarer symbols keep the smoothed original. The game measures every glyph's width from its cell in the original sheet
+(Font::SetupBorg8) and both draws that many columns of the cell and advances by it; the original pixel font is wide
+and loosely spaced, so a book font squeezed into those widths looks uneven. So the letters get the font's own
+proportions: each width is the font's advance plus TRACK texels, the glyph drawn unstretched and centred in it, and
+the game is given the new widths (src/game/font_widths.h, written by `font.py --header`; src/game/patches.cpp,
+"HD text widths", applies them when the HD UI pack is in use). Capitals are 7 texels tall from row 0, lowercase are
+the font's small capitals. Rendering is done by ImageMagick at 16 pixels per texel and box-filtered down to the
+pack's scale.
+
+    tools/hdui/font.py --header    (re)write src/game/font_widths.h from the font
 """
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -45,7 +51,9 @@ def _magick(args):
 
 
 BOLD = 0.32           # extra stroke weight in texels (the game's pixel font is heavy; book fonts are light)
-STRETCH = (0.65, 1.45)  # how far a letter may be narrowed or widened to fill the original letter's width
+TRACK = 0.6           # texels of letter-spacing on top of each letter's own advance (small caps read better open)
+DEFAULT_FONT = Path(__file__).resolve().parent / "fonts/MarcellusSC-Regular.ttf"
+HEADER = Path(__file__).resolve().parents[2] / "src/game/font_widths.h"
 
 
 def _render(font, char, pointsize, tmp):
@@ -72,47 +80,64 @@ def _bbox(W, H, rgba):
     return (min(xs), min(ys), max(xs), max(ys)) if xs else None
 
 
+def _pointsize(font, tmp):
+    """Point size that makes a capital H CAP_TEXELS tall at SS pixels per texel."""
+    W, H, px = _render(font, "H", 200, tmp)
+    bx = _bbox(W, H, px)
+    return 200 * (CAP_TEXELS * SS) / (bx[3] - bx[1] + 1)
+
+
+def _advances(font, pointsize, extra=""):
+    """{char: advance in texels}: the width of "H<c>H" less "HH", so the font's own side bearings count."""
+    def width(text):
+        out = subprocess.run(["magick", "-font", str(font), "-pointsize", f"{pointsize:.3f}", "label:" + text,
+                              "-format", "%w", "info:"], check=True, capture_output=True, text=True).stdout
+        return int(out)
+    hh = width("HH")
+    return {c: (width("H" + c + "H") - hh) / SS for c in list(INDEX) + list(extra)}
+
+
+SPACE_CELL = 0x10  # textIndexies[' ']: never drawn, but the game advances by its width
+
+
+def widths(font=DEFAULT_FONT):
+    """{cell index: width in texels} for every redrawn character and the space: the font's advance plus TRACK."""
+    with tempfile.TemporaryDirectory() as t:
+        adv = _advances(font, _pointsize(Path(font), Path(t)), extra=" ")
+    table = {INDEX[c]: max(1, min(CW, round(a + TRACK))) for c, a in adv.items() if c in INDEX}
+    table[SPACE_CELL] = max(1, min(CW, round(adv[" "] + TRACK)))
+    return table
+
+
 def redraw(rgba, w, h, font, scale):
-    """rgba: the decoded sheet. Returns {index: (scale*CW, scale*CH, rgba)}: new cells at `scale` pixels per texel."""
+    """rgba: the decoded sheet. Returns {index: (scale*CW, scale*CH, rgba)}: new cells at `scale` pixels per texel,
+    each glyph unstretched and centred in its new width (widths())."""
     font = Path(font)
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
-        # Point size that makes a capital H CAP_TEXELS tall at SS pixels per texel.
-        W, H, px = _render(font, "H", 200, tmp)
-        bx = _bbox(W, H, px)
-        pointsize = 200 * (CAP_TEXELS * SS) / (bx[3] - bx[1] + 1)
+        pointsize = _pointsize(font, tmp)
+        adv = _advances(font, pointsize)
         cells = {}
         for char, index in INDEX.items():
-            box = ink_box(rgba, w, index)
-            if box is None:
-                continue
+            if ink_box(rgba, w, index) is None:
+                continue  # not in this sheet
             W, H, px = _render(font, char, pointsize, tmp)
-            gb = _bbox(W, H, px)
-            if gb is None:
+            if _bbox(W, H, px) is None:
                 continue
-            # Horizontal: fill the original letter's ink box, within STRETCH; centred in it when it can't.
-            avail = (box[1] - box[0] + 1) * SS
-            gw = gb[2] - gb[0] + 1
-            sx = min(max(avail / gw, STRETCH[0]), STRETCH[1])
-            # Capitals that can't fill the box sit at its right: they mostly start words, so the slack joins the
-            # space before the word instead of opening a gap inside it ("S hort").
-            slack = avail - gw * sx
-            left = box[0] * SS + (slack if char.isupper() else slack / 2)
-            # Vertical: the font's baseline at the bottom of row 6 (cap top at row 0).
-            base_y = 7 * SS
-            big = bytearray(CW * SS * CH * SS * 4)
+            new_w = max(1, min(CW, round(adv[char] + TRACK)))
+            pen = (new_w - adv[char]) / 2 * SS   # the glyph's origin in the cell: the spare space split both sides
+            base_y = 7 * SS                       # the font's baseline at the bottom of row 6 (cap top at row 0)
             BW = CW * SS
+            big = bytearray(BW * CH * SS * 4)
             for y in range(CH * SS):
                 sy = BASE - base_y + y
                 if not 0 <= sy < H:
                     continue
-                for x in range(BW):
-                    fx = gb[0] + (x - left) / sx
-                    ix = int(fx)
-                    if not gb[0] <= ix <= gb[2]:
-                        continue
-                    o = (sy * W + ix) * 4
-                    big[(y * BW + x) * 4:(y * BW + x) * 4 + 4] = px[o:o + 4]
+                for x in range(new_w * SS):
+                    sx = PEN + int(x - pen)
+                    if 0 <= sx < W:
+                        o = (sy * W + sx) * 4
+                        big[(y * BW + x) * 4:(y * BW + x) * 4 + 4] = px[o:o + 4]
             # Box filter down to `scale` pixels per texel.
             f = SS // scale
             ow, oh = CW * scale, CH * scale
@@ -127,3 +152,27 @@ def redraw(rgba, w, h, font, scale):
                     small[(y * ow + x) * 4:(y * ow + x) * 4 + 4] = bytes((255, 255, 255, a // (f * f)))
             cells[index] = (ow, oh, small)
         return cells
+
+
+def write_header(path=HEADER, font=DEFAULT_FONT):
+    table = widths(font)
+    rows = ", ".join(f"{{0x{i:02X}, {wd}}}" for i, wd in sorted(table.items()))
+    path.write_text(f"""// src/game/font_widths.h: generated by tools/hdui/font.py --header from {Path(font).name}; don't edit.
+// The HD text's letter widths in texels ({{cell index in the font sheets, width}}): the font's own advance plus
+// {TRACK} texels, for both sheets (MainFont, SlimFont). src/game/patches.cpp ("HD text widths") applies them.
+#pragma once
+#include <cstdint>
+
+namespace aidyn::font {{
+    struct Width {{ uint8_t cell, width; }};
+    inline constexpr Width kWidths[] = {{ {rows} }};
+}}
+""")
+    print(f"font.py: {len(table)} widths -> {path}")
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--header"]:
+        write_header()
+    else:
+        sys.exit(__doc__)

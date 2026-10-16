@@ -278,3 +278,62 @@ text = "extern gpr aidyn_clouds_end(uint8_t* rdram, gpr g); ctx->r2 = aidyn_clou
 # vram = 0x80000400
 # size = 0x1000
 # functions = [ { name = "entrypoint", vram = 0x80000400, size = 0x60 } ]
+
+# Fast-forward (src/game/patches.cpp, "Fast-forward"): Controller::GetInput's entry keeps the port (a1); before its
+# return (v0 = 1 when it popped a sample, s3 = the caller's controller_aidyn**) quiet samples are added while
+# fast-forward is on. combat_controls' entry picks the enemy-turn speed.
+[[patches.hook]]
+func = "Controller__GetInput"
+before_vram = 0x80092A44
+text = "extern void aidyn_ff_input_begin(int port); aidyn_ff_input_begin((int)(ctx->r5 & 0xFF));"
+
+[[patches.hook]]
+func = "Controller__GetInput"
+before_vram = 0x80092AFC
+text = "extern uint32_t aidyn_ff_input_end(uint8_t* rdram, gpr input_ptr, uint32_t popped); ctx->r2 = (int32_t)aidyn_ff_input_end(rdram, ctx->r19, (uint32_t)ctx->r2);"
+
+[[patches.hook]]
+func = "combat_controls"
+before_vram = 0x80083B00
+text = "extern void aidyn_ff_combat(uint8_t* rdram); aidyn_ff_combat(rdram);"
+
+# Combat HUD at the screen edges (src/game/patches.cpp, "Combat HUD at the screen edges"): the slot frames and
+# portraits (WidgetBorg8Combat::Render: g in a1 on entry, v0 at the return), the radar (WidgetCombatRadar::Render,
+# func_8008DF04, the same) and each health bar (CombatDrawHealthbar: g in s6 and x in s4 at L_80087340, before its two
+# DrawRectangle calls; g in v0 after them).
+[[patches.hook]]
+func = "WidgetBorg8Combat__Render"
+before_vram = 0x80087504
+text = "extern void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx); aidyn_combat_widget_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "WidgetBorg8Combat__Render"
+before_vram = 0x80087548
+text = "extern void aidyn_combat_widget_end(uint8_t* rdram, recomp_context* ctx); aidyn_combat_widget_end(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8008DF04"
+before_vram = 0x8008DF04
+text = "extern void aidyn_combat_radar_begin(uint8_t* rdram, recomp_context* ctx); aidyn_combat_radar_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8008DF04"
+before_vram = 0x8008E3AC
+text = "extern void aidyn_combat_radar_end(uint8_t* rdram, recomp_context* ctx); aidyn_combat_radar_end(rdram, ctx);"
+
+[[patches.hook]]
+func = "CombatDrawHealthbar"
+before_vram = 0x80087340
+text = "extern gpr aidyn_combat_bar_begin(uint8_t* rdram, gpr g, int x); ctx->r22 = aidyn_combat_bar_begin(rdram, ctx->r22, (int)(ctx->r20 & 0xFFFF));"
+
+[[patches.hook]]
+func = "CombatDrawHealthbar"
+before_vram = 0x8008739C
+text = "extern gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g); ctx->r2 = aidyn_combat_bar_end(rdram, ctx->r2);"
+
+# HD text widths (src/game/patches.cpp, "HD text widths"): Font::LoadFace (func_800AA474) right after its
+# Font::SetupBorg8 call: s4 = the Borg8 index, s0 = the FontSubstruct (letter widths at +0x10).
+[[patches.hook]]
+func = "func_800AA474"
+before_vram = 0x800AA580
+text = "extern void aidyn_font_widths(uint8_t* rdram, uint32_t borg, gpr face); aidyn_font_widths(rdram, (uint32_t)ctx->r20, ctx->r16);"

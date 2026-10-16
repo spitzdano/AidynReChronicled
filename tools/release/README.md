@@ -40,6 +40,7 @@ An Xbox-style controller, or the keyboard:
 | View / RT | J / L | Previous / next party member (pause menu); View switches versions on the title screen |
 | LT / LB / RB | C / Q / E | Sneak, end turn, previous / next page |
 | Menu | Enter | Pause menu |
+| Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
 | | F11, Alt+Enter / Shift+Esc | Fullscreen / quit |
 
 ## Settings, saves, logs
@@ -47,8 +48,10 @@ An Xbox-style controller, or the keyboard:
 All in `~/.local/share/AidynReChronicled`:
 
 - `settings.json`: resolution, aspect (`"16:9"`, `"21:9"`, `"4:3"`…), frame rate, anti-aliasing, draw distance and
-  more, written with defaults on the first start. Edit it while the game is closed.
-- `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's.
+  more, written with defaults on the first start. Edit it while the game is closed. `camera_invert_y` /
+  `camera_invert_x` invert the camera.
+- `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's. `backups/` keeps its last
+  20 states (at each start and before each save).
 - `logs/last-run.log`: what the last start printed. Look there if something goes wrong.
 - `texture-packs/`: HD texture packs. This release includes the title-screen branding (`rechronicled`, next to the
   game); the HD menu and world packs are not part of it yet.

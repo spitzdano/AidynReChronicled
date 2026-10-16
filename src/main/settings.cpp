@@ -49,6 +49,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         nlohmann::ordered_json j;
         j["game"]["rom_patch"] = rom_patch_name(g_game.rom_patch);
         j["game"]["skip_intro"] = g_game.skip_intro;
+        j["game"]["fast_forward_speed"] = g_game.fast_forward_speed;
+        j["game"]["combat_enemy_speed"] = g_game.combat_enemy_speed;
+        j["game"]["save_backups"] = g_game.save_backups;
         j["graphics"]["render_height"] = g_graphics.render_height;
         j["graphics"]["aspect"] = g_graphics.aspect_text;
         j["graphics"]["msaa"] = g_graphics.msaa;
@@ -58,6 +61,8 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["fullscreen"] = g_graphics.fullscreen;
         j["graphics"]["menus_4_3"] = g_graphics.menus_4_3;
         j["graphics"]["right_stick_camera"] = g_graphics.right_stick_camera;
+        j["graphics"]["camera_invert_x"] = g_graphics.camera_invert_x;
+        j["graphics"]["camera_invert_y"] = g_graphics.camera_invert_y;
         j["graphics"]["overscan_borders"] = g_graphics.overscan_borders;
         j["graphics"]["smooth_animation_loops"] = g_graphics.smooth_animation_loops;
         j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
@@ -80,6 +85,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         else if (patch == "aidyn-patch") g_game.rom_patch = RomPatch::AidynPatch;
         else bad(path, "game.rom_patch must be \"none\" or \"aidyn-patch\", not \"" + patch + "\"");
         g_game.skip_intro = game.value("skip_intro", g_game.skip_intro);
+        g_game.fast_forward_speed = game.value("fast_forward_speed", g_game.fast_forward_speed);
+        g_game.combat_enemy_speed = game.value("combat_enemy_speed", g_game.combat_enemy_speed);
+        g_game.save_backups = game.value("save_backups", g_game.save_backups);
         const auto& gfx = j.value("graphics", nlohmann::json::object());
         g_graphics.render_height = gfx.value("render_height", g_graphics.render_height);
         g_graphics.msaa = gfx.value("msaa", g_graphics.msaa);
@@ -89,6 +97,8 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.fullscreen = gfx.value("fullscreen", g_graphics.fullscreen);
         g_graphics.menus_4_3 = gfx.value("menus_4_3", g_graphics.menus_4_3);
         g_graphics.right_stick_camera = gfx.value("right_stick_camera", g_graphics.right_stick_camera);
+        g_graphics.camera_invert_x = gfx.value("camera_invert_x", g_graphics.camera_invert_x);
+        g_graphics.camera_invert_y = gfx.value("camera_invert_y", g_graphics.camera_invert_y);
         g_graphics.overscan_borders = gfx.value("overscan_borders", g_graphics.overscan_borders);
         g_graphics.smooth_animation_loops = gfx.value("smooth_animation_loops", g_graphics.smooth_animation_loops);
         g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
@@ -113,6 +123,15 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     }
     catch (const nlohmann::json::exception& e) {
         bad(path, e.what());
+    }
+    if (g_game.fast_forward_speed < 2 || g_game.fast_forward_speed > 6) {
+        bad(path, "game.fast_forward_speed must be 2..6");
+    }
+    if (g_game.combat_enemy_speed < 1 || g_game.combat_enemy_speed > 6) {
+        bad(path, "game.combat_enemy_speed must be 1 (off) to 6");
+    }
+    if (g_game.save_backups < 0 || g_game.save_backups > 1000) {
+        bad(path, "game.save_backups must be 0 (none) to 1000");
     }
     if (g_graphics.render_height != 0 && (g_graphics.render_height < 240 || g_graphics.render_height > 4320)) {
         bad(path, "graphics.render_height must be 0 (fit the window) or 240..4320");

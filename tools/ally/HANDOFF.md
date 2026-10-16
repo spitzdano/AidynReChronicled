@@ -97,6 +97,7 @@ The same as with an Xbox controller on the PC (the manual has every screen):
 |---|---|
 | Left stick, D-pad | Walk, move in combat, menus |
 | Right stick | Turn the camera; up and down tilts it. Click (R3): camera back behind the party |
+| Left stick click (L3) | Fast-forward on / off (3x, chevrons at the top right); enemy turns in combat run 2x on their own |
 | A | Talk, open, confirm; in combat: attack |
 | B | Back, cancel; walking: show the party |
 | X | Details; in combat: spells (tap repeats the last, hold + stick picks one) |

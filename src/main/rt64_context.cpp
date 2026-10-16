@@ -371,8 +371,8 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
 
 aidyn::RT64Context::~RT64Context() = default;
 
-// AIDYN_FPS=1 prints how many frames the game submits per second (one graphics task per game frame), and how many
-// are shown.
+// AIDYN_FPS=1 prints how many frames the game submits per second (one graphics task per game frame), how many are
+// shown, and how many game ticks pass (60 a second, more under fast-forward).
 static void count_game_frame(RT64::Application* app, const OSTask* task) {
     static const bool enabled = [] { const char* v = std::getenv("AIDYN_FPS"); return v != nullptr && *v != '\0' && *v != '0'; }();
     if (!enabled) {
@@ -389,8 +389,9 @@ static void count_game_frame(RT64::Application* app, const OSTask* task) {
     if (seconds >= 2.0) {
         // Shown: the present thread's own timing (RT64 draws in-between frames above the game's rate).
         const double present_ms = app->presentQueue->presentProfiler.average();
-        fprintf(stdout, "fps: %.1f (shown %.1f), display list up to %u commands\n", frames / seconds,
-                present_ms > 0.0 ? 1000.0 / present_ms : 0.0, max_dl / 8);
+        extern std::atomic_uint32_t aidyn_game_ticks;  // src/game/patches.cpp, "Fast-forward"
+        fprintf(stdout, "fps: %.1f (shown %.1f), game ticks %.0f/s, display list up to %u commands\n", frames / seconds,
+                present_ms > 0.0 ? 1000.0 / present_ms : 0.0, aidyn_game_ticks.exchange(0) / seconds, max_dl / 8);
         max_dl = 0;
         fflush(stdout);
         frames = 0;

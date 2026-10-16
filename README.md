@@ -108,8 +108,9 @@ Switching versions, once both ROMs are stored:
 | N64 | Xbox controller | Keyboard | In the game |
 |---|---|---|---|
 | Control stick | Left stick | Arrows | walk, move in combat, menus |
-| (camera) | Right stick | | turn the camera around the party (left/right), look up or down (up/down); once turned, the camera keeps that direction while walking |
-| (camera) | Right stick click | | camera back behind the party (the original follow camera) |
+| (camera) | Right stick | | turn the camera around the party (left/right), tilt it up or down (up/down), both at the same speed, 30 degrees each way from its resting height; once turned, the camera keeps that direction while walking (`camera_invert_x` / `camera_invert_y` flip them) |
+| (camera) | Right stick click | | camera back behind the party at its resting height (the original follow camera) |
+| (fast-forward) | Left stick click | hold Tab | fast-forward on / off: everything runs `fast_forward_speed` times faster (3); a marker shows at the top right |
 | A | A | Z | talk, open, confirm; in combat: attack, then act on the target |
 | B | B | X | back, cancel; walking: show the party's portraits |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one) |
@@ -145,7 +146,10 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 {
     "game": {
         "rom_patch": "none",
-        "skip_intro": true
+        "skip_intro": true,
+        "fast_forward_speed": 3,
+        "combat_enemy_speed": 2,
+        "save_backups": 20
     },
     "graphics": {
         "render_height": 1080,
@@ -157,6 +161,8 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "fullscreen": false,
         "menus_4_3": true,
         "right_stick_camera": true,
+        "camera_invert_x": false,
+        "camera_invert_y": false,
         "overscan_borders": false,
         "smooth_animation_loops": true,
         "texture_packs": ["hd-ui", "hd-world", "rechronicled"]
@@ -168,6 +174,9 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 |---|---|
 | `rom_patch` | `"none"` (the 1.0 ROM) or `"aidyn-patch"` (see Aidyn Patch above); the title screen's version switch writes it |
 | `skip_intro` | `false` puts back the start-up screens: Expansion Pak notice, copyright, Nintendo, THQ and H2O logos |
+| `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on |
+| `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own |
+| `save_backups` | how many copies of the Controller Pak to keep in `~/.local/share/AidynReChronicled/backups` (made at start and before each save; 0 = none) |
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |
 | `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate (and never above it). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
@@ -177,6 +186,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
 | `right_stick_camera` | `false` turns the right-stick camera off |
+| `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message |
@@ -200,7 +210,23 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   showed the original parchment after paging to it from the equipment page.
 - **Camera.** See the right stick above. The walking camera eases towards a point behind the party; after the right
   stick turns it, that point follows the camera's own direction instead (movement is relative to the camera, so a fixed
-  angle from the party's facing would chase itself round).
+  angle from the party's facing would chase itself round). Tilting moves the height angle 30 degrees either way from
+  where the camera rests (walking: -15 to 45); the game's own limits, 0 to 45, left only a third of that room upwards.
+  `AIDYN_CAMERA_LOG=1` prints the angle.
+- **Fast-forward.** Every mode measures its frame's time step by counting the controller samples queued since the
+  last frame (1 to 6 ticks of 1/60 s, built for the N64's 10 to 20 frames a second). While fast-forward is on, each
+  real sample is followed by quiet copies of it (same stick and held buttons, no new presses), so the game takes that
+  many ticks a frame and no press is handled twice; enemy turns in combat get `combat_enemy_speed` the same way.
+  `AIDYN_FPS=1` prints the game ticks a second (60, or 180 at 3x).
+- **Save backups.** The Controller Pak is copied to `backups/` when the game starts and before each save (the first
+  write after 30 s without writes), unless the copy would be the same as the newest one; the newest `save_backups`
+  copies of each pak are kept.
+- **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
+  edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
+  slot goes to the edge its slot is on.
+- **HD text spacing.** With the HD UI pack, the letters keep Marcellus SC's own proportions: the game is given each
+  letter's width (the font's advance plus 0.6 texels, `src/game/font_widths.h` from `tools/hdui/font.py --header`)
+  in place of the widths it measures from the original, wide pixel font, which squeezed or spread the new letters.
 - **Draw distance.** `draw_distance` scales how far props are drawn (and their detail levels); the far clip follows
   the edge of the loaded map cells, up to `draw_distance` times 180, never further, so the edge of the world never
   shows. The game's culling for map cells and props was made for 4:3 (a 42.5-degree wedge, props fading out from 37.5

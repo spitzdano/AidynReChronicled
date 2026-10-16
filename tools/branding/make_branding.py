@@ -190,8 +190,29 @@ def version(active):
     return draw
 
 
+def fast_forward(w, h):
+    """The fast-forward marker (top right while it is on): two copper chevrons with a dark edge."""
+    W, H = w * SS, h * SS
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32) + 0.5
+    m = np.zeros((H, W), np.float32)
+    pad, half = 1.5 * SS, (H - 3 * SS) / 2.0
+    tri = (W - 2 * pad) / 2.0
+    for k in range(2):
+        x0 = pad + k * tri
+        inside = (xs >= x0) & (xs <= x0 + tri) & (np.abs(ys - H / 2.0) <= half * (1 - (xs - x0) / tri))
+        m = np.maximum(m, inside.astype(np.float32))
+    img = np.zeros((H, W, 4), np.float32)
+    edge = dilate(m, 5)
+    over(img, rgb("#000000"), 0.55 * blur(shift(edge, 4, 5), 5))
+    over(img, rgb("#1e0d06"), edge)
+    f = np.broadcast_to((ys - (H / 2.0 - half)) / max(2 * half, 1), (H, W))
+    over(img, gradient(COPPER, f), m)
+    return img
+
+
 IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
-          ("version_original", 104, 12, version(0)), ("version_patch", 104, 12, version(1))]
+          ("version_original", 104, 12, version(0)), ("version_patch", 104, 12, version(1)),
+          ("fast_forward", 20, 12, fast_forward)]
 
 
 def to_rgba8(img):

@@ -20,6 +20,9 @@ namespace aidyn::settings {
     struct Game {
         RomPatch rom_patch = RomPatch::None;
         bool skip_intro = true;      // start at the title screen, without the Nintendo, THQ and H2O logos
+        int fast_forward_speed = 3;  // L3 (keyboard: hold Tab) toggles fast-forward: the game runs this many times faster, 2..6
+        int combat_enemy_speed = 2;  // enemy turns in combat run this many times faster on their own; 1 = off, up to 6
+        int save_backups = 20;       // copies of the Controller Pak kept in <data>/backups (before saving, and at start); 0 = none
     };
 
     struct Graphics {
@@ -34,6 +37,8 @@ namespace aidyn::settings {
         bool fullscreen = false;
         bool menus_4_3 = true;       // with 16:9/window: show the pause menu, inventory and shops in 4:3 (their layouts break widened)
         bool right_stick_camera = true; // walking: right stick turns the camera (x) and raises/lowers it (y)
+        bool camera_invert_x = false; // right stick left/right turns the camera the other way
+        bool camera_invert_y = false; // right stick up/down tilts the camera the other way (up: look down)
         bool overscan_borders = false; // the black frame the game draws for CRT overscan (Graphics::EndList)
         bool hud_at_edges = true;    // widescreen: the time-of-day dial at the left edge, the compass at the right (portraits stay centred)
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops

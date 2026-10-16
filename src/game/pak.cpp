@@ -16,8 +16,13 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <random>
+#include <regex>
 #include <string>
+#include <vector>
 
 #include "ultramodern/ultra64.h"
 #include "ultramodern/error_handling.hpp"
@@ -25,6 +30,8 @@
 
 #include "recomp.h"
 #include "librecomp/helpers.hpp"
+
+#include "settings.h"
 
 namespace {
 
@@ -112,6 +119,63 @@ void flush_locked() {
     }
 }
 
+// Backups (settings.json game.save_backups, default 20): a copy of the pack in <data>/backups/<name>-<date>-<time>.mpk
+// when the game starts and before each save (the first block written after 30 s without writes copies the pack as it
+// was before it). A copy the same as the newest one is skipped. Only the newest save_backups copies of this pack are
+// kept. A failed copy is reported and the game goes on: the pack itself is still written.
+std::chrono::steady_clock::time_point g_last_write{};
+bool g_written = false;
+
+void backup_locked(const char* why) {
+    const int keep = aidyn::settings::game().save_backups;
+    if (keep <= 0) {
+        return;
+    }
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = g_path.parent_path() / "backups";
+    fs::create_directories(dir, ec);
+    const std::string stem = g_path.stem().string();
+    const std::regex mine(stem + R"(-\d{8}-\d{6}(-\d+)?\.mpk)");
+    std::vector<fs::path> copies;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+        if (std::regex_match(e.path().filename().string(), mine)) {
+            copies.push_back(e.path());
+        }
+    }
+    std::sort(copies.begin(), copies.end());  // the names sort by time
+    if (!copies.empty()) {
+        std::ifstream in(copies.back(), std::ios::binary);
+        std::array<uint8_t, kImageSize> last{};
+        if (in.read(reinterpret_cast<char*>(last.data()), last.size()) && last == g_image) {
+            return;
+        }
+    }
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+    localtime_r(&now, &tm);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm);
+    fs::path file = dir / (stem + "-" + stamp + ".mpk");
+    for (int n = 2; fs::exists(file, ec); n++) {
+        file = dir / (stem + "-" + stamp + "-" + std::to_string(n) + ".mpk");
+    }
+    {
+        std::ofstream out(file, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(g_image.data()), g_image.size());
+        if (!out) {
+            fprintf(stderr, "Controller Pak: could not write the backup %s (the save goes ahead)\n", file.c_str());
+            return;
+        }
+    }
+    fprintf(stderr, "Controller Pak: backup %s (%s)\n", file.c_str(), why);
+    copies.push_back(file);
+    while ((int)copies.size() > keep) {
+        fs::remove(copies.front(), ec);
+        copies.erase(copies.begin());
+    }
+}
+
 void load_locked() {
     if (g_loaded) {
         return;
@@ -130,6 +194,7 @@ void load_locked() {
         if (!in) {
             fatal("cannot read " + g_path.string());
         }
+        backup_locked("game start");
     } else {
         format_image();
         flush_locked();
@@ -206,6 +271,12 @@ extern "C" void __osContRamWrite_recomp(uint8_t* rdram, recomp_context* ctx) {
         ctx->r2 = 0;
         return;
     }
+    const auto now = std::chrono::steady_clock::now();
+    if (!g_written || now - g_last_write > std::chrono::seconds(30)) {
+        backup_locked("before saving");
+    }
+    g_written = true;
+    g_last_write = now;
     for (size_t i = 0; i < kBlock; i++) {
         g_image[block * kBlock + i] = MEM_B(i, buffer);
     }
