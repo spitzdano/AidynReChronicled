@@ -174,12 +174,25 @@ func = "load_splashscreen_data"
 before_vram = 0x8001B588
 text = "extern void aidyn_splash_loaded(uint8_t* rdram); aidyn_splash_loaded(rdram);"
 
-# The field view's far clip (RenderZones: Scene::SetNearFarPlanes(scene, 1.0, 180.0)), scaled by settings.json's
-# draw_distance in src/game/patches.cpp. The hook runs after the far value is loaded into a2, before the call.
+# The field view's far clip (RenderZones: Scene::SetNearFarPlanes(scene, 1.0, 180.0)): out to the loaded ground's
+# edge, up to settings.json's draw_distance (src/game/patches.cpp, "Draw distance"), which also rewrites the culling
+# constants. The hook runs after the far value is loaded into a2, before the call.
 [[patches.hook]]
 func = "RenderZones"
 before_vram = 0x8000D690
-text = "extern uint32_t aidyn_field_far_plane(uint32_t far_bits); ctx->r6 = (int32_t)aidyn_field_far_plane((uint32_t)ctx->r6);"
+text = "extern uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, uint32_t far_bits); ctx->r6 = (int32_t)aidyn_field_far_plane(rdram, ctx, (uint32_t)ctx->r6);"
+
+# Props (RenderVoxelScenes): the distance from the player, just returned by Vec3Dist in f0, scaled by draw_distance;
+# and the 32-entry table of fading props guarded where an entry is taken (L_8000CB90; full: draw it now, s5 = NULL).
+[[patches.hook]]
+func = "RenderVoxelScenes"
+before_vram = 0x8000C820
+text = "extern void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx); aidyn_prop_distance(rdram, ctx);"
+
+[[patches.hook]]
+func = "RenderVoxelScenes"
+before_vram = 0x8000CB90
+text = "extern int aidyn_prop_table_full(uint8_t* rdram); if (aidyn_prop_table_full(rdram)) { ctx->r21 = 0; goto L_8000CBB8; }"
 
 # The pause menu's opening reveal stops with its clip short of the screen edges (17..303 when it opens on the
 # equipment page); src/game/patches.cpp aidyn_menu_opened finishes it at 0..320. Runs only on the path where

@@ -147,7 +147,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate (and never above it). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
-| `draw_distance` | 1 (original) to 3: multiplies the field's far clip (180 units) and the fog with it. The game keeps only the 3x3 map cells around the party loaded (100 units each outdoors), so large values can show where they end |
+| `draw_distance` | 1 (original) to 3: props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; the far clip (180) may follow the loaded ground's edge up to that many times farther, but the game keeps only the 3x3 map cells around the party loaded (100 units each outdoors) and across a 16:9 picture that edge is already within 180, so the terrain view stays as the original until more cells are loaded |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
 | `right_stick_camera` | `false` turns the right-stick camera off |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
@@ -174,7 +174,12 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Camera.** See the right stick above. The walking camera eases towards a point behind the party; after the right
   stick turns it, that point follows the camera's own direction instead (movement is relative to the camera, so a fixed
   angle from the party's facing would chase itself round).
-- **Draw distance.** `draw_distance` scales the far clip of the field view.
+- **Draw distance.** `draw_distance` scales how far props are drawn (and their detail levels); the far clip follows
+  the edge of the loaded map cells, up to `draw_distance` times 180, never further, so the edge of the world never
+  shows. The game's culling for map cells and props was made for 4:3 (a 42.5-degree wedge, props fading out from 37.5
+  degrees); it is widened for the picture's real width, so nothing is cut at the sides of a 16:9 or 21:9 picture. A
+  32-entry table of fading props the game never bounds-checks is guarded. `AIDYN_FAR_LOG=1` prints the far clip, the
+  loaded edge, free heap and prop counts each second.
 - **Big pictures.** Images too big for one texture load (page backgrounds, title cards, the Controller Pak screen, map
   pieces, clouds) are drawn as the same full-width strips whatever part of them is shown, then clipped, so the HD pack
   has every strip of every such image in the ROM (`tools/hdui/bigstrips.py`). Before, a page sliding in or a part being

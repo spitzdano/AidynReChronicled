@@ -445,15 +445,133 @@ extern "C" void aidyn_image_draw_done(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
-// Draw distance. The field is drawn with a far clip of 180 units (RenderZones, aidyn.us.toml hook), about the edge of
-// the 3x3 block of map cells the game keeps loaded around the player (100 units each outdoors). settings.json's
-// draw_distance multiplies it; the game's fog sits at the far end of the depth range, so it moves out with it.
-extern "C" uint32_t aidyn_field_far_plane(uint32_t far_bits) {
-    float far;
-    std::memcpy(&far, &far_bits, sizeof(far));
-    far *= aidyn::settings::graphics().draw_distance;
-    std::memcpy(&far_bits, &far, sizeof(far));
-    return far_bits;
+// Draw distance. The field keeps a 3x3 block of map cells loaded around the player (100 units each outdoors; world
+// space has its origin at the centre cell's corner) and draws them with a far clip of 180 units (RenderZones,
+// aidyn.us.toml hook), so with the fog at the far end of the depth range the loaded ground ends 100 to 280 units away.
+// settings.json draw_distance (1..3) is used three ways:
+// - The far clip follows the loaded ground: each frame it goes to where the view (the whole picture's width) leaves
+//   the 3x3 block, never under the original 180 nor over 180 x draw_distance, eased so it doesn't jump when turning.
+//   The game's fog still thickens into it, so the edge of the loaded world never shows.
+// - Props (trees, rocks, objects: RenderVoxelScenes) measure their distance from the player as 1/draw_distance of it
+//   (aidyn.us.toml hook after its Vec3Dist), so their cut-off and level-of-detail bands move out together.
+// - The views the game culls with were made for 4:3: map cells outside a 42.5-degree wedge 200 units long
+//   (func_8000D270: 0x800CD6F4 length, 0x800CD6F8 margin, 0x800CD6FC angle) and props outside a cone fading from
+//   37.5 to 42.5 degrees (RenderVoxelScenes: 0x800CD6A0, 0x800CD6A4, radians). Each constant is read only there; they
+//   are rewritten each frame for the picture's width (the field's vertical field of view is 45 degrees) and the far
+//   clip, so nothing is cut at the sides of a 16:9 or 21:9 picture.
+namespace {
+    constexpr int32_t kGlobals = 0x800D8088;
+    constexpr float kPi = 3.14159265f;
+
+    float view_aspect() {
+        const auto& gfx = aidyn::settings::graphics();
+        switch (gfx.aspect) {
+            case aidyn::settings::Aspect::Ratio: return (float)gfx.aspect_ratio;
+            case aidyn::settings::Aspect::Window: return 2.4f;  // assume an ultrawide window
+            default: return 4.0f / 3.0f;
+        }
+    }
+
+    // Half the horizontal field of view, degrees.
+    float half_view_degrees() {
+        return std::atan(std::tan(22.5f * kPi / 180.0f) * view_aspect()) * 180.0f / kPi;
+    }
+
+    // Depth (along the view) at which the picture first leaves the loaded 3x3 block of cells.
+    float loaded_edge_depth(uint8_t* rdram) {
+        const gpr g = (gpr)kGlobals;
+        const float px = read_f32(rdram, g + 0x214), pz = read_f32(rdram, g + 0x21C);  // gCamera.pos
+        const float ax = read_f32(rdram, g + 0x220), az = read_f32(rdram, g + 0x228);  // gCamera.aim
+        const float cx = read_f32(rdram, (gpr)(int32_t)0x800D8404), cz = read_f32(rdram, (gpr)(int32_t)0x800D8408);
+        float fx = ax - px, fz = az - pz;
+        const float len = std::sqrt(fx * fx + fz * fz);
+        if (len < 1e-4f || cx <= 0.0f || cz <= 0.0f) {
+            return 1e9f;
+        }
+        fx /= len;
+        fz /= len;
+        const float half = half_view_degrees() * kPi / 180.0f;
+        float depth = 1e9f;
+        for (int k = -4; k <= 4; k++) {
+            const float a = half * (float)k / 4.0f, c = std::cos(a), sn = std::sin(a);
+            const float dx = fx * c - fz * sn, dz = fx * sn + fz * c;
+            float t = 1e9f;
+            if (dx > 1e-5f) t = std::min(t, (2.0f * cx - px) / dx);
+            if (dx < -1e-5f) t = std::min(t, (-cx - px) / dx);
+            if (dz > 1e-5f) t = std::min(t, (2.0f * cz - pz) / dz);
+            if (dz < -1e-5f) t = std::min(t, (-cz - pz) / dz);
+            depth = std::min(depth, std::max(t, 0.0f) * c);
+        }
+        return depth;
+    }
+
+    void write_f32_at(uint8_t* rdram, int32_t address, float f) {
+        write_f32(rdram, (gpr)address, f);
+    }
+}
+
+extern "C" void get_memFree(uint8_t* rdram, recomp_context* ctx);  // the game's free heap bytes (0x8008E980)
+
+// AIDYN_FAR_LOG also counts, per second, the props tried and how many are near enough to draw by the original rule
+// and by the scaled one.
+static int props_tried = 0, props_original = 0, props_scaled = 0;
+
+// AIDYN_FAR_LOG=1: once a second, the far clip, the loaded ground's edge and the game's free heap.
+static void log_far(uint8_t* rdram, recomp_context* ctx, float far, float edge) {
+    static const bool enabled = std::getenv("AIDYN_FAR_LOG") != nullptr;
+    static int frames = 0;
+    if (!enabled || ++frames % 60 != 0) {
+        return;
+    }
+    recomp_context saved = *ctx;  // mid-function: every register is someone's
+    get_memFree(rdram, ctx);
+    const uint32_t free_bytes = (uint32_t)ctx->r2;
+    *ctx = saved;
+    fprintf(stdout, "far %.0f edge %.0f free heap %u KB, props a frame: tried %d, near enough %d originally, %d now\n",
+            far, std::min(edge, 9999.0f), free_bytes / 1024, props_tried / 60, props_original / 60, props_scaled / 60);
+    props_tried = props_original = props_scaled = 0;
+    fflush(stdout);
+}
+
+extern "C" uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, uint32_t far_bits) {
+    float original;
+    std::memcpy(&original, &far_bits, sizeof(original));
+    const float scale = aidyn::settings::graphics().draw_distance;
+    const float edge = loaded_edge_depth(rdram);
+    const float target = std::clamp(edge, original, original * scale);
+    static float current = 0.0f;
+    current = current <= 0.0f ? target : current + (target - current) * 0.12f;
+    const float far = std::clamp(current, original, original * scale);
+    const float half = half_view_degrees();
+    write_f32_at(rdram, 0x800CD6F4, far * (200.0f / 180.0f));                  // cell wedge length (200 at 180)
+    write_f32_at(rdram, 0x800CD6FC, std::max(42.5f, half + 13.6f));            // cell wedge angle, degrees
+    write_f32_at(rdram, 0x800CD6A0, std::max(37.5f, half + 8.6f) * kPi / 180.0f);   // props: fading from
+    write_f32_at(rdram, 0x800CD6A4, std::max(42.5f, half + 13.6f) * kPi / 180.0f);  // props: gone at
+    log_far(rdram, ctx, far, edge);
+    uint32_t bits;
+    std::memcpy(&bits, &far, sizeof(far));
+    return bits;
+}
+
+extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
+    const float scale = aidyn::settings::graphics().draw_distance;
+    float prox;
+    uint32_t bits = ctx->f0.u32l;
+    std::memcpy(&prox, &bits, sizeof(prox));
+    const float size = read_f32(rdram, ctx->r19 + 0xC);  // the prop's cut-off distance (s3 = the prop)
+    props_tried++;
+    props_original += prox < size;
+    prox /= scale;
+    props_scaled += prox < size;
+    std::memcpy(&bits, &prox, sizeof(prox));
+    ctx->f0.u32l = bits;
+}
+
+// RenderVoxelScenes puts props that are fading (or drawn see-through) in a 32-entry table drawn after the rest
+// (0x800E6710, count at 0x800DA38E), without checking it is full. With props drawn farther more can fade at once; when
+// it is full the prop is drawn at once instead (aidyn.us.toml hook where an entry is taken).
+extern "C" int aidyn_prop_table_full(uint8_t* rdram) {
+    return MEM_HU(0, (gpr)(int32_t)0x800DA38E) >= 32;
 }
 
 // Widescreen clouds. Clouds::Draw positions each cloud (a 2D image) from the 3D camera, so in 16:9 some belong outside
