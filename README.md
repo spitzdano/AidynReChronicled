@@ -18,8 +18,9 @@ checks it against this SHA-1:
 
 ## Building
 
-Needs the [n64-recomp-toolkit](/home/dan/Work/n64-recomp-toolkit) built on this machine (`install.sh`, `build.sh`,
-`doctor.sh`). `tools/toolkit.env` says where it is; set `N64RECOMP_TOOLKIT` to override.
+Needs the [n64-recomp-toolkit](https://github.com/spitzdano/n64-recomp-toolkit) (private) cloned and built on this machine
+(`install.sh`, `build.sh`, `doctor.sh`). `tools/toolkit.env` says where it is (`~/Work/n64-recomp-toolkit`); set
+`N64RECOMP_TOOLKIT` to override.
 
 ```sh
 git submodule update --init --recursive
