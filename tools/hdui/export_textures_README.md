@@ -68,6 +68,8 @@ picture automatically.
 
 ## Putting them back
 
-Bring the `redone/` folder back to the PC (in this package's folder or anywhere) and ask for it to be built into the
-HD world pack. The pack builder then uses each redone texture in place of its Real-ESRGAN version and makes from it
-everything the game needs (the smaller copies, every scroll position of the moving ones), so nothing else needs doing.
+Bring the `redone/` folder back to the PC (in this package's folder or anywhere) and ask for it to be built in. The
+textures go into the project's `art/textures/` and the `rechronicled-art` pack, which the game puts in front of the
+HD world pack: each redone texture is used in place of its Real-ESRGAN version, with everything the game needs made
+from it (the smaller copies, every scroll position of the moving ones), so nothing else needs doing. The first one in
+was Alaron's set.

@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
+#include <algorithm>
 
 #include "json/json.hpp"
 
@@ -41,6 +43,38 @@ namespace {
     }
 }
 
+namespace {
+    // Changes some keys of settings.json in place, keeping the rest as the player wrote it.
+    void edit_file(const std::filesystem::path& path, const std::function<void(nlohmann::ordered_json&)>& change) {
+        nlohmann::ordered_json j = nlohmann::ordered_json::object();
+        try {
+            std::ifstream in(path);
+            if (in) {
+                j = nlohmann::ordered_json::parse(in);
+            }
+        }
+        catch (const nlohmann::json::exception& e) {
+            fprintf(stderr, "%s: %s (not updated)\n", path.c_str(), e.what());
+            return;
+        }
+        change(j);
+        const std::filesystem::path tmp = path.string() + ".tmp";
+        {
+            std::ofstream out(tmp);
+            out << j.dump(4) << "\n";
+            if (!out) {
+                fprintf(stderr, "%s: cannot write (not updated)\n", tmp.c_str());
+                return;
+            }
+        }
+        std::error_code ec;
+        std::filesystem::rename(tmp, path, ec);
+        if (ec) {
+            fprintf(stderr, "%s: %s (not updated)\n", path.c_str(), ec.message().c_str());
+        }
+    }
+}
+
 void aidyn::settings::load(const std::filesystem::path& folder) {
     g_folder = folder;
     const std::filesystem::path path = folder / "settings.json";
@@ -66,6 +100,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["overscan_borders"] = g_graphics.overscan_borders;
         j["graphics"]["smooth_animation_loops"] = g_graphics.smooth_animation_loops;
         j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
+        j["graphics"]["controls_card"] = g_graphics.controls_card;
         j["graphics"]["texture_packs"] = g_graphics.texture_packs;
         std::ofstream out(path);
         out << j.dump(4) << "\n";
@@ -102,7 +137,19 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.overscan_borders = gfx.value("overscan_borders", g_graphics.overscan_borders);
         g_graphics.smooth_animation_loops = gfx.value("smooth_animation_loops", g_graphics.smooth_animation_loops);
         g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
+        g_graphics.controls_card = gfx.value("controls_card", g_graphics.controls_card);
         g_graphics.texture_packs = gfx.value("texture_packs", g_graphics.texture_packs);
+        // rechronicled-art (the redrawn portraits and icons) came after the first settings files were written: put it
+        // in once, before "rechronicled" (later packs win).
+        auto& packs = g_graphics.texture_packs;
+        if (gfx.contains("texture_packs") && std::find(packs.begin(), packs.end(), "rechronicled-art") == packs.end()
+            && !game.value("art_pack_added", false)) {
+            packs.insert(std::find(packs.begin(), packs.end(), "rechronicled"), "rechronicled-art");
+            edit_file(path, [&packs](nlohmann::ordered_json& f) {
+                f["graphics"]["texture_packs"] = packs;
+                f["game"]["art_pack_added"] = true;
+            });
+        }
         const std::string aspect = gfx.value("aspect", g_graphics.aspect_text);
         g_graphics.aspect_text = aspect;
         if (aspect == "4:3") {
@@ -168,31 +215,10 @@ void aidyn::settings::use_rom_patch(RomPatch patch) {
 
 void aidyn::settings::save_rom_patch(RomPatch patch) {
     g_game.rom_patch = patch;
-    const std::filesystem::path path = g_folder / "settings.json";
-    nlohmann::ordered_json j = nlohmann::ordered_json::object();
-    try {
-        std::ifstream in(path);
-        if (in) {
-            j = nlohmann::ordered_json::parse(in);
-        }
-    }
-    catch (const nlohmann::json::exception& e) {
-        fprintf(stderr, "%s: %s (not updated)\n", path.c_str(), e.what());
-        return;
-    }
-    j["game"]["rom_patch"] = rom_patch_name(patch);
-    const std::filesystem::path tmp = path.string() + ".tmp";
-    {
-        std::ofstream out(tmp);
-        out << j.dump(4) << "\n";
-        if (!out) {
-            fprintf(stderr, "%s: cannot write (not updated)\n", tmp.c_str());
-            return;
-        }
-    }
-    std::error_code ec;
-    std::filesystem::rename(tmp, path, ec);
-    if (ec) {
-        fprintf(stderr, "%s: %s (not updated)\n", path.c_str(), ec.message().c_str());
-    }
+    edit_file(g_folder / "settings.json", [patch](nlohmann::ordered_json& j) { j["game"]["rom_patch"] = rom_patch_name(patch); });
+}
+
+void aidyn::settings::save_controls_card(bool shown) {
+    g_graphics.controls_card = shown;
+    edit_file(g_folder / "settings.json", [shown](nlohmann::ordered_json& j) { j["graphics"]["controls_card"] = shown; });
 }

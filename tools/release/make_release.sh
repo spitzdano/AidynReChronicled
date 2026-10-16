@@ -5,7 +5,8 @@
 #   tools/release/make_release.sh <version> --publish   ... then tag v<version>, push the tag, create the GitHub release
 #
 # The download holds the portable build (tools/ally/build_portable.sh: glibc 2.38+, its own SDL2), the launcher, the
-# installer, the Steam shortcut script, the icon and the title branding pack (all made here: fonts and our own art),
+# installer, the Steam shortcut script, the icon, the title branding pack and the redrawn portraits and icons
+# (rechronicled-art: tools/hdui/art_pack.py from art/), all made here from fonts and our own art,
 # README.md (tools/release/README.md) and LICENSE. Nothing from the ROM: the game asks for the player's ROM on its
 # first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
 set -euo pipefail
@@ -19,7 +20,8 @@ publish=0
 tag=v$version
 name=AidynReChronicled-$version-linux-x86_64
 out=build/release
-pack=${XDG_DATA_HOME:-$HOME/.local/share}/AidynReChronicled/texture-packs/rechronicled
+packs=${XDG_DATA_HOME:-$HOME/.local/share}/AidynReChronicled/texture-packs
+pack=$packs/rechronicled
 
 if (( publish )); then
     [[ -z $(git status --porcelain) ]] || die "uncommitted changes: commit and push first"
@@ -34,6 +36,8 @@ if [[ ! -f $pack/rt64.json ]]; then
     echo "== title branding pack"
     python3 tools/branding/make_branding.py
 fi
+echo "== redrawn art pack"
+python3 tools/hdui/art_pack.py
 
 echo "== $name"
 rm -rf "$out/$name" "$out/$name.tar.gz" "$out/$name.tar.gz.sha256"
@@ -42,9 +46,10 @@ cp -a build/portable/dist/. "$out/$name/game/"
 cp tools/ally/aidyn-rechronicled.sh tools/ally/steam_shortcut.py "$out/$name/game/"
 python3 tools/ally/steam_art.py --icon "$out/$name/game/icon.png" >/dev/null
 cp -a "$pack" "$out/$name/game/texture-packs/rechronicled"
+cp -a "$packs/rechronicled-art" "$out/$name/game/texture-packs/rechronicled-art"
 cp tools/ally/install.sh tools/release/README.md LICENSE "$out/$name/"
 chmod +x "$out/$name/install.sh" "$out/$name/game/aidyn-rechronicled.sh" "$out/$name/game/steam_shortcut.py"
-# Nothing ROM-derived may ship: the only pictures are the icon and the branding pack.
+# Nothing ROM-derived may ship: the only pictures are the icon, the branding pack and the redrawn art.
 stray=$(find "$out/$name" -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.mpk' \) | head -1)
 [[ -z $stray ]] || die "a ROM or save got into the release: $stray"
 tar -C "$out" -czf "$out/$name.tar.gz" "$name"
@@ -64,8 +69,9 @@ trap 'rm -f "$notes"' EXIT
     echo "place). The first start asks for your own NTSC-U 1.0 ROM (\`.z64\`) and keeps it. The README in the download"
     echo "has the rest: controls, Aidyn Patch, settings."
     echo
-    echo "Needs glibc 2.38+ (any current distribution), a Vulkan driver and libdbus. Contains no game data; the HD menu"
-    echo "and world texture packs aren't part of this release."
+    echo "Needs glibc 2.38+ (any current distribution), a Vulkan driver and libdbus. Contains no game data. Includes the"
+    echo "newly painted portraits and item icons; the HD menu and world texture packs (upscales of the game's own"
+    echo "pictures) aren't part of it."
     echo
     echo "Built from $(git rev-parse --short HEAD). SHA-256: \`$(cut -d' ' -f1 "$out/$name.tar.gz.sha256")\`"
 } >"$notes"

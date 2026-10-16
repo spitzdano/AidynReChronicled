@@ -29,16 +29,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pngio import BPP, decode_borg8, read_png, upscale_glyph, write_png  # noqa: E402
 import font as fontsheet  # noqa: E402
 import labels as wordlabels  # noqa: E402
 import repaint  # noqa: E402
 import portraits as romportraits  # noqa: E402
+import redone  # noqa: E402
 import romassets  # noqa: E402
 import romimages  # noqa: E402
 import buttons  # noqa: E402
 import bigstrips  # noqa: E402
+import hudart  # noqa: E402
 from pngio import restore_colours, upscale_bicubic  # noqa: E402
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -207,6 +211,9 @@ def main():
             rgba, painted[key] = repaint.clean(img, LABELS[key]["numbers"])
         if "marks" in LABELS.get(key, {}) and args.font != "none":
             rgba = repaint.clear(dict(img, rgba=rgba), [tuple(m[:4]) for m in LABELS[key]["marks"]])
+        if "arrows" in LABELS.get(key, {}):
+            rgba = repaint.erase(dict(img, rgba=rgba), [(x - 2, y - 2, w + 4, h + 4)
+                                                        for x, y, w, h, _ in LABELS[key]["arrows"]])
         if "buttons" in LABELS.get(key, {}):
             # Erased a little wider than the icon: its anti-aliased rim is paler than the icon and would bleed back in.
             rgba = repaint.erase(dict(img, rgba=rgba), [(x - 3, y - 2, w + 6, h + 4)
@@ -364,6 +371,21 @@ def main():
                         for c in range(3):
                             rgba[d + c] = (rgba[d + c] * (255 - a) + icon[o + c] * a) // 255
             upscaled[key] = (W, H, rgba)
+    for key in whole:  # page arrows painted into a picture, redrawn as the arrow pictures are (hudart.py)
+        for x0, y0, bw, bh, kind in LABELS.get(key, {}).get("arrows", []):
+            W, H, rgba = upscaled[key]
+            s_ = scale_of[key]
+            ink = sorted((sum(c), c) for c in (tuple(images[key]["rgba"][((y * images[key]["w"]) + x) * 4:
+                                                                         ((y * images[key]["w"]) + x) * 4 + 3])
+                                               for y in range(y0, y0 + bh) for x in range(x0, x0 + bw)))[0][1]
+            aw, ah, arrow = hudart.redraw("SliderArrow" + kind, bw, bh)
+            a = np.frombuffer(bytes(arrow), np.uint8).reshape(ah, aw, 4)[..., 3].astype(np.float32) / 255.0
+            f = hudart.SCALE // s_
+            a = a.reshape(bh * s_, f, bw * s_, f).mean(axis=(1, 3))
+            dst = np.frombuffer(bytes(rgba), np.uint8).reshape(H, W, 4).astype(np.float32).copy()
+            region = dst[y0 * s_:(y0 + bh) * s_, x0 * s_:(x0 + bw) * s_]
+            region[..., :3] = region[..., :3] * (1 - a[..., None]) + np.array(ink, np.float32) * a[..., None]
+            upscaled[key] = (W, H, bytearray(np.clip(dst + 0.5, 0, 255).astype(np.uint8).tobytes()))
     for key in whole:  # small text painted into a picture (the title card's TM), redrawn with the text font
         if "marks" in LABELS.get(key, {}) and args.font != "none":
             W, H, rgba = upscaled[key]
@@ -419,14 +441,15 @@ def main():
     # bilinear-filtered 3D textures); on these flat 2D draws it cut the top and left edge off every letter.
     # Every portrait in the game, from the ROM (portraits.py), including ones never drawn during collection. These
     # replace any captured copies (same hashes).
+    art = redone.collect()  # the redrawn portraits and icons in art/, used instead of upscaling those
     rom_entries = big_entries + romportraits.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
-                                     SCALE * 2, SCALE)
+                                     SCALE * 2, SCALE, art=art)
     # Every other small image in the ROM (romimages.py): item, skill and spell icons, minimap pictures. Words that
     # labels.json redraws are left to the captured path.
     key_of = image_key
     redrawn_keys = {k for k, v in LABELS.items() if "text" in v or "numbers" in v}
     rom_entries += romimages.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
-                                   SCALE, redrawn_keys, key_of)
+                                   SCALE, redrawn_keys, key_of, art=art)
     # Every letter of both font sheets, whole and clipped (Font::PrintMain trims a letter's box at a text box's
     # edges: any left/right part at full height, any top/bottom part at full width). Checked against capture: 321 of 321.
     glyph_jobs, glyph_rects = [], []

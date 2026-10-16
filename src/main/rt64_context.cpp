@@ -210,6 +210,57 @@ ultramodern::renderer::GraphicsApi map_graphics_api(RT64::UserConfiguration::Gra
     std::exit(EXIT_FAILURE);
 }
 
+// Texture packs from settings.json, looked up in <data>/texture-packs, then in texture-packs next to the executable
+// (a release ships its own packs there). One that isn't in either is reported and skipped: the default list names
+// the HD packs, which only exist once they have been built or copied to this machine. Without `art`, the redrawn
+// art pack (rechronicled-art) is left out: F2 switches it to compare (aidyn::toggle_redrawn_art).
+static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool report) {
+    std::vector<RT64::ReplacementDirectory> packs;
+    std::error_code ec;
+    const std::filesystem::path beside = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
+    for (const std::string& name : aidyn::settings::graphics().texture_packs) {
+        if (!art && name == "rechronicled-art") {
+            continue;
+        }
+        std::filesystem::path pack;
+        for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
+            for (const std::filesystem::path& candidate : { dir / name, dir / (name + ".rtz") }) {
+                if (pack.empty() && !dir.empty() && std::filesystem::exists(candidate, ec)) {
+                    pack = candidate;
+                }
+            }
+        }
+        if (pack.empty()) {
+            if (report) {
+                fprintf(stderr, "Texture pack \"%s\" not found in %s or %s (skipped)\n", name.c_str(),
+                        (aidyn::settings::folder() / "texture-packs").c_str(), beside.c_str());
+            }
+            continue;
+        }
+        packs.emplace_back(pack);
+        if (report) {
+            fprintf(stdout, "Texture pack: %s\n", pack.c_str());
+        }
+    }
+    return packs;
+}
+
+static std::atomic_bool redrawn_art_on{ true }, redrawn_art_reload{ false };
+
+void aidyn::toggle_redrawn_art() {
+    const auto& packs = aidyn::settings::graphics().texture_packs;
+    if (std::find(packs.begin(), packs.end(), "rechronicled-art") == packs.end()) {
+        fprintf(stdout, "Redrawn art: rechronicled-art isn't in settings.json's texture_packs\n");
+        return;
+    }
+    redrawn_art_on = !redrawn_art_on;
+    redrawn_art_reload = true;
+}
+
+bool aidyn::redrawn_art() {
+    return redrawn_art_on;
+}
+
 aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, ultramodern::renderer::PresentationMode presentation_mode, bool debug) {
     static unsigned char dummy_rom_header[0x40];
 
@@ -333,29 +384,7 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
 
     high_precision_fb_enabled = app->shaderLibrary->usesHDR;
 
-    // Texture packs from settings.json, looked up in <data>/texture-packs, then in texture-packs next to the executable
-    // (a release ships its own packs there). One that isn't in either is reported and skipped: the default list names
-    // the HD packs, which only exist once they have been built or copied to this machine.
-    std::vector<RT64::ReplacementDirectory> packs;
-    std::error_code ec;
-    const std::filesystem::path beside = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
-    for (const std::string& name : aidyn::settings::graphics().texture_packs) {
-        std::filesystem::path pack;
-        for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
-            for (const std::filesystem::path& candidate : { dir / name, dir / (name + ".rtz") }) {
-                if (pack.empty() && !dir.empty() && std::filesystem::exists(candidate, ec)) {
-                    pack = candidate;
-                }
-            }
-        }
-        if (pack.empty()) {
-            fprintf(stderr, "Texture pack \"%s\" not found in %s or %s (skipped)\n", name.c_str(),
-                    (aidyn::settings::folder() / "texture-packs").c_str(), beside.c_str());
-            continue;
-        }
-        packs.emplace_back(pack);
-        fprintf(stdout, "Texture pack: %s\n", pack.c_str());
-    }
+    const std::vector<RT64::ReplacementDirectory> packs = texture_packs(true, true);
     if (!packs.empty() && !app->textureCache->loadReplacementDirectories(packs)) {
         fprintf(stderr, "Texture packs failed to load (see above)\n");
     }
@@ -454,6 +483,10 @@ static void log_framebuffers(RT64::State* state) {
 }
 
 void aidyn::RT64Context::send_dl(const OSTask* task) {
+    if (redrawn_art_reload.exchange(false)) {  // F2: the packs again, with or without the redrawn art
+        app->textureCache->loadReplacementDirectories(texture_packs(redrawn_art_on, false));
+        fprintf(stdout, "Redrawn art: %s\n", redrawn_art_on ? "on" : "off");
+    }
     count_game_frame(app.get(), task);
     log_framebuffers(app->state.get());
     update_menu_aspect();

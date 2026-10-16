@@ -8,6 +8,7 @@
                            stripes, white rim, magenta glow)
   "[View] Original · Aidyn Patch"  bottom left, one picture for each running version (bright) and the other (dimmed);
                            View switches on the title screen
+  the fast-forward marker, the controls cards' lines ([button] what it does) and the LB / RB page prompts
 
 Each is rendered at 8 pixels per N64 texel. Outputs:
   src/game/branding_images.h       the N64-size RGBA16 copies the game draws (src/game/patches.cpp, "Title screen").
@@ -210,9 +211,111 @@ def fast_forward(w, h):
     return img
 
 
+# Button prompts. A controls card (src/game/patches.cpp, "Controls card") is a dark panel with lines of
+# [button] what it does; each line is one picture, so the field and combat cards share them. Buttons are named as the
+# N64 buttons the port maps them to (tools/hdui/buttons.py: A B CD=X CU=Y CL=View CR=RT START=Menu Z=LT L=LB R=RB)
+# or LS, RS, L3, R3 for the sticks; "+" between two means together.
+ROW_W, ROW_H = 84, 7
+
+
+def icon(button, h):
+    """(w texels, premultiplied float rgba at SS) of one button icon, h texels square (bumpers and triggers too: their
+    shape is as wide as a round button, so a wider box would only shift them right)."""
+    import buttons
+    w = h
+    px = np.frombuffer(bytes(buttons.icon_for(button, w, h, SS)), np.uint8).reshape(h * SS, w * SS, 4)
+    px = px.astype(np.float32) / 255.0
+    px[..., :3] *= px[..., 3:]
+    return w, px
+
+
+def text_line(img, x, text, size, baseline, colour="#efe6d4"):
+    m = text_mask(text, MARCELLUS, size, img.shape[1], img.shape[0], x, baseline)
+    e = dilate(m, 3)
+    over(img, rgb("#000000"), 0.45 * blur(shift(e, 3, 4), 3))
+    over(img, rgb("#120c08"), e)
+    over(img, rgb(colour), m)
+    return ink_width(text, MARCELLUS, size)
+
+
+def control_row(*pairs):
+    """One line of a controls card: (buttons, label) pairs, e.g. (("A",), "Talk, open"), (("R", "+", "LS"), "Camera")."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        size = 40  # Marcellus SC: capitals about 3.6 texels tall, like the game's small text
+        baseline = int(H * 0.76)
+        x = SS // 2
+        for n, (buttons_, label) in enumerate(pairs):
+            if n:
+                x += 4 * SS
+            for b in buttons_:
+                if b == "+":
+                    x += SS // 2
+                    x += text_line(img, x, "+", size, baseline) + SS
+                    continue
+                bw, px = icon(b, h)
+                region = img[:, x:x + bw * SS]
+                over(region, px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
+                x += bw * SS + SS // 2
+            x += SS // 2
+            x += text_line(img, x, label, size, baseline)
+        if x > W:
+            sys.exit(f"make_branding.py: a controls line is {x / SS:.0f} texels wide, more than {w}")
+        return img
+    return draw
+
+
+def panel(w, h):
+    """The controls card's background: plain black (the game draws it see-through)."""
+    img = np.zeros((h * SS, w * SS, 4), np.float32)
+    img[..., 3] = 1.0
+    return img
+
+
+def page_prompt(button):
+    """LB / RB at the ends of a pause page's arrow (the arrow is 8 texels tall)."""
+    def draw(w, h):
+        img = np.zeros((h * SS, w * SS, 4), np.float32)
+        bw, px = icon(button, h)
+        x0 = (w - bw) * SS // 2
+        over(img[:, x0:x0 + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
+        return img
+    return draw
+
+
+CONTROLS = [
+    ("ctl_walk", (("LS",), "Walk")),
+    ("ctl_camera", (("RS",), "Camera"), (("R3",), "Behind the party")),
+    ("ctl_talk", (("A",), "Talk, open, search")),
+    ("ctl_party", (("B",), "Party")),
+    ("ctl_sneak", (("Z", "+", "LS"), "Sneak")),
+    ("ctl_ff", (("L3",), "Fast-forward")),
+    ("ctl_menu", (("START",), "Pause menu"), (("CL",), "Hide this")),
+    ("ctl_move", (("LS",), "Move")),
+    ("ctl_attack", (("A",), "Attack")),
+    ("ctl_magic", (("CD",), "Spells"), (("CU",), "Items")),
+    ("ctl_endturn", (("Z",), "or"), (("L",), "End turn")),
+    ("ctl_combatcam", (("R", "+", "LS"), "Camera")),
+    ("ctl_hide", (("CL",), "Hide this")),
+]
+
+def art_off(w, h):
+    """Top right while F2 has the redrawn art pack off: what is showing, and the key."""
+    img = np.zeros((h * SS, w * SS, 4), np.float32)
+    size, baseline = 40, int(h * SS * 0.8)
+    text = "Redrawn art off  ·  F2"
+    x = w * SS - SS // 2 - ink_width(text, MARCELLUS, size)
+    text_line(img, x, text, size, baseline, "#f6e7c1")
+    return img
+
+
 IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
           ("version_original", 104, 12, version(0)), ("version_patch", 104, 12, version(1)),
-          ("fast_forward", 20, 12, fast_forward)]
+          ("fast_forward", 20, 12, fast_forward), ("ctl_panel", 4, 4, panel),
+          ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")),
+          ("art_off", 64, 8, art_off)]
+IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
 
 
 def to_rgba8(img):

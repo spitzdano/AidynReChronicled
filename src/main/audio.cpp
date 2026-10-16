@@ -31,7 +31,30 @@ static uint32_t discarded_output_frames;
 
 constexpr uint32_t bytes_per_frame = input_channels * sizeof(float);
 
+// AIDYN_AUDIO_DUMP=<file>: everything the game plays is also written there as raw 16-bit stereo (left first) at the
+// game's own rate (printed once), for checking sound changes without listening. Off unless set.
+static void dump_samples(const int16_t* audio_data, size_t sample_count) {
+    static FILE* f = [] {
+        const char* path = std::getenv("AIDYN_AUDIO_DUMP");
+        return (path != nullptr && *path != '\0') ? std::fopen(path, "wb") : nullptr;
+    }();
+    if (f == nullptr) {
+        return;
+    }
+    static uint32_t rate = 0;
+    if (rate != sample_rate) {
+        rate = sample_rate;
+        fprintf(stderr, "audio dump: %u Hz\n", rate);
+    }
+    for (size_t i = 0; i + 1 < sample_count; i += 2) {
+        const int16_t frame[2] = { audio_data[i + 1], audio_data[i] };
+        std::fwrite(frame, sizeof(frame), 1, f);
+    }
+    std::fflush(f);
+}
+
 void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
+    dump_samples(audio_data, sample_count);
     // Buffer for holding the output of swapping the audio channels. This is reused across
     // calls to reduce runtime allocations.
     static std::vector<float> swap_buffer;

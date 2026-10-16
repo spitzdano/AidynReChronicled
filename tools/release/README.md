@@ -37,10 +37,12 @@ An Xbox-style controller, or the keyboard:
 | Right stick (click: recentre) | | Camera |
 | A / B | Z / X | Confirm, talk, attack / back, cancel |
 | X / Y | K / I | Details, spells / items |
-| View / RT | J / L | Previous / next party member (pause menu); View switches versions on the title screen |
+| View | J | Show / hide the controls card (walking, combat); previous party member (pause menu); switch versions (title screen) |
+| RT | L | Next party member (pause menu) |
 | LT / LB / RB | C / Q / E | Sneak, end turn, previous / next page |
 | Menu | Enter | Pause menu |
 | Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
+| | F2 | The newly painted art off / on, to compare with what was there before |
 | | F11, Alt+Enter / Shift+Esc | Fullscreen / quit |
 
 ## Settings, saves, logs
@@ -53,8 +55,9 @@ All in `~/.local/share/AidynReChronicled`:
 - `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's. `backups/` keeps its last
   20 states (at each start and before each save).
 - `logs/last-run.log`: what the last start printed. Look there if something goes wrong.
-- `texture-packs/`: HD texture packs. This release includes the title-screen branding (`rechronicled`, next to the
-  game); the HD menu and world packs are not part of it yet.
+- `texture-packs/`: HD texture packs. This release includes, next to the game, newly painted portraits and item
+  icons (`rechronicled-art`) and the title-screen branding (`rechronicled`); the HD menu and world packs (upscales of
+  the game's own pictures) are not part of it.
 
 ## About
 

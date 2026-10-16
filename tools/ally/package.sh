@@ -22,7 +22,7 @@ die() { echo "package.sh: $*" >&2; exit 1; }
 [[ -f build/ally/steam-art/logo.png ]] || die "no Steam art: tools/ally/steam_art.py"
 [[ -f $data/manual/index.html ]] || die "no manual: tools/manual/build_manual.py"
 [[ -f $data/aidyn.n64.us.1.0.z64 ]] || die "no stored ROM in $data (run the game once with --rom)"
-for p in hd-ui hd-world rechronicled; do [[ -d $data/texture-packs/$p ]] || die "texture pack $p missing in $data"; done
+for p in hd-ui hd-world rechronicled-art rechronicled; do [[ -d $data/texture-packs/$p ]] || die "texture pack $p missing in $data"; done
 
 rm -rf build/ally/stage
 mkdir -p "$stage/game" "$stage/data/texture-packs" "$usb"
@@ -35,7 +35,7 @@ cp tools/ally/settings-ally.json "$stage/data/settings.json"
 cp "$data"/*.z64 "$stage/data/"
 cp "$data"/*.mpk "$stage/data/" 2>/dev/null || true
 # The big folders go in through symlinks (tar -h follows them), so they aren't copied twice.
-for p in hd-ui hd-world rechronicled; do ln -s "$data/texture-packs/$p" "$stage/data/texture-packs/$p"; done
+for p in hd-ui hd-world rechronicled-art rechronicled; do ln -s "$data/texture-packs/$p" "$stage/data/texture-packs/$p"; done
 ln -s "$data/manual" "$stage/data/manual"
 
 rm -f "$usb/AidynReChronicled-Ally.tar"

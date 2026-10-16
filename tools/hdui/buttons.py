@@ -8,7 +8,10 @@ Xbox button the port maps to that N64 button (src/main/input.cpp), in full colou
   A -> A (green)   B -> B (red)   C-down -> X (blue)   C-up -> Y (yellow)   C-left -> View   C-right -> RT
   Start -> Menu    D-pad -> D-pad    Z -> LT    L -> LB    R -> RB
 
-Drawn by ImageMagick at 16 pixels per texel inside the original icon's box (8 x 9 texels) and box-filtered down.
+Drawn by ImageMagick at 16 pixels per texel inside the original icon's box (8 x 9 texels) and box-filtered down, unless
+art/buttons has a redrawn one (tools/hdui/export_prompts.py exports them for redrawing): then that is used, fitted into
+the box. The same icons make the port's own prompts (tools/branding/make_branding.py: controls card, page prompts,
+title screen version switch).
 """
 import subprocess
 import tempfile
@@ -29,8 +32,37 @@ def bold_font():
     return r.stdout.strip() or None
 
 
+ART = Path(__file__).resolve().parents[2] / "art/buttons"  # redrawn icons (tools/hdui/export_prompts.py), by NAMES
+
+
+def name_of(kind, text):
+    """The Xbox name of an icon (the file name in art/buttons): A B X Y LB RB LT RT View Menu DPad LS RS L3 R3."""
+    if kind in ("face", "trigger", "bumper"):
+        return text
+    if kind == "stick":
+        return {"L": "LS", "R": "RS"}.get(text, text)
+    return {"view": "View", "menu": "Menu", "dpad": "DPad"}[kind]
+
+
+def redrawn(name, w, h, scale):
+    """art/buttons/<name>.png fitted (square, centred) into w x h texels at `scale`, or None."""
+    path = ART / f"{name}.png"
+    if not path.exists():
+        return None
+    W, H, side = w * scale, h * scale, min(w, h) * scale
+    with tempfile.TemporaryDirectory() as t:
+        out = Path(t) / "b.png"
+        subprocess.run(["magick", str(path), "-filter", "Lanczos", "-resize", f"{side}x{side}", "-background", "none",
+                        "-gravity", "center", "-extent", f"{W}x{H}", f"PNG32:{out}"], check=True)
+        return read_png(out)[2]
+
+
 def draw(kind, text, colour, w, h, scale, font):
-    """One icon, w x h texels, at `scale` pixels per texel. Returns rgba."""
+    """One icon, w x h texels, at `scale` pixels per texel (the redrawn one in art/buttons if there is one). Returns
+    rgba."""
+    mine = redrawn(name_of(kind, text), w, h, scale)
+    if mine is not None:
+        return mine
     W, H = w * SS, h * SS
     cx, cy = W / 2, H / 2
     r = min(W, H) / 2 - SS * 0.3
@@ -58,6 +90,11 @@ def draw(kind, text, colour, w, h, scale, font):
                 "-stroke", LIGHT, "-strokewidth", f"{SS * 0.5:.1f}"]
         for dy in (-0.35, 0, 0.35):
             cmd += ["-draw", f"line {cx - r * 0.5},{cy + dy * r} {cx + r * 0.5},{cy + dy * r}"]
+    elif kind == "stick":  # a thumbstick from above: dark ring, lighter cap, its letter (L, R, L3, R3)
+        cmd += ["-fill", DARK, "-stroke", "#202020", "-draw", f"circle {cx},{cy} {cx + r},{cy}",
+                "-fill", "#5a5e66", "-stroke", "#202020", "-strokewidth", f"{SS * 0.2:.1f}",
+                "-draw", f"circle {cx},{cy} {cx + r * 0.72},{cy}"]
+        cmd += label(text, r * (1.05 if len(text) == 1 else 0.85))
     elif kind == "dpad":
         a = r * 0.36
         cmd += ["-fill", DARK, "-stroke", "#202020",
@@ -90,7 +127,12 @@ N64_TO_XBOX = {"A": 0x5C, "B": 0x5D, "CD": 0x61, "CU": 0x60, "CR": 0x5E, "CL": 0
                "Z": 0x64, "L": 0x65, "R": 0x66}
 
 
+STICKS = {"LS": "L", "RS": "R", "L3": "L3", "R3": "R3"}  # the sticks, and clicking them (not N64 buttons)
+
+
 def icon_for(n64_button, w, h, scale):
-    """The Xbox icon for an N64 button, w x h texels at `scale` pixels per texel (rgba)."""
+    """The Xbox icon for an N64 button (or a stick: LS, RS, L3, R3), w x h texels at `scale` pixels per texel."""
+    if n64_button in STICKS:
+        return draw("stick", STICKS[n64_button], None, w, h, scale, bold_font())
     kind, text, colour = CELLS[N64_TO_XBOX[n64_button]]
     return draw(kind, text, colour, w, h, scale, bold_font())

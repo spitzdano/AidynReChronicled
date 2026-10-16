@@ -33,5 +33,9 @@ namespace aidyn {
         std::unique_ptr<RT64::Application> app;
     };
 
+    // F2: the redrawn art pack (rechronicled-art) off and on again, to compare with what is under it.
+    void toggle_redrawn_art();
+    bool redrawn_art();
+
     std::unique_ptr<ultramodern::renderer::RendererContext> create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, bool developer_mode);
 }

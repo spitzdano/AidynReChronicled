@@ -131,6 +131,9 @@ static void update_gfx(void*) {
             else if (event.key.keysym.scancode == SDL_SCANCODE_F1 && !event.key.repeat) {
                 open_manual();
             }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_F2 && !event.key.repeat) {
+                aidyn::toggle_redrawn_art();
+            }
             break;
         default:
             break;
@@ -298,7 +301,7 @@ int main(int argc, char** argv) {
                    "              remembered after the first run\n"
                    "  --patch     play Aidyn Patch this time; --original: play the 1.0 release this time\n"
                    "              (otherwise settings.json game.rom_patch; View on the title screen switches and remembers)\n"
-                   "  F1: the manual   F11 or Alt+Enter: fullscreen   Shift+Esc: quit\n", argv[0]);
+                   "  F1: the manual   F2: redrawn art off / on   F11 or Alt+Enter: fullscreen   Shift+Esc: quit\n", argv[0]);
             return 0;
         }
         else {

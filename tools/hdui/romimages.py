@@ -18,6 +18,7 @@ import numpy as np
 
 import hudart
 import portraits
+import redone
 import romassets
 from pngio import decode_borg8, read_png, upscale_bicubic, write_png
 
@@ -56,15 +57,19 @@ def tmem_rect(fmt, w, pixels, palette, x0, tw, y0, th):
     return tmem, line
 
 
-def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, log=print):
+def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, art=None, only_art=False, log=print):
     """Writes replacements for every one-load 8-bit image except portraits and `skip_keys` (image keys handled
-    elsewhere, key_of(fmt, w, h, pixels, palette) -> key). Returns rt64.json texture entries."""
+    elsewhere, key_of(fmt, w, h, pixels, palette) -> key). Returns rt64.json texture entries.
+    art: {name: path} of redrawn pictures (redone.collect()), used instead of the upscale; only_art: only those."""
     rom = romassets.Rom(rom_path)
     names = romassets.borg8_names(decomp)
+    art = art or {}
     images = {}
     for index in range(rom.count):
         if rom.entry(index)[0] != romassets.IMAGE or names.get(index, "").startswith("Portrait"):
             continue
+        if only_art and names.get(index) not in art and names.get(index) not in hudart.NAMES:
+            continue  # only_art: the redrawn pictures, and the ones hudart.py draws (not from the ROM either)
         fmt, w, h, pixels, palette = img = rom.image(index)
         if w * h <= 4 or not fits(fmt, w, h) or key_of(*img) in skip_keys:
             continue
@@ -75,16 +80,17 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         src.mkdir()
         big.mkdir()
         for index, (fmt, w, h, pixels, palette) in images.items():
-            if names.get(index) in hudart.NAMES:
-                continue  # redrawn by hudart.py, not upscaled
+            if names.get(index) in hudart.NAMES or names.get(index) in art:
+                continue  # redrawn (hudart.py, art/), not upscaled
             rgba = decode_borg8(fmt, w, h, pixels, palette)
             if fmt in (4, 7):
                 w, h, rgba = upscale_bicubic(w, h, rgba, 2)
             write_png(src / f"{index}.png", w, h, rgba)
-        r = subprocess.run([str(esrgan), "-i", str(src), "-o", str(big), "-n", model, "-s", str(scale), "-f", "png"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"realesrgan failed:\n{r.stderr[-2000:]}")
+        if any(src.iterdir()):
+            r = subprocess.run([str(esrgan), "-i", str(src), "-o", str(big), "-n", model, "-s", str(scale), "-f", "png"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            if r.returncode != 0:
+                raise RuntimeError(f"realesrgan failed:\n{r.stderr[-2000:]}")
         jobs, owners = [], []
         for index, (fmt, w, h, pixels, palette) in images.items():
             rdp_fmt, siz = FMT[fmt]
@@ -96,7 +102,9 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         hs = portraits.hashes(tool, jobs)
         ups = {}
         for index, (fmt, w, h, pixels, palette) in images.items():
-            if names.get(index) in hudart.NAMES:
+            if names.get(index) in art:
+                W, H, up = redone.load(art[names[index]], w, h)
+            elif names.get(index) in hudart.NAMES:
                 W, H, up = hudart.redraw(names[index], w, h, decode_borg8(fmt, w, h, pixels, palette))
             else:
                 W, H, up = read_png(big / f"{index}.png")
@@ -115,5 +123,5 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
             write_png(Path(out) / f"{h_}.png", tw * s_, th * s_, cut.tobytes())
             entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload" if whole else "stream"})
     log(f"romimages.py: {len(images)} images from the ROM ({sum(1 for i in images if names.get(i, '').startswith('Icon'))} "
-        f"icons), {len(entries)} textures")
+        f"icons, {sum(1 for i in images if names.get(i) in art)} redrawn), {len(entries)} textures")
     return entries

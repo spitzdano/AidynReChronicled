@@ -88,7 +88,7 @@ cmake -S . -B build/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER
 cmake --build build/cmake --target AidynReChronicled
 build/cmake/AidynReChronicled --rom /path/to/aidyn-chronicles-ntsc-u-1.0.z64    # remembered after the first run
 ```
-F1: the manual. F11 / Alt+Enter: fullscreen. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
+F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to compare ("Redrawn art off" shows top right while it's off). F11 / Alt+Enter: fullscreen. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
 ROMs, texture packs) lives in `~/.local/share/AidynReChronicled`; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
@@ -115,7 +115,7 @@ Switching versions, once both ROMs are stored:
 | B | B | X | back, cancel; walking: show the party's portraits |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one) |
 | C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one) |
-| C-left | View | J | pause menu: previous party member; title screen: switch Original / Aidyn Patch |
+| C-left | View | J | walking and in combat: show / hide the controls card (not passed to the game there); pause menu: previous party member; title screen: switch Original / Aidyn Patch |
 | C-right | RT | L | pause menu: next party member |
 | Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu: previous page |
 | L | LB | Q | combat: end the turn; pause menu: previous page |
@@ -165,7 +165,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "camera_invert_y": false,
         "overscan_borders": false,
         "smooth_animation_loops": true,
-        "texture_packs": ["hd-ui", "hd-world", "rechronicled"]
+        "texture_packs": ["hd-ui", "hd-world", "rechronicled-art", "rechronicled"]
     }
 }
 ```
@@ -183,13 +183,14 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels |
+| `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
 | `right_stick_camera` | `false` turns the right-stick camera off |
 | `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
-| `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message |
+| `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` existed gets it added once |
 
 The game's own Options › Graphics "High Resolution" mode (a 512x240 framebuffer for the Expansion Pak) should stay on
 "Normal Resolution": RT64 already renders at `render_height`, and the wider framebuffer stretches the HUD and menus off
@@ -242,7 +243,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   Leaving the field frees the rings through the game's free queue.
 - **Field HUD.** With `hud_at_edges` the dial is drawn aligned to the picture's left edge and the compass to its right
   edge (RT64 extended GBI); the party portraits stay centred, where the game puts them. The dial's pieces (rays, moon phases, suns) are redrawn as clean
-  shapes in the HD UI pack (`tools/hdui/hudart.py`): upscaled they were lumpy and the moon was cut flat.
+  shapes in the HD UI pack (`tools/hdui/hudart.py`): upscaled they were lumpy and the moon was cut flat. The pause
+  pages' arrows (including the one painted into the map page, `labels.json` "arrows") and the HitPoints bar are
+  redrawn the same way (upscaled they were blurred zigzags and a smeared rope); the `rechronicled-art` pack carries
+  all of these, as they are drawn, not taken from the ROM.
 - **Big pictures.** Images too big for one texture load (page backgrounds, title cards, the Controller Pak screen, map
   pieces, clouds) are drawn as the same full-width strips whatever part of them is shown, then clipped, so the HD pack
   has every strip of every such image in the ROM (`tools/hdui/bigstrips.py`). Before, a page sliding in or a part being
@@ -254,15 +258,32 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   bottom left (when both ROMs are stored), drawn after the title card with its fade. The pictures come from `tools/branding/make_branding.py` (fonts only: Marcellus SC and Kanit, OFL): it writes
   `src/game/branding_images.h` (the N64-size copies the game draws) and the `rechronicled` texture pack (their full-resolution
   versions). The title card's own TM is redrawn in the text font by the HD UI pack (`labels.json` "marks").
-- **Start-up screens** skipped (`skip_intro`).
+- **Button prompts.** While walking and in combat a see-through card at the left edge lists what the buttons do there
+  (`controls_card`; View shows and hides it: in those two modes View is not passed to the game, where it only cycled
+  combat targets, which the stick and RT still do). In combat it sits in the bottom left corner when the picture is
+  wide enough to leave room beside the message box, else above it; it is left out while Menu is held, as pausing
+  keeps a picture of the screen for the pause menu's background. The pause pages' arrows get LB and RB at the ends they point to
+  (the arrows are told apart by their pixels; the Controller Pak screens' arrows on save slots get none). The card's
+  lines and the prompts are pictures from `tools/branding/make_branding.py` with full-resolution versions in the
+  `rechronicled` pack; both are drawn at the end of the frame with their own render state. `AIDYN_MODE_LOG=1` prints
+  the game state (`gGlobals.gameStateA`: 1 walking, 2 combat, 8 pause, 12 dialogue).
+- **Start-up screens** skipped (`skip_intro`). The intro music starts with them and plays on into the title screen,
+  so it is moved on to where it was when the title screen used to appear (12,947 ticks of the music player, about
+  13 s): the game's command stream is read ahead without playing it, checked against the real player
+  (`AIDYN_INTRO_LOG=1` with `skip_intro` false prints the tick and whether reading ahead matches).
 - **Animation loops.** When a walk or run cycle looped, the game showed the last pose twice and stopped the
   character's forward motion for 3 ticks (50 ms) every stride, which vanished inside one frame on the N64 at 15-20 fps.
   The new cycle now starts in the same tick and the motion carries on; motion is scaled per cycle so walking keeps the
-  original average speed.
+  original average speed. Starting it in the same tick skips the animation's first frame, the only frame on which the
+  game notes which animation an actor is playing for its sounds (footsteps, swings, hits, spell sounds are keyed to
+  frames of an animation), which silenced all of them; that frame's bookkeeping and sounds are now done just before
+  the next frame's. `AIDYN_SFX_LOG=1` prints every sound started and every animation-keyed sound check.
 
 `AIDYN_PAGE_LOG=1` prints each full-screen picture's draw position and clip when they change, and the memory RT64 treats
 as framebuffers (written to find the journal problem). `AIDYN_ANIM_LOG=1` prints every animation tick's motion.
 `AIDYN_FPS=1` also prints the shown frame rate and the largest display list (the game's buffer holds 25600 commands).
+`AIDYN_AUDIO_DUMP=<file>` writes everything the game plays to a file (raw 16-bit stereo at the game's rate, printed at
+start), for checking sound changes without listening.
 
 ## License
 

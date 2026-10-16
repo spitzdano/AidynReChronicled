@@ -3,8 +3,8 @@
 
     tools/manual/build_manual.py [--rom ROM] [--patch-rom ROM] [--out DIR] [--no-pdf]
 
-1. Pictures: every <img data-art="Name"> is a Borg8 image from the ROM, upscaled by romart.py (cached in
-   build/manual/art); every <figure data-shot="name"> is build/manual/shots/<name>.png from shots.sh, saved as JPEG.
+1. Pictures: every <img data-art="Name"> is a Borg8 image: the redrawn one in art/ if there is one (portraits, item
+   and slot icons), else the ROM's, upscaled by romart.py (cached in build/manual/art); every <figure data-shot="name"> is build/manual/shots/<name>.png from shots.sh, saved as JPEG.
    A figure without its screenshot is left out (or shows the Borg8 image named in data-fallback).
 2. The spell list is read from the ROM (romdata.py); with the Aidyn Patch ROM too, a table of what the patch changes.
 3. Writes DIR/index.html with fonts/, art/, shots/ next to it, then DIR/Aidyn ReChronicled Manual.pdf (Chromium,
@@ -29,6 +29,7 @@ PROJECT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import romart  # noqa: E402
 import romdata  # noqa: E402
+import redone  # noqa: E402  (tools/hdui, on the path through romart)
 
 DATA = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "AidynReChronicled"
 PDF_NAME = "Aidyn ReChronicled Manual.pdf"
@@ -285,6 +286,7 @@ def main():
 
     wanted = sorted(set(re.findall(r'data-art="(\w+)"', page)))
     art = romart.build(args.rom, PROJECT / "decomp", esrgan, wanted, PROJECT / "build/manual/art")
+    art.update({n: p for n, p in redone.collect().items() if n in art})  # the redrawn portraits and icons (art/)
     files = {name: save_art(name, path, tmp_out / "art") for name, path in art.items()}
     page = re.sub(r'data-art="(\w+)"', lambda m: f'src="art/{files[m.group(1)]}"', page)
 

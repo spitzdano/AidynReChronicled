@@ -30,10 +30,12 @@ namespace {
 // CRT hid but a modern display shows as a frame, and which widescreen moves into the middle of the picture.
 // They are drawn only when settings.json has "overscan_borders": true; everything else is as the original.
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
+gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     gpr g = ctx->r4;
     g = aidyn_ff_marker(rdram, g);
+    g = aidyn_prompts(rdram, g);
     if (aidyn::settings::graphics().overscan_borders) {
         const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager);
         const uint32_t v = MEM_HU(kVres1, (gpr)gGfxManager);
@@ -110,7 +112,10 @@ static void log_page_draw(uint8_t* rdram, recomp_context* ctx) {
 
 void normalize_big_draw(uint8_t* rdram, recomp_context* ctx);  // below, "Big pictures"
 
+void note_page_arrow(uint8_t* rdram, recomp_context* ctx);  // "Button prompts", below
+
 extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
+    note_page_arrow(rdram, ctx);
     static const bool page_log = std::getenv("AIDYN_PAGE_LOG") != nullptr;
     if (page_log) {
         log_page_draw(rdram, ctx);
@@ -1001,12 +1006,61 @@ extern "C" void aidyn_scene_draw_end(uint8_t* rdram, recomp_context* ctx) {
 // AIDYN_ANIM_LOG=1 prints each animation tick's switch flag and z motion, for measuring.
 extern "C" void Scene__Tick(uint8_t* rdram, recomp_context* ctx);  // the recompiled Scene::Tick (0x80097098)
 
+// Ticking the new animation at once skips its first frame (aniTime 1) for everything that reads the frame number.
+// ProcessPlayers notes which animation an actor is playing for its sounds only on frame 1 (pDat->unk16 = ani_type), and
+// player_audiokey plays footsteps, swings, hits and spell sounds on given frames of that animation, so without frame 1
+// every sound keyed to an animation was silent. early_switch remembers the models ticked early (Borg7 -> aniTime after
+// the tick); aidyn_anim_first_frame (ProcessPlayers' aniTime == 1 check) and aidyn_anim_first_frame_sound (its
+// player_audiokey call) give the actor its frame 1 back: the animation is noted, and frame 1's sounds play just before
+// frame 2's, in the same tick.
+namespace {
+    std::unordered_map<uint32_t, uint16_t> early_switch;
+    uint32_t first_frame_actor = 0;
+}
+
 extern "C" void aidyn_anim_loop_tick(uint8_t* rdram, recomp_context* ctx) {
     if (!aidyn::settings::graphics().smooth_animation_loops) {
         return;
     }
-    ctx->r4 = MEM_W(8, ctx->r17);  // the model's scene
+    const gpr borg7 = ctx->r17;
+    ctx->r4 = MEM_W(8, borg7);  // the model's scene
     Scene__Tick(rdram, ctx);
+    early_switch[(uint32_t)borg7] = MEM_HU(0x1F8, MEM_W(8, borg7));  // SceneData.aniTime
+}
+
+// ProcessPlayers before 0x800132A4 (bne a0, v0): s1 = the actor, a0 = its aniTime, v0 = 1. Returns the aniTime to test.
+extern "C" gpr aidyn_anim_first_frame(uint8_t* rdram, gpr actor, gpr ani_time) {
+    const uint32_t borg7 = (uint32_t)MEM_W(4, actor);
+    auto it = early_switch.find(borg7);
+    if (it == early_switch.end()) {
+        return ani_time;
+    }
+    const bool now = it->second == (uint16_t)ani_time;
+    early_switch.erase(it);
+    if (!now) {
+        return ani_time;
+    }
+    first_frame_actor = (uint32_t)actor;
+    return 1;
+}
+
+extern "C" void player_audiokey(uint8_t* rdram, recomp_context* ctx);  // the recompiled player_audiokey (0x80053560)
+
+// ProcessPlayers before 0x8001341C (jal player_audiokey; its delay slot sets a0 = s1): a1 animation, a2 frame, a3 length.
+extern "C" void aidyn_anim_first_frame_sound(uint8_t* rdram, recomp_context* ctx) {
+    if (first_frame_actor == 0) {
+        return;
+    }
+    const bool mine = first_frame_actor == (uint32_t)ctx->r17;
+    first_frame_actor = 0;
+    if (!mine || (uint32_t)(ctx->r6 & 0xFFFF) <= 1) {
+        return;
+    }
+    recomp_context saved = *ctx;
+    ctx->r4 = ctx->r17;
+    ctx->r6 = 1;
+    player_audiokey(rdram, ctx);
+    *ctx = saved;
 }
 
 extern "C" int aidyn_anim_loop_motion(uint8_t* rdram, gpr anim, int branched) {
@@ -1068,9 +1122,209 @@ extern "C" void aidyn_anim_loop_speed(uint8_t* rdram, gpr anim, int branched) {
 // Startup logos. load_splashscreen_data (TitleSplash::Load) starts the boot sequence at state 5 (gGlobals.
 // titleSplashVars.state, 0x800D80A8): Expansion Pak notice, copyright, Nintendo logo, THQ, H2O, then 0 = done, on to
 // the title screen. With settings.json game.skip_intro (default) an aidyn.us.toml hook at its return sets 0.
+//
+// The intro music starts with the logos (load_intro_music) and plays on into the title screen, so with the logos
+// skipped the title screen opened on the part written for them. It is moved on to where it was when the title screen
+// used to appear (aidyn_dcm_tick).
+namespace {
+    std::atomic_bool intro_seek{ false };
+}
+
 extern "C" void aidyn_splash_loaded(uint8_t* rdram) {
     if (aidyn::settings::game().skip_intro) {
         MEM_B(0, (gpr)(int32_t)0x800D80A8) = 0;
+        intro_seek = true;
+    }
+}
+
+// The game's music player (decomp dcm.cpp, DCM::VoiceHandler 0x80090C94, run by the audio thread once per tick) plays
+// up to 32 tracks (gDCMManager 0x800E41F0: DCM_struct* at +0x14, 0x20 each: channel states +0x00, Borg12Sub* +0x04,
+// end tick +0x08, ticks played +0x0C, read offset +0x10, id +0x14, active +0x18 (2: playing), tempo divider +0x19 and
+// its count +0x1A, loops +0x1D). A track is one command stream for all its channels (Borg12Sub: channel count low byte
+// at +0x03, length +0x08, loop offset +0x0C, data +0x14); each channel (0x10 bytes: voice id +0x00, unk4 +0x04, pitch
+// +0x08, voice +0x0A, instrument +0x0B, volume +0x0C, pan +0x0D, wait +0x0E) reads its next command when its wait is
+// 0. DcmTrack is a copy of one track's state, and tick() is one handler call on it with the sound left out: reading
+// the stream ahead moves the music on without playing it.
+namespace {
+    constexpr uint32_t kDcmManager = 0x800E41F0;
+    constexpr uint32_t kIntroIndex = 0x800D80A0, kIntroId = 0x800D80A4, kSplashState = 0x800D80A8;
+    // Ticks of the intro music played before the title screen appears when the logos run: measured with
+    // AIDYN_INTRO_LOG=1 and game.skip_intro false.
+    constexpr uint32_t kIntroTitleTick = 12947;
+
+    struct DcmTrack {
+        struct Channel {
+            uint32_t unk4 = 0;
+            uint16_t pitch = 0;
+            uint8_t instrument = 0, volume = 0, pan = 0, wait = 0;
+        };
+        uint32_t played = 0, offset = 0;
+        uint8_t divider = 0, count = 0;
+        Channel ch[32];
+        bool ended = false;
+
+        static gpr address(uint8_t* rdram, uint32_t index) {
+            return (gpr)(int32_t)((uint32_t)MEM_W(0x14, (gpr)(int32_t)kDcmManager) + index * 0x20);
+        }
+        void load(uint8_t* rdram, gpr t) {
+            played = (uint32_t)MEM_W(0xC, t);
+            offset = (uint32_t)MEM_W(0x10, t);
+            divider = MEM_BU(0x19, t);
+            count = MEM_BU(0x1A, t);
+            const gpr c = MEM_W(0, t);
+            for (uint32_t i = 0; i < 32; i++) {
+                Channel& k = ch[i];
+                k.unk4 = (uint32_t)MEM_W(4 + i * 0x10, c);
+                k.pitch = (uint16_t)MEM_HU(8 + i * 0x10, c);
+                k.instrument = MEM_BU(0xB + i * 0x10, c);
+                k.volume = MEM_BU(0xC + i * 0x10, c);
+                k.pan = MEM_BU(0xD + i * 0x10, c);
+                k.wait = MEM_BU(0xE + i * 0x10, c);
+            }
+        }
+        void store(uint8_t* rdram, gpr t) const {
+            MEM_W(0xC, t) = (int32_t)played;
+            MEM_W(0x10, t) = (int32_t)offset;
+            MEM_B(0x19, t) = divider;
+            MEM_B(0x1A, t) = count;
+            const gpr c = MEM_W(0, t);
+            for (uint32_t i = 0; i < 32; i++) {
+                const Channel& k = ch[i];
+                MEM_W(4 + i * 0x10, c) = (int32_t)k.unk4;
+                MEM_H(8 + i * 0x10, c) = (int16_t)k.pitch;
+                MEM_B(0xB + i * 0x10, c) = k.instrument;
+                MEM_B(0xC + i * 0x10, c) = k.volume;
+                MEM_B(0xD + i * 0x10, c) = k.pan;
+                MEM_B(0xE + i * 0x10, c) = k.wait;
+            }
+        }
+        bool same(const DcmTrack& o, uint32_t channels) const {
+            if (played != o.played || offset != o.offset || divider != o.divider || count != o.count) {
+                return false;
+            }
+            for (uint32_t i = 0; i < channels; i++) {
+                const Channel &a = ch[i], &b = o.ch[i];
+                if (a.unk4 != b.unk4 || a.pitch != b.pitch || a.instrument != b.instrument || a.volume != b.volume
+                    || a.pan != b.pan || a.wait != b.wait) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        void tick(uint8_t* rdram, gpr sub, uint8_t loops) {
+            const uint32_t channels = MEM_BU(3, sub) & 31, length = (uint32_t)MEM_W(8, sub);
+            const gpr data = MEM_W(0x14, sub);
+            auto byte = [&]() { return (uint8_t)MEM_BU(offset++, data); };
+            if (count < divider) {
+                count++;
+            }
+            else {
+                for (uint32_t i = 0; i < channels; i++) {
+                    Channel& k = ch[i];
+                    if (k.wait != 0) {
+                        k.wait--;
+                        continue;
+                    }
+                    const uint8_t cmd = byte();
+                    if (cmd & 0x80) {
+                        k.wait = (cmd & 0x7F) + 1;
+                        continue;
+                    }
+                    if (cmd & 0x40) {
+                        const uint16_t lo = byte(), hi = byte(), raw = lo | (hi << 8), shift = raw >> 14;
+                        static constexpr uint16_t base[4] = { 0, 0x4000, 0xC000, 0xC000 };
+                        k.pitch = (uint16_t)(base[shift] + ((raw & 0x3FFF) << shift));
+                    }
+                    if (cmd & 0x20) {
+                        k.volume = (uint8_t)std::sqrt((float)byte());
+                    }
+                    if (cmd & 0x10) {
+                        k.pan = byte();
+                    }
+                    if (cmd & 0x08) {
+                        k.instrument = byte();
+                    }
+                    k.unk4 = (cmd & 0x04) ? (uint32_t)byte() << 8 : 0;
+                    if (cmd & 0x01) {
+                        const uint8_t sub_cmd = byte();
+                        if (sub_cmd & 0x40) {
+                            uint8_t t = byte();
+                            if (t != 0) {
+                                t = (uint8_t)(125000u / ((uint32_t)t * 50u)) - 1;
+                            }
+                            divider = t;
+                        }
+                        if (sub_cmd & 0x20) {
+                            offset++;
+                        }
+                    }
+                }
+                if (offset >= length) {
+                    if (loops == 0) {
+                        ended = true;
+                    }
+                    offset = (uint32_t)MEM_W(0xC, sub);
+                    for (Channel& k : ch) {
+                        k.wait = 0;
+                    }
+                }
+                count = 0;
+            }
+            played++;
+        }
+    };
+    DcmTrack intro_start;  // AIDYN_INTRO_LOG: the intro music's state on its first tick
+    bool intro_start_seen = false, intro_logged = false;
+}
+
+extern "C" void func_8008FAB0(uint8_t* rdram, recomp_context* ctx);  // the recompiled DCM::StopVoice(voice, id)
+
+// DCM::VoiceHandler's entry (audio thread).
+extern "C" void aidyn_dcm_tick(uint8_t* rdram, recomp_context* ctx) {
+    static const bool log = std::getenv("AIDYN_INTRO_LOG") != nullptr;
+    if (!log && !intro_seek) {
+        return;
+    }
+    const uint32_t index = (uint32_t)MEM_W(0, (gpr)(int32_t)kIntroIndex), id = (uint32_t)MEM_W(0, (gpr)(int32_t)kIntroId);
+    if (index >= 32) {
+        return;
+    }
+    const gpr t = DcmTrack::address(rdram, index);
+    if (MEM_BU(0x18, t) != 2 || (uint32_t)MEM_W(0x14, t) != id) {
+        return;  // not playing (yet)
+    }
+    const gpr sub = MEM_W(4, t);
+    if (log) {
+        if (!intro_start_seen && MEM_W(0xC, t) == 0) {
+            intro_start.load(rdram, t);
+            intro_start_seen = true;
+        }
+        if (intro_start_seen && !intro_logged && MEM_BU(0, (gpr)(int32_t)kSplashState) == 0) {
+            intro_logged = true;
+            DcmTrack now, sim = intro_start;
+            now.load(rdram, t);
+            while (sim.played < now.played) {
+                sim.tick(rdram, sub, MEM_BU(0x1D, t));
+            }
+            fprintf(stderr, "intro music: title screen at tick %u (offset %u); reading ahead %s\n", now.played,
+                    now.offset, sim.same(now, MEM_BU(3, sub) & 31) ? "matches" : "DIFFERS");
+        }
+    }
+    if (intro_seek.exchange(false)) {
+        DcmTrack track;
+        track.load(rdram, t);
+        while (track.played < kIntroTitleTick && !track.ended) {
+            track.tick(rdram, sub, MEM_BU(0x1D, t));
+        }
+        track.store(rdram, t);
+        const recomp_context saved = *ctx;
+        const gpr channels = MEM_W(0, t);
+        for (uint32_t i = 0; i < (MEM_BU(3, sub) & 31u); i++) {  // notes started before the jump
+            ctx->r4 = MEM_BU(0xA + i * 0x10, channels);
+            ctx->r5 = MEM_W(i * 0x10, channels);
+            func_8008FAB0(rdram, ctx);
+        }
+        *ctx = saved;
     }
 }
 
@@ -1444,4 +1698,305 @@ extern "C" void aidyn_font_widths(uint8_t* rdram, uint32_t borg, gpr face) {
     for (const auto& w : aidyn::font::kWidths) {
         MEM_H(w.cell * 2, sizes) = w.width;
     }
+}
+
+// ---- Sound log (AIDYN_SFX_LOG) ----
+// What the game asks to play: DCM::Add (every sound voice: footsteps, swings, hits, spells), PlayAudioSound (menu
+// and dialogue sounds, by Borg12 index) and player_audiokey's per-frame check with the actor's proximity volume.
+namespace {
+bool sfx_log() {
+    static const bool on = std::getenv("AIDYN_SFX_LOG") != nullptr;
+    return on;
+}
+}
+
+extern "C" void aidyn_sfx_key(uint8_t* rdram, recomp_context* ctx) {
+    if (!sfx_log()) {
+        return;
+    }
+    uint8_t prox = MEM_BU(0x68, ctx->r29);
+    fprintf(stderr, "sfx key: actor %08X anim %u frame %u/%u prox %u\n", (uint32_t)ctx->r16, (uint32_t)ctx->r17,
+            (uint32_t)ctx->r18, (uint32_t)ctx->r19, prox);
+}
+
+extern "C" void aidyn_sfx_dcm(uint8_t* rdram, recomp_context* ctx) {
+    if (sfx_log()) {
+        fprintf(stderr, "sfx dcm add: sub %08X vol %u pan %d\n", (uint32_t)ctx->r6, (uint32_t)(ctx->r7 & 0xFF),
+                (int8_t)MEM_BU(0x10, ctx->r29));
+    }
+}
+
+extern "C" void aidyn_sfx_play(uint8_t* rdram, recomp_context* ctx) {
+    if (sfx_log()) {
+        fprintf(stderr, "sfx play: borg12 %u\n", (uint32_t)ctx->r5);
+    }
+}
+
+extern "C" void aidyn_sfx_attack_vol(uint8_t* rdram, recomp_context* ctx) {
+    if (sfx_log()) {
+        uint32_t bits = (uint32_t)MEM_W(0, (gpr)(int32_t)0x800DA0E0);  // gGlobals.VolSFX (gGlobals + 0x2058)
+        float vol;
+        memcpy(&vol, &bits, 4);
+        fprintf(stderr, "sfx attack: actor %08X anim %u frame %u/%u vol8 %u VolSFX %.2f\n", (uint32_t)ctx->r18,
+                (uint32_t)(ctx->r12 & 0xFFFF), (uint32_t)(ctx->r11 & 0xFFFF), (uint32_t)(ctx->r10 & 0xFFFF),
+                (uint32_t)(ctx->r17 & 0xFF), vol);
+    }
+}
+
+extern "C" void aidyn_sfx_attack_pick(uint8_t* rdram, recomp_context* ctx) {
+    if (sfx_log()) {
+        fprintf(stderr, "sfx attack match: actor %08X sound %u\n", (uint32_t)ctx->r18, (uint32_t)ctx->r2);
+    }
+}
+
+// ---- Button prompts ----
+// Controls card: while walking the field (gGlobals.gameStateA 1) or in combat (2), a see-through dark card at the left
+// edge lists what the buttons do there (top left in the field; bottom left in combat, clear of the enemies' column).
+// View (N64 C-left; keyboard J) shows and hides it in those two modes and isn't passed to the game there (it only
+// cycled combat targets, which the stick and RT still do); src/main/input.cpp, saved as settings.json
+// graphics.controls_card. Page prompts: the pause pages' arrows (SliderArrowL / LR / R, told apart by their pixels,
+// at the bottom of the page, and the one painted into the map page's background) get LB and RB at the ends they
+// point to. Both are drawn at the end of the frame (Graphics__EndList) with their own
+// render state, from the pictures in src/game/branding_images.h (tools/branding/make_branding.py, which also puts
+// their full-resolution versions in the rechronicled pack).
+namespace {
+    constexpr uint32_t kGameStateA = 0x800D80C8;  // gGlobals.gameStateA (u8)
+
+    int branding_index(const char* name) {
+        for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
+            if (std::strcmp(aidyn::branding::kImages[i].name, name) == 0) {
+                return (int)i;
+            }
+        }
+        return -1;
+    }
+
+    // Texels from the left edge to the last column with any opaque texel.
+    uint32_t ink_width(int index) {
+        const auto& img = aidyn::branding::kImages[index];
+        uint32_t w = 0;
+        for (uint32_t y = 0; y < img.h; y++) {
+            for (uint32_t x = 0; x < img.w; x++) {
+                if (img.rgba16[y * img.w + x] & 1) {
+                    w = std::max(w, x + 1);
+                }
+            }
+        }
+        return w;
+    }
+
+    // One-cycle, filtered, blended; texture colour, texture alpha times the primitive colour's alpha.
+    gpr prompt_state(uint8_t* rdram, gpr g, uint8_t alpha) {
+        auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
+        cmd(0xE7000000, 0);                  // gDPPipeSync
+        cmd(0xE3000A01, 0x00000000);         // gDPSetCycleType(G_CYC_1CYCLE)
+        cmd(0xE3000C00, 0x00000000);         // gDPSetTexturePersp(G_TP_NONE)
+        cmd(0xE3001001, 0x00000000);         // gDPSetTextureLUT(G_TT_NONE)
+        cmd(0xE3001201, 0x00002000);         // gDPSetTextureFilter(G_TF_BILERP)
+        cmd(0xE2001E01, 0x00000000);         // gDPSetAlphaCompare(G_AC_NONE)
+        cmd(0xE200001C, 0x00504240);         // gDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2)
+        cmd(0xFC119623, 0xFF2FFFFF);         // gDPSetCombineMode(G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM)
+        cmd(0xFA000000, 0xFFFFFF00u | alpha); // gDPSetPrimColor(0, 0, 255, 255, 255, alpha)
+        return g;
+    }
+
+    struct PageArrow {
+        bool left, right;
+        float x, y, w, h, scale;  // screen pixels; pixels per texel
+        uint8_t alpha;
+    };
+    std::vector<PageArrow> page_arrows;  // drawn this frame (game thread)
+
+    struct Card {
+        const char* rows[8];
+        bool bottom;
+    };
+    const Card kFieldCard = { { "ctl_walk", "ctl_camera", "ctl_talk", "ctl_party", "ctl_sneak", "ctl_ff", "ctl_menu", nullptr },
+                              false };
+    const Card kCombatCard = { { "ctl_move", "ctl_attack", "ctl_magic", "ctl_endturn", "ctl_combatcam", "ctl_ff",
+                                 "ctl_hide", nullptr }, true };
+
+    gpr draw_card(uint8_t* rdram, gpr g, const Card& card) {
+        constexpr float kMargin = 6.0f, kPad = 2.0f, kMessagePortraitX = 25.0f, kMessageTop = 178.0f;
+        int rows[8], n = 0;
+        uint32_t width = 0, height = 0;
+        for (const char* name : card.rows) {
+            if (name == nullptr) {
+                break;
+            }
+            const int i = branding_index(name);
+            if (i < 0) {
+                continue;
+            }
+            rows[n++] = i;
+            width = std::max(width, ink_width(i));
+            height += aidyn::branding::kImages[i].h;
+        }
+        const int panel = branding_index("ctl_panel");
+        if (n == 0 || panel < 0) {
+            return g;
+        }
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        const float x0 = kMargin;
+        float y0 = card.bottom ? 240.0f - kMargin - height - 2 * kPad : kMargin;
+        // Combat's message box (centred, its portrait from x 25 to y 179 of the middle 4:3) leaves the bottom left
+        // corner free on a wide picture only; on a narrower one the card goes above the box.
+        const float room = kMessagePortraitX + (240.0f * view_aspect() - 320.0f) / 2.0f;
+        if (card.bottom && x0 + width + 2 * kPad + 3.0f > room) {
+            y0 = kMessageTop - 3.0f - height - 2 * kPad;
+        }
+        const auto& p = aidyn::branding::kImages[panel];
+        g = hud_begin(rdram, g, false);
+        g = prompt_state(rdram, g, 150);
+        g = draw_rgba16(rdram, g, panel, x0 * hs, y0 * vs, (width + 2 * kPad) / p.w * hs, (height + 2 * kPad) / p.h * vs);
+        g = prompt_state(rdram, g, 255);
+        float y = y0 + kPad;
+        for (int k = 0; k < n; k++) {
+            g = draw_rgba16(rdram, g, rows[k], (x0 + kPad) * hs, y * vs, hs, vs);
+            y += aidyn::branding::kImages[rows[k]].h;
+        }
+        return hud_end(rdram, g);
+    }
+
+    int play_mode(uint8_t* rdram) {
+        const uint8_t state = MEM_BU(0, (gpr)(int32_t)kGameStateA);
+        static const bool log = std::getenv("AIDYN_MODE_LOG") != nullptr;
+        static uint8_t last = 0xFF;
+        if (log && state != last) {
+            fprintf(stderr, "game state %u\n", state);
+            last = state;
+        }
+        return state == 1 ? 1 : state == 2 ? 2 : 0;
+    }
+}
+
+// N64BorgImageDraw's entry: note a pause page arrow (a1 the image, a2/a3 x/y, sp+0x10.. xOff yOff h v xScale yScale r
+// g b a).
+// The map page's arrow is painted into its background (PauseBGMap, 320x240 CI8: a left arrow at texels 142..177,
+// 196..203, told by those texels): noted at that place when the visible part of the picture includes it.
+static void note_map_page_arrow(uint8_t* rdram, recomp_context* ctx, gpr img) {
+    constexpr uint32_t kX = 142, kY = 196, kW = 36, kH = 8;
+    const gpr pixels = MEM_W(0x14, img);
+    uint64_t hash = 0xCBF29CE484222325ULL;
+    for (uint32_t y = kY; y < kY + kH; y++) {
+        for (uint32_t x = kX; x < kX + kW; x++) {
+            hash = (hash ^ MEM_BU(y * 320 + x, pixels)) * 0x100000001B3ULL;
+        }
+    }
+    const gpr sp = ctx->r29;
+    const uint32_t xoff = MEM_HU(0x12, sp), yoff = MEM_HU(0x16, sp), h = MEM_HU(0x1A, sp), v = MEM_HU(0x1E, sp);
+    if (hash != 0x0D50127AE284254EULL || xoff > kX || h < kX + kW || yoff > kY || v < kY + kH) {
+        return;
+    }
+    const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+    float x, y;
+    uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&x, &bits, 4);
+    bits = (uint32_t)ctx->r7;
+    std::memcpy(&y, &bits, 4);
+    const float xs = read_f32(rdram, sp + 0x20), ys = read_f32(rdram, sp + 0x24);
+    PageArrow a{};
+    a.left = true;
+    a.x = (x + (float)(int)(kX - xoff) * xs) * hs;
+    a.y = (y + (float)(int)(kY - yoff) * ys) * vs;
+    a.w = kW * xs * hs;
+    a.h = kH * ys * vs;
+    a.scale = xs * hs;
+    a.alpha = MEM_BU(0x37, sp);
+    if (a.alpha != 0 && page_arrows.size() < 8) {
+        page_arrows.push_back(a);
+    }
+}
+
+void note_page_arrow(uint8_t* rdram, recomp_context* ctx) {
+    const gpr img = ctx->r5;
+    if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 320 && MEM_HU(0x0C, img) == 240) {
+        note_map_page_arrow(rdram, ctx, img);
+        return;
+    }
+    if (img == 0 || MEM_HU(0x08, img) != 5 || MEM_HU(0x0C, img) != 8) {
+        return;
+    }
+    const uint32_t w = MEM_HU(0x0A, img);
+    if (w != 36 && w != 47) {
+        return;
+    }
+    const gpr pixels = MEM_W(0x14, img);
+    uint64_t hash = 0xCBF29CE484222325ULL;
+    for (uint32_t i = 0; i < w * 8; i++) {
+        hash = (hash ^ MEM_BU(i, pixels)) * 0x100000001B3ULL;
+    }
+    PageArrow a{};
+    if (hash == 0xB250FD36B7D00719ULL) a.left = true;                          // SliderArrowL
+    else if (hash == 0x46AC41CADC3C3186ULL) a.left = a.right = true;           // SliderArrowLR
+    else if (hash == 0x30B0CB2D5BAD17CDULL) a.right = true;                    // SliderArrowR
+    else return;
+    const gpr sp = ctx->r29;
+    const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+    float x, y;
+    uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&x, &bits, 4);
+    bits = (uint32_t)ctx->r7;
+    std::memcpy(&y, &bits, 4);
+    const float xs = read_f32(rdram, sp + 0x20), ys = read_f32(rdram, sp + 0x24);
+    a.x = x * hs;
+    a.y = y * vs;
+    a.w = (float)(int)(MEM_HU(0x1A, sp) - MEM_HU(0x12, sp)) * xs * hs;
+    a.h = (float)(int)(MEM_HU(0x1E, sp) - MEM_HU(0x16, sp)) * ys * vs;
+    a.scale = xs * hs;
+    a.alpha = MEM_BU(0x37, sp);
+    // Only a page's own arrow, at its bottom: the Controller Pak screens use the same arrows on their save slots
+    // (y 77), which aren't turned with LB / RB.
+    if (y < 180.0f) {
+        return;
+    }
+    if (a.alpha != 0 && page_arrows.size() < 8) {
+        page_arrows.push_back(a);
+    }
+}
+
+namespace aidyn {
+    bool redrawn_art();  // src/main/rt64_context.cpp: false while F2 has the redrawn art pack off
+}
+
+gpr aidyn_prompts(uint8_t* rdram, gpr g) {
+    if (!aidyn::redrawn_art()) {  // say so, top right under the fast-forward marker
+        copy_branding(rdram);
+        const int label = branding_index("art_off");
+        if (label >= 0) {
+            const auto& img = aidyn::branding::kImages[label];
+            const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+            g = hud_begin(rdram, g, true);
+            g = prompt_state(rdram, g, 255);
+            g = draw_rgba16(rdram, g, label, (320 - 8 - img.w) * hs, 22 * vs, hs, vs);
+            g = hud_end(rdram, g);
+        }
+    }
+    const int mode = play_mode(rdram);
+    aidyn::input::set_card_mode(mode);
+    if (mode == 0 && page_arrows.empty()) {
+        return g;
+    }
+    copy_branding(rdram);
+    // Not while Menu is held: pausing keeps a picture of the screen as the pause menu's background.
+    if (mode != 0 && aidyn::input::controls_card() && !aidyn::input::start_held()) {
+        g = draw_card(rdram, g, mode == 1 ? kFieldCard : kCombatCard);
+    }
+    const int lb = branding_index("prompt_lb"), rb = branding_index("prompt_rb");
+    for (const PageArrow& a : page_arrows) {
+        if (lb < 0 || rb < 0) {
+            break;
+        }
+        const auto& icon = aidyn::branding::kImages[lb];
+        const float iw = icon.w * a.scale, ih = icon.h * a.scale, y = a.y + (a.h - ih) / 2.0f, gap = a.scale;
+        g = prompt_state(rdram, g, a.alpha);
+        if (a.left) {
+            g = draw_rgba16(rdram, g, lb, a.x - iw - gap, y, a.scale, a.scale);
+        }
+        if (a.right) {
+            g = draw_rgba16(rdram, g, rb, a.x + a.w + gap, y, a.scale, a.scale);
+        }
+    }
+    page_arrows.clear();
+    return g;
 }

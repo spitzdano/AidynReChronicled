@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import romassets
+import redone
 from pngio import decode_borg8, read_png, write_png
 
 BPP = {1: 32, 2: 16, 3: 16, 4: 8, 5: 8, 6: 8, 7: 4, 8: 4, 9: 4}
@@ -76,11 +77,15 @@ def verify(rom, index, tool, dumps):
     return sum((Path(dumps) / f"{h}.v5.tmem").exists() for h in hs), len(hs)
 
 
-def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, log=print):
-    """Upscales every portrait and writes one replacement per variant into `out`. Returns rt64.json texture entries."""
+def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, art=None, only_art=False, crop_scale_of=None,
+          log=print):
+    """Upscales every portrait and writes one replacement per variant into `out`. Returns rt64.json texture entries.
+    art: {name: path} of redrawn portraits (redone.collect()), used instead of the upscale; only_art: only those.
+    crop_scale_of(name): the scale of that portrait's cropped variants, if not crop_scale."""
     rom = romassets.Rom(rom_path)
     names = romassets.borg8_names(decomp)
-    portraits = {i: n for i, n in names.items() if n.startswith("Portrait")}
+    art = art or {}
+    portraits = {i: n for i, n in names.items() if n.startswith("Portrait") and (n in art or not only_art)}
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"
@@ -94,6 +99,8 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, log=pri
                 log(f"portraits.py: {name}: {BPP[fmt]}-bit image skipped")
                 continue
             images[index] = img
+            if name in art:
+                continue  # redrawn: nothing to upscale
             rgba = decode_borg8(fmt, w, h, pixels, palette)
             # Faces: each texel doubled first, so the upscaler keeps one-texel features (eyes) instead of repainting.
             faces = fmt in (4, 7)
@@ -104,13 +111,17 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, log=pri
                     o = ((y // k) * w + x // k) * 4
                     doubled[(y * w * k + x) * 4:(y * w * k + x) * 4 + 4] = rgba[o:o + 4]
             write_png(src / f"{index}.png", w * k, h * k, doubled)
-        r = subprocess.run([str(esrgan), "-i", str(src), "-o", str(big), "-n", model, "-s", "4", "-f", "png"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"realesrgan failed:\n{r.stderr[-2000:]}")
+        if any(src.iterdir()):
+            r = subprocess.run([str(esrgan), "-i", str(src), "-o", str(big), "-n", model, "-s", "4", "-f", "png"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            if r.returncode != 0:
+                raise RuntimeError(f"realesrgan failed:\n{r.stderr[-2000:]}")
         for index, img in sorted(images.items()):
             fmt, w, h, _, _ = img
-            UW, UH, up = read_png(big / f"{index}.png")
+            if portraits[index] in art:
+                UW, UH, up = redone.load(art[portraits[index]], w, h)
+            else:
+                UW, UH, up = read_png(big / f"{index}.png")
             per = UW // w  # upscaled pixels per texel (8 for faces, 4 otherwise)
             levels = {}
 
@@ -136,7 +147,7 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, log=pri
             hs = hashes(tool, [j for _, j in js])
             for ((x0, tw), _), h_ in zip(js, hs):
                 whole = (x0, tw) == (0, w)
-                s = min(per, scale if whole else crop_scale)
+                s = min(per, scale if whole else (crop_scale_of(portraits[index]) if crop_scale_of else crop_scale))
                 LW, px = level(s)
                 cw, ch = tw * s, h * s
                 cut = bytearray(cw * ch * 4)
@@ -145,5 +156,6 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, log=pri
                 write_png(Path(out) / f"{h_}.png", cw, ch, cut)
                 entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_},
                                 "operation": "preload" if whole else "stream"})
-        log(f"portraits.py: {len(images)} portraits from the ROM, {len(entries)} textures")
+        log(f"portraits.py: {len(images)} portraits from the ROM ({sum(portraits[i] in art for i in images)} redrawn), "
+            f"{len(entries)} textures")
     return entries

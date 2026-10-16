@@ -98,6 +98,7 @@ and are rebuilt from the upscaled image. The world pack streams in as textures a
 ```sh
 python3 tools/hdui/export_art.py        # portraits, item and slot icons -> build/art-export/AidynArt(.zip)
 python3 tools/hdui/export_textures.py   # world textures -> build/art-export/AidynTextures(.zip); --no-hd: smaller
+python3 tools/hdui/export_prompts.py    # the button icons of the port's prompts -> build/art-export/AidynPrompts(.zip)
 ```
 
 Packages of the game's art for redrawing it some other way, each with original, 8x nearest-neighbour and current-HD
@@ -105,4 +106,10 @@ versions, empty `redone/` folders, contact sheets, a manifest and a README with 
 (`export_art_README.md`, `export_textures_README.md`). `export_textures.py` sorts the 2,115 distinct world textures by
 what uses them, found the way the game loads them: characters (Borg7 actors → Borg6 → Borg5 models), areas (map
 chunks, and the props each area's Borg9 maps place), items, spell effects (the decomp's spell visuals), other. Both
-are made from the ROM, so they stay in build/. Importing redone pictures into the packs isn't built yet.
+are made from the ROM, so they stay in build/.
+
+Redrawn pictures come back into `art/` (see `art/README.md`): `redone.py` finds portraits and icons by name and
+textures by number, `portraits.py` and `romimages.py` use the pictures instead of upscaling (in `hd-ui`), and
+`art_pack.py` builds the `rechronicled-art` pack from them alone (textures too: every mip level and scroll position),
+which a release can ship and which wins over `hd-ui` and `hd-world`. Button icons go in `art/buttons`, where
+`buttons.py` picks them up for every prompt.

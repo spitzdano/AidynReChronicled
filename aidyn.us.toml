@@ -168,6 +168,18 @@ func = "func_80096570"
 before_vram = 0x8009676C
 text = "extern void aidyn_anim_loop_speed(uint8_t* rdram, gpr anim, int branched); aidyn_anim_loop_speed(rdram, ctx->r17, (int)ctx->r19);"
 
+# The animation's first frame, which the early tick skips, for ProcessPlayers' sound bookkeeping (src/game/patches.cpp,
+# "Animation loops"): its aniTime == 1 test (a0 = aniTime, s1 = the actor) and its player_audiokey call.
+[[patches.hook]]
+func = "ProcessPlayers"
+before_vram = 0x800132A4
+text = "extern gpr aidyn_anim_first_frame(uint8_t* rdram, gpr actor, gpr ani_time); ctx->r4 = aidyn_anim_first_frame(rdram, ctx->r17, ctx->r4);"
+
+[[patches.hook]]
+func = "ProcessPlayers"
+before_vram = 0x8001341C
+text = "extern void aidyn_anim_first_frame_sound(uint8_t* rdram, recomp_context* ctx); aidyn_anim_first_frame_sound(rdram, ctx);"
+
 # Far map cells (src/game/patches.cpp, "Far map cells"): the game is told it has 15 MB (MemoryCheck, after
 # osGetMemSize returns in v0); rings of map cells are kept loaded and drawn after the game's own cells (RenderZones at
 # L_8000DB34, display list at sp+0x64); leaving the field frees them (FreeZoneEngine, FreeZoneEngineMemory entries).
@@ -337,3 +349,39 @@ text = "extern gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g); ctx->r2 = aidyn_
 func = "func_800AA474"
 before_vram = 0x800AA580
 text = "extern void aidyn_font_widths(uint8_t* rdram, uint32_t borg, gpr face); aidyn_font_widths(rdram, (uint32_t)ctx->r20, ctx->r16);"
+
+# AIDYN_SFX_LOG (src/game/patches.cpp, "Sound log"): every sound effect the game starts, and each animation-keyed
+# sound check (player_audiokey after its camera-proximity call: s0 actor, s1 animation, s2 frame, s3 length,
+# sp+0x68 proximity volume).
+[[patches.hook]]
+func = "player_audiokey"
+before_vram = 0x800535EC
+text = "extern void aidyn_sfx_key(uint8_t* rdram, recomp_context* ctx); aidyn_sfx_key(rdram, ctx);"
+
+[[patches.hook]]
+func = "DCM__Add"
+before_vram = 0x800907A4
+text = "extern void aidyn_sfx_dcm(uint8_t* rdram, recomp_context* ctx); aidyn_sfx_dcm(rdram, ctx);"
+
+[[patches.hook]]
+func = "PlayAudioSound"
+before_vram = 0x8004E150
+text = "extern void aidyn_sfx_play(uint8_t* rdram, recomp_context* ctx); aidyn_sfx_play(rdram, ctx);"
+
+# AIDYN_SFX_LOG: player_audiokey's attack-sound check (func_800532BC, decomp FUN_8005c0f0): s1 = proximity volume x
+# VolSFX; then, on a matching animation frame, v0 = the sound picked (0: none).
+[[patches.hook]]
+func = "func_800532BC"
+before_vram = 0x80053344
+text = "extern void aidyn_sfx_attack_vol(uint8_t* rdram, recomp_context* ctx); aidyn_sfx_attack_vol(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_800532BC"
+before_vram = 0x80053438
+text = "extern void aidyn_sfx_attack_pick(uint8_t* rdram, recomp_context* ctx); aidyn_sfx_attack_pick(rdram, ctx);"
+
+# The intro music moved on past the skipped logos (src/game/patches.cpp, "Startup logos"): DCM::VoiceHandler's entry.
+[[patches.hook]]
+func = "func_80090C94"
+before_vram = 0x80090C94
+text = "extern void aidyn_dcm_tick(uint8_t* rdram, recomp_context* ctx); aidyn_dcm_tick(rdram, ctx);"

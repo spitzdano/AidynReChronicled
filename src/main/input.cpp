@@ -16,6 +16,8 @@
 #include "SDL2/SDL.h"
 
 #include "input.h"
+#include "settings.h"
+#include "rt64_context.h"
 
 namespace {
     enum N64Button : uint16_t {
@@ -36,6 +38,14 @@ namespace {
     std::atomic_bool ff_toggled{ false }, ff_held{ false };
     bool l3_was_down = false;
     std::atomic_bool c_left{ false };
+    std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
+    std::atomic_bool start{ false };
+    std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
+
+    bool card_visible() {
+        const int s = card_state.load(std::memory_order_relaxed);
+        return s < 0 ? aidyn::settings::graphics().controls_card : s != 0;
+    }
 
     void open_first_pad() {
         if (pad != nullptr) {
@@ -156,7 +166,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     if (keys[SDL_SCANCODE_DOWN]) sy = -1.0f;
 
     // Test aid for automated play-testing: AIDYN_PAD_FILE names a text file holding "<hex buttons> <x> <y> [<rx> <ry>]"
-    // (N64 button bits as above, plus 0x10000 for R3 and 0x20000 for L3; sticks -1..1, the right stick optional). Read on every poll and
+    // (N64 button bits as above, plus 0x10000 for R3, 0x20000 for L3 and 0x40000 for F2; sticks -1..1, the right stick optional). Read on every poll and
     // ORed in; absent or unreadable means nothing.
     static const char* pad_file = std::getenv("AIDYN_PAD_FILE");
     if (pad_file != nullptr) {
@@ -167,6 +177,11 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
             b |= static_cast<uint16_t>(fb);
             click = click || (fb & 0x10000) != 0;
             l3 = l3 || (fb & 0x20000) != 0;
+            static bool f2_was = false;  // 0x40000: F2 (redrawn art off / on)
+            if ((fb & 0x40000) != 0 && !f2_was) {
+                aidyn::toggle_redrawn_art();
+            }
+            f2_was = (fb & 0x40000) != 0;
             if (fx != 0.0f || fy != 0.0f) {
                 sx = fx;
                 sy = fy;
@@ -186,11 +201,37 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     l3_was_down = l3;
     ff_held.store(keys[SDL_SCANCODE_TAB] != 0, std::memory_order_relaxed);
     c_left.store((b & CL) != 0, std::memory_order_relaxed);
+    start.store((b & START) != 0, std::memory_order_relaxed);
+    // In the field and in combat View shows or hides the controls card (src/game/patches.cpp, "Button prompts") and
+    // doesn't reach the game.
+    static bool view_was_down = false;
+    const bool view = (b & CL) != 0;
+    if (card_mode.load(std::memory_order_relaxed) != 0) {
+        if (view && !view_was_down) {
+            const bool shown = !card_visible();
+            card_state.store(shown ? 1 : 0, std::memory_order_relaxed);
+            aidyn::settings::save_controls_card(shown);
+        }
+        b &= ~CL;
+    }
+    view_was_down = view;
 
     *buttons = b;
     *x = sx;
     *y = sy;
     return true;
+}
+
+void aidyn::input::set_card_mode(int mode) {
+    card_mode.store(mode, std::memory_order_relaxed);
+}
+
+bool aidyn::input::start_held() {
+    return start.load(std::memory_order_relaxed);
+}
+
+bool aidyn::input::controls_card() {
+    return card_visible();
 }
 
 void aidyn::input::right_stick(float* x, float* y) {

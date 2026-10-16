@@ -5,10 +5,35 @@ from pathlib import Path
 
 
 def write_png(path, w, h, rgba):
-    raw = b"".join(b"\x00" + bytes(rgba[y * w * 4:(y + 1) * w * 4]) for y in range(h))
+    """RGBA8 in; written as RGB when every pixel is opaque. With numpy, each row gets the PNG filter that suits it
+    (as encoders do: least sum of absolute differences), which makes painted pictures about half the size."""
     def chunk(t, d):
         return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-    Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is None:
+        ctype = 6
+        raw = b"".join(b"\x00" + bytes(rgba[y * w * 4:(y + 1) * w * 4]) for y in range(h))
+    else:
+        a = np.frombuffer(bytes(rgba), np.uint8).reshape(h, w, 4)
+        ch, ctype = (3, 2) if (a[..., 3] == 255).all() else (4, 6)
+        x = a[..., :ch].reshape(h, w * ch).astype(np.int16)
+        up = np.vstack([np.zeros((1, w * ch), np.int16), x[:-1]])
+        left = np.hstack([np.zeros((h, ch), np.int16), x[:, :-ch]])
+        ul = np.hstack([np.zeros((h, ch), np.int16), up[:, :-ch]])
+        p = left + up - ul
+        pa, pb, pc = np.abs(p - left), np.abs(p - up), np.abs(p - ul)
+        paeth = np.where((pa <= pb) & (pa <= pc), left, np.where(pb <= pc, up, ul))
+        filtered = np.stack([x, x - left, x - up, x - ((left + up) >> 1), x - paeth]).astype(np.uint8)  # mod 256
+        cost = np.abs(filtered.astype(np.int8).astype(np.int16)).sum(axis=2)  # (5, h)
+        best = cost.argmin(axis=0)
+        rows = np.empty((h, 1 + w * ch), np.uint8)
+        rows[:, 0] = best
+        rows[:, 1:] = filtered[best, np.arange(h)]
+        raw = rows.tobytes()
+    Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, ctype, 0, 0, 0))
                            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
 
