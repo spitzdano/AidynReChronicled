@@ -1,0 +1,25 @@
+# C1: never commit ROM bytes, or anything derived from them.
+*.z64
+*.n64
+*.v64
+baserom*
+
+# Generated from the ROM at build time (regenerate with tools/).
+/build/
+/RecompiledFuncs/
+/rsp/
+/split/asm/
+/split/bin/
+/split/src/
+/split/include/
+/split/.splache/
+/split/*.ld
+/split/*.d
+/split/undefined_funcs_auto.txt
+/split/undefined_syms_auto.txt
+/dump.toml
+/data_dump.toml
+
+# Python bytecode from the tools.
+__pycache__/
+*.pyc

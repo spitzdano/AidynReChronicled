@@ -1,0 +1,7 @@
+# old_start -> new_start   # reason   (moves a subsegment boundary; ROM offsets, lowercase hex as in the decomp yaml)
+0x3f450 -> 0x3f540   # boundary cut func_8003E7E0 (a switch) in half; its local labels must stay in one file
+# Literal text replacements: old => new   # reason
+- [0x01000, "bin",init_] => - [0x01000, "asm",romMain]\n    - {start: 0x01070, type: bin, name: init_ucode, linker_section_order: .text}   # entry code must be a function for N64Recomp; rspboot + ucode data follow it
+- [0xb8750, "bin",os/exception] => - [0xb8750, "asm",os/exception]   # needs real function symbols for N64Recomp (upstream kept it a blob: "compiler complains when ASM")
+0x30300 -> 0x30334   # boundary cut bigAssOpenCallback; its tail (func_8002F700, the epilogue) must stay with it
+0x32250 -> 0x323e0   # boundary cut func_80031620; the rest (func_80031650..) must stay with it

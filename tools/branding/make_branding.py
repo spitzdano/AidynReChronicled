@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+"""make_branding.py: the Aidyn ReChronicled additions to the title screen, drawn from fonts (no game data).
+
+  "Rechronicled"           under THE FIRST MAGE on the title card: Marcellus SC (small caps), copper like the logo's
+                           CHRONICLES, dark outline, soft shadow
+  "Enhanced by SPITZDANO"  bottom right: "Enhanced by" like the game's white text; SPITZDANO in the Neon Horizon chrome
+                           type (Kanit Black Italic, sky-white > cyan > horizon line > magenta > pink, light scan
+                           stripes, white rim, magenta glow)
+  "[View] Original · Aidyn Patch"  bottom left, one picture for each running version (bright) and the other (dimmed);
+                           View switches on the title screen
+
+Each is rendered at 8 pixels per N64 texel. Outputs:
+  src/game/branding_images.h       the N64-size RGBA16 copies the game draws (src/game/patches.cpp, "Title screen").
+                                    Generated: re-run this script (then rebuild the game), never edit it.
+  build/branding/<name>@8x.png     the full-resolution versions
+  <data>/texture-packs/rechronicled  a small RT64 pack replacing each RGBA16 copy (as the game loads it, hashed by
+                                    build/cmake/tmemhash) with its full-resolution version; settings.json loads it by
+                                    default
+
+  python3 -I tools/branding/make_branding.py
+"""
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+PROJECT = HERE.parents[1]
+sys.path.insert(0, str(PROJECT / "tools/hdui"))
+from pngio import write_png  # noqa: E402
+
+SS = 8  # output pixels per texel
+MARCELLUS = PROJECT / "tools/hdui/fonts/MarcellusSC-Regular.ttf"
+KANIT = HERE / "fonts/Kanit-BlackItalic.ttf"
+HEADER = PROJECT / "src/game/branding_images.h"
+OUT = PROJECT / "build/branding"
+PACK = Path.home() / ".local/share/AidynReChronicled/texture-packs/rechronicled"
+
+# The chrome fill (themes/neon-horizon/live/shaders/chrome.frag): position from cap top (0) to baseline (1).
+CHROME = [(0.00, "#f2fdff"), (0.32, "#8af7f9"), (0.48, "#2de2e6"), (0.50, "#2a0f4e"), (0.53, "#ff3ec8"),
+          (0.80, "#ff8ae2"), (1.00, "#fff4fd")]
+COPPER = [(0.00, "#ffe2ac"), (0.40, "#e39352"), (0.72, "#ad471d"), (1.00, "#6c240d")]
+
+
+def rgb(hex_):
+    return np.array([int(hex_[i:i + 2], 16) for i in (1, 3, 5)], np.float32) / 255.0
+
+
+def gradient(stops, f):
+    """stops [(pos, colour)] sampled at f (any shape) -> (..., 3)."""
+    f = np.clip(f, 0.0, 1.0)
+    out = np.zeros(f.shape + (3,), np.float32)
+    for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
+        t = np.clip((f - p0) / max(p1 - p0, 1e-6), 0.0, 1.0)[..., None]
+        inside = ((f >= p0) & (f <= p1))[..., None]
+        out = np.where(inside, rgb(c0) * (1 - t) + rgb(c1) * t, out)
+    return out
+
+
+def text_mask(text, font, size, w, h, x, baseline):
+    """Coverage 0..1 of `text` drawn with its baseline at y = baseline, starting at x."""
+    cmd = ["magick", "-size", f"{w}x{h}", "xc:black", "-fill", "white", "-font", str(font), "-pointsize", str(size),
+           "-annotate", f"+{x}+{baseline}", text, "-colorspace", "gray", "-depth", "8", "gray:-"]
+    raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+    return np.frombuffer(raw, np.uint8).reshape(h, w).astype(np.float32) / 255.0
+
+
+def ink_width(text, font, size):
+    m = text_mask(text, font, size, 4000, int(size * 2), 0, int(size * 1.4))
+    cols = np.nonzero(m.max(axis=0) > 0.05)[0]
+    return int(cols.max()) + 1 if len(cols) else 0
+
+
+def cap_rows(font, size, baseline, h):
+    """(cap top, baseline) rows of an H at this size."""
+    m = text_mask("H", font, size, int(size * 2), h, 0, baseline)
+    rows = np.nonzero(m.max(axis=1) > 0.5)[0]
+    return int(rows.min()), int(rows.max()) + 1
+
+
+def dilate(m, r):
+    out = m.copy()
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            if dx * dx + dy * dy <= r * r:
+                out = np.maximum(out, np.roll(np.roll(m, dy, 0), dx, 1))
+    return out
+
+
+def blur(m, r):
+    for axis in (0, 1):
+        for _ in range(3):
+            c = np.cumsum(np.pad(m, [(r + 1, r) if a == axis else (0, 0) for a in (0, 1)], mode="edge"), axis=axis)
+            m = (np.take(c, range(2 * r + 1, c.shape[axis]), axis=axis) - np.take(c, range(0, c.shape[axis] - 2 * r - 1), axis=axis)) / (2 * r + 1)
+    return m
+
+
+def over(dst, colour, alpha):
+    """Premultiplied RGBA dst; colour (3,) or (..., 3); alpha (...)."""
+    a = np.clip(alpha, 0.0, 1.0)[..., None]
+    dst[..., :3] = colour * a + dst[..., :3] * (1 - a)
+    dst[..., 3:] = a + dst[..., 3:] * (1 - a)
+
+
+def shift(m, dx, dy):
+    return np.roll(np.roll(m, dy, 0), dx, 1)
+
+
+def rechronicled(w, h):
+    W, H = w * SS, h * SS
+    size = 128
+    while ink_width("Rechronicled", MARCELLUS, size) > W - 4 * SS and size > 20:
+        size -= 2
+    baseline = int(H * 0.80)
+    width = ink_width("Rechronicled", MARCELLUS, size)
+    m = text_mask("Rechronicled", MARCELLUS, size, W, H, (W - width) // 2, baseline)
+    top, base = cap_rows(MARCELLUS, size, baseline, H)
+    img = np.zeros((H, W, 4), np.float32)
+    edge = dilate(m, 6)
+    over(img, rgb("#000000"), 0.55 * blur(shift(edge, 5, 7), 6))
+    over(img, rgb("#1e0d06"), edge)
+    f = (np.arange(H, dtype=np.float32)[:, None] - top) / max(base - top, 1)
+    over(img, gradient(COPPER, np.broadcast_to(f, (H, W))), m)
+    over(img, rgb("#fff0c8"), 0.45 * np.clip(m - shift(m, 0, 3), 0, 1))  # light top edge, like the logo's bevel
+    return img
+
+
+def credit(w, h):
+    W, H = w * SS, h * SS
+    small, big, gap = 60, 104, 3 * SS
+    baseline = int(H * 0.80)
+    w1, w2 = ink_width("Enhanced by", MARCELLUS, small), ink_width("SPITZDANO", KANIT, big)
+    while w1 + gap + w2 > W - 4 * SS:
+        small, big = small - 2, big - 3
+        w1, w2 = ink_width("Enhanced by", MARCELLUS, small), ink_width("SPITZDANO", KANIT, big)
+    x2 = W - 2 * SS - w2
+    x1 = x2 - gap - w1
+    m1 = text_mask("Enhanced by", MARCELLUS, small, W, H, x1, baseline)
+    m2 = text_mask("SPITZDANO", KANIT, big, W, H, x2, baseline)
+    img = np.zeros((H, W, 4), np.float32)
+    # Enhanced by: light, dark outline and shadow, like the game's PRESS START.
+    e1 = dilate(m1, 4)
+    over(img, rgb("#000000"), 0.5 * blur(shift(e1, 4, 5), 4))
+    over(img, rgb("#120c08"), e1)
+    over(img, rgb("#efe6d4"), m1)
+    # SPITZDANO: magenta glow, white rim, chrome fill with light scan stripes.
+    top, base = cap_rows(KANIT, big, baseline, H)
+    over(img, rgb("#ff3ec8"), 0.8 * blur(dilate(m2, 5), 9))
+    over(img, rgb("#fff4fd"), 0.95 * dilate(m2, 3))
+    ys = np.arange(H, dtype=np.float32)[:, None]
+    f = np.broadcast_to((ys - top) / max(base - top, 1), (H, W))
+    fill = gradient(CHROME, f)
+    stripe = (((ys - top) % 10) < 2).astype(np.float32)[..., None] * 0.35
+    fill = fill * (1 - stripe) + stripe
+    over(img, fill, m2)
+    return img
+
+
+def version(active):
+    """The title screen's version switch, bottom left: the View button, then ORIGINAL · AIDYN PATCH with the running
+    one (`active` 0 or 1) bright and the other dimmed."""
+    def draw(w, h):
+        import buttons
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        icon_px = 10 * SS
+        icon = np.frombuffer(bytes(buttons.icon_for("CL", 10, 10, SS)), np.uint8).reshape(icon_px, icon_px, 4)
+        icon = icon.astype(np.float32) / 255.0
+        y0 = (H - icon_px) // 2
+        over(img[y0:y0 + icon_px, SS:SS + icon_px], icon[..., :3], icon[..., 3])
+        size, gap = 64, 3 * SS
+        words = ["Original", "·", "Aidyn Patch"]
+        widths = [ink_width(t, MARCELLUS, size) for t in words]
+        x = SS + icon_px + gap
+        while x + sum(widths) + 2 * gap > W - SS:
+            size -= 2
+            widths = [ink_width(t, MARCELLUS, size) for t in words]
+        baseline = int(H * 0.78)
+        for i, (text, tw) in enumerate(zip(words, widths)):
+            m = text_mask(text, MARCELLUS, size, W, H, x, baseline)
+            lit = (i == 0 and active == 0) or (i == 2 and active == 1)
+            e = dilate(m, 4)
+            over(img, rgb("#000000"), (0.5 if lit else 0.3) * blur(shift(e, 4, 5), 4))
+            over(img, rgb("#120c08"), e * (1.0 if lit else 0.6))
+            over(img, rgb("#f6e7c1" if lit else "#8d867a"), m)
+            x += tw + gap
+        return img
+    return draw
+
+
+IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
+          ("version_original", 104, 12, version(0)), ("version_patch", 104, 12, version(1))]
+
+
+def to_rgba8(img):
+    a = img[..., 3:]
+    colour = np.where(a > 0, img[..., :3] / np.maximum(a, 1e-6), 0)
+    return np.clip(np.concatenate([colour, a], -1) * 255 + 0.5, 0, 255).astype(np.uint8)
+
+
+def to_rgba16(img, w, h):
+    """Box-filtered to w x h, then RGBA 5551 (alpha on at half coverage); big-endian words."""
+    small = img.reshape(h, SS, w, SS, 4).mean(axis=(1, 3))
+    a = small[..., 3]
+    colour = np.where(a[..., None] > 0, small[..., :3] / np.maximum(a, 1e-6)[..., None], 0)
+    q = np.clip(colour * 31 + 0.5, 0, 31).astype(np.uint16)
+    return (q[..., 0] << 11) | (q[..., 1] << 6) | (q[..., 2] << 1) | (a >= 0.5).astype(np.uint16)
+
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    lines = ["// Generated by tools/branding/make_branding.py (the title screen's Aidyn ReChronicled additions, drawn from",
+             "// the fonts in tools/branding/fonts and tools/hdui/fonts). Do not edit: re-run the script.",
+             "#pragma once", "#include <cstdint>", "", "namespace aidyn::branding {"]
+    table = []
+    for name, w, h, draw in IMAGES:
+        img = draw(w, h)
+        write_png(OUT / f"{name}@8x.png", w * SS, h * SS, to_rgba8(img).tobytes())
+        words = to_rgba16(img, w, h).flatten()
+        ident = "k" + "".join(p.capitalize() for p in name.split("_"))
+        lines.append(f"    // {name}: {w}x{h} RGBA16")
+        lines.append(f"    inline constexpr uint16_t {ident}[{w * h}] = {{")
+        for i in range(0, len(words), 16):
+            lines.append("        " + ", ".join(f"0x{v:04X}" for v in words[i:i + 16]) + ",")
+        lines.append("    };")
+        table.append(f'        {{ "{name}", {w}, {h}, {ident} }},')
+        print(f"make_branding.py: {name} {w}x{h} -> {OUT / (name + '@8x.png')}")
+    lines += ["", "    struct Image {", "        const char* name;", "        uint16_t w, h;", "        const uint16_t* rgba16;",
+              "    };", "    inline constexpr Image kImages[] = {"] + table + ["    };", "}", ""]
+    HEADER.write_text("\n".join(lines))
+    print(f"make_branding.py: wrote {HEADER}")
+    write_pack()
+
+
+def write_pack():
+    """The rechronicled pack: each image as the game loads it (one RGBA16 LoadTile at TMEM 0, see patches.cpp)."""
+    import json
+    import shutil
+    import bigstrips
+    import portraits
+    tool = PROJECT / "build/cmake/tmemhash"
+    if not tool.exists():
+        sys.exit("build/cmake/tmemhash missing: cmake --build build/cmake --target tmemhash")
+    images = header_images()
+    jobs = []
+    for name, (w, h, data) in images.items():
+        tmem = bigstrips.tmem_strip(2, w, h, data, None, 0, h)  # Borg8 format 2 = RGBA16
+        jobs.append((tmem, 0, 2, bigstrips.line_words(2, w), w, h, 0))
+    tmp = PACK.with_name(PACK.name + ".new")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    textures = []
+    for (name, _), h_ in zip(images.items(), portraits.hashes(tool, jobs)):
+        shutil.copy(OUT / f"{name}@8x.png", tmp / f"{h_}.png")
+        textures.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload"})
+    db = {"configuration": {"configurationVersion": 3, "autoPath": "rt64", "defaultOperation": "stream",
+                            "defaultShift": "none", "hashVersion": 5},
+          "textures": textures, "operationFilters": [], "shiftFilters": [], "extraFiles": []}
+    (tmp / "rt64.json").write_text(json.dumps(db, indent=1) + "\n")
+    shutil.rmtree(PACK, ignore_errors=True)
+    tmp.rename(PACK)
+    print(f"make_branding.py: {len(textures)} replacements in {PACK}")
+
+
+def header_images(path=HEADER):
+    """{name: (w, h, big-endian RGBA16 bytes)} as the game has them (for build_pack.py)."""
+    text = path.read_text()
+    out = {}
+    for name, w, h, ident in re.findall(r'\{ "(\w+)", (\d+), (\d+), (\w+) \}', text):
+        body = re.search(rf"{ident}\[\d+\] = \{{(.*?)\}};", text, re.S).group(1)
+        words = [int(v, 16) for v in re.findall(r"0x([0-9A-F]{4})", body)]
+        out[name] = (int(w), int(h), b"".join(v.to_bytes(2, "big") for v in words))
+    return out
+
+
+if __name__ == "__main__":
+    main()

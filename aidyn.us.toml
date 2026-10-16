@@ -1,0 +1,221 @@
+# aidyn.us.toml: N64Recomp config for AIDYN_CHRONICLES (NAYE v0).
+# Run through tools/recomp.sh. Paths are relative to this file.
+# Every key N64Recomp (ffb39cd) reads is listed; the commented ones are optional.
+
+[input]
+# Entry point (the real one, after CIC adjustment; from rominfo.json).
+entrypoint = 0x80000400
+
+# Input: either an ELF (from tools/build_elf.sh)...
+elf_path = "build/aidyn.us.elf"
+# ...or a symbol file plus the ROM (e.g. from `N64Recomp aidyn.us.toml --dump-context`).
+# symbols_file_path = "syms/aidyn.us.syms.toml"
+# rom_file_path = "baserom.z64"
+
+# Where the generated C goes (tools/recomp.sh recreates it each run).
+output_func_path = "RecompiledFuncs"
+
+# Overlays relocated at runtime: a text file listing their section names.
+# relocatable_sections_path = "overlays.txt"
+
+# Set if the game runs the FPU in MIPS III mode (FR=1, -mfp64). Default false (-mfp32).
+# uses_mips3_float_mode = false
+
+# Suffix the ELF's bss sections use (default ".bss").
+# bss_section_suffix = ".bss"
+
+# Functions missing from the ELF's symbol table, so N64Recomp can find them.
+# manual_funcs = [
+#     { name = "func_80001234", section = ".text", vram = 0x80001234, size = 0x40 },
+# ]
+
+# Override a function's size when the symbol table's is wrong.
+# function_sizes = [
+#     { name = "func_80001234", size = 0x40 },
+# ]
+
+# Emit everything into one file instead of functions_per_output_file per file.
+# single_file_output = false
+# functions_per_output_file = 50
+
+# Treat symbols as absolute addresses (patch ELFs).
+# use_absolute_symbols = false
+
+# Also write the raw binary of the input (patch ELFs).
+# output_binary_path = "patches.bin"
+
+# Warn about LO16 relocations with no matching HI16 (default true).
+# unpaired_lo16_warnings = true
+
+# Read function boundaries from .mdebug sections (games built with IDO and debug info).
+# use_mdebug = false
+# mdebug_file_mappings = [ { filename = "foo.c", input_section = ".text", output_section = ".text" } ]
+
+# Line(s) written at the top of each generated file (default: #include "recomp.h").
+# recomp_include = "#include \"recomp.h\""
+
+# Print every function call at runtime (slow; for chasing crashes).
+# trace_mode = false
+
+# Patch-ELF mode only: symbols of the base game, so patches can call into it.
+# func_reference_syms_file = "syms/aidyn.us.syms.toml"
+# data_reference_syms_files = [ "syms/aidyn.us.datasyms.toml" ]
+# allow_exports = false
+# strict_patch_mode = false
+
+[patches]
+# Functions replaced by an empty body that returns. Each one needs a reason in README.md.
+stubs = [
+    # libultra exception machinery (the raw os/exception blob). ultramodern provides interrupts, threads
+    # and the cache/TLB state, so none of this runs natively: it uses cop0, cache and handler-vector writes.
+    "func_800B7B50",  # exception vector preamble (mtc0 k0,$30; jr to handler)
+    "func_800B7BC0",  # copies the preamble to 0x80000180 and flushes caches (osInitialize path)
+    "func_800B7C6C",  # D-cache index invalidate loop (cache op)
+    "func_800B7C88",  # I-cache index invalidate loop (cache op)
+    "func_800B7CBC",  # reads cop0 EntryHi/TLB state
+    "func_800B7D40",  # the exception handler itself (__osException)
+    "func_800B81C8",  # handler support: copies vector code (cache/cop0)
+    "func_800B828C",  # handler support: register save/restore tail
+]
+
+# Functions not recompiled at all (the runtime or src/ provides them). Reasons in README.md.
+ignored = [
+    "Graphics__EndList",  # src/game/patches.cpp: overscan borders optional (settings.json)
+    "func_800AA2B0",      # Font::GetButtonColor, src/game/patches.cpp: white tint for the HD pack's Xbox icons
+    "func_800A68E0",      # Camera: Mode0's "behind the player" point, src/game/patches.cpp: right-stick camera
+]
+
+# Functions renamed to <name>_recomp in the output, so they can't clash with C or the runtime.
+# N64Recomp already renames libc names (memcpy, sinf, strlen, ...) on its own, but not `main`:
+# new-game.sh lists it here when splat's create_config named the entrypoint's target `main`.
+# N64Recomp aborts if a name here doesn't exist, so drop `main` if a decomp config renames it.
+renamed = []
+
+# Replace one instruction (e.g. to remove an osSetTimer call that stalls a thread).
+# [[patches.instruction]]
+# func = "func_80001234"
+# vram = 0x80001250
+# value = 0x00000000   # nop
+
+# Insert C text before an instruction.
+# bootproc ends with osStartThread(&gInitThread) and then returns into a `break` (libultra's "main returned"
+# trap). On hardware the boot thread never gets the CPU back; ultramodern's entry thread does, so park it.
+[[patches.hook]]
+func = "recomp_entrypoint"   # N64Recomp renames the function at the entrypoint before applying hooks
+before_vram = 0x80000468
+text = "extern void aidyn_park_boot_thread(void); aidyn_park_boot_thread();"
+
+# N64BorgImageDraw(Gfx*, Borg8Header* img, ...) draws every 2D image (menus, HUD, fonts). On entry: with AIDYN_UI_LOG
+# set, src/game/patches.cpp saves each image once, for building the HD UI texture pack (tools/hdui); and a big
+# picture's draw is widened to fixed strips (see the exit hook below).
+[[patches.hook]]
+func = "N64BorgImageDraw"
+before_vram = 0x8009AA80
+text = "extern void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx); aidyn_ui_image_seen(rdram, ctx);"
+
+# ... and before its return (jr $ra; v0 = end of the display list, sp + 0xE0 = the caller's stack): big pictures are
+# drawn as fixed full-width strips clipped to the requested area (src/game/patches.cpp, "Big pictures").
+[[patches.hook]]
+func = "N64BorgImageDraw"
+before_vram = 0x8009CAEC
+text = "extern void aidyn_image_draw_done(uint8_t* rdram, recomp_context* ctx); aidyn_image_draw_done(rdram, ctx);"
+
+# Full-screen menus switch the picture to 4:3 while they're up (src/game/patches.cpp aidyn_menu_drawn).
+[[patches.hook]]
+func = "PauseWidget__Render"
+before_vram = 0x8002EDB4
+text = "extern void aidyn_menu_drawn(void); aidyn_menu_drawn();"
+
+[[patches.hook]]
+func = "func_80030430"   # WidgetDollMenu's Render (vtable 0x800CF3D0, slot after Unlink)
+before_vram = 0x80030430
+text = "extern void aidyn_menu_drawn(void); aidyn_menu_drawn();"
+
+# Frame interpolation: BorgAnimDrawSceneRaw(Gfx*, SceneData*) draws every model; its node matrices get RT64 matrix
+# groups (src/game/patches.cpp, "Frame interpolation"). Entry (a0 = display list), before a node's gSPMatrix is
+# written at s4 (s7 = s4 + 8), and before the return (v0 = display list).
+[[patches.hook]]
+func = "BorgAnimDrawSceneRaw"
+before_vram = 0x80097A90
+text = "extern void aidyn_scene_draw_begin(uint8_t* rdram, recomp_context* ctx); aidyn_scene_draw_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "BorgAnimDrawSceneRaw"
+before_vram = 0x80098574
+text = "extern void aidyn_scene_node_matrix(uint8_t* rdram, recomp_context* ctx); aidyn_scene_node_matrix(rdram, ctx);"
+
+[[patches.hook]]
+func = "BorgAnimDrawSceneRaw"
+before_vram = 0x800988BC
+text = "extern void aidyn_scene_draw_end(uint8_t* rdram, recomp_context* ctx); aidyn_scene_draw_end(rdram, ctx);"
+
+# Animation loops (src/game/patches.cpp, "Animation loops"): func_80096570 is one animation tick, s1 = the animation
+# instance, s3 = 1 when it switched animation this tick. Before 0x800966C8 (after the new animation's set-up 0x80096A38):
+# tick the scene now. Before 0x80096700 (root position just read into sp+0x10): keep the motion, skip the zeroing.
+# Before 0x8009676C (every path, the motion is final): keep the original walking speed.
+[[patches.hook]]
+func = "func_80096570"
+before_vram = 0x800966C8
+text = "extern void aidyn_anim_loop_tick(uint8_t* rdram, recomp_context* ctx); aidyn_anim_loop_tick(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80096570"
+before_vram = 0x80096700
+text = "extern int aidyn_anim_loop_motion(uint8_t* rdram, gpr anim, int branched); if (aidyn_anim_loop_motion(rdram, ctx->r17, (int)ctx->r19)) goto L_8009676C;"
+
+[[patches.hook]]
+func = "func_80096570"
+before_vram = 0x8009676C
+text = "extern void aidyn_anim_loop_speed(uint8_t* rdram, gpr anim, int branched); aidyn_anim_loop_speed(rdram, ctx->r17, (int)ctx->r19);"
+
+# Startup logos skipped (src/game/patches.cpp aidyn_splash_loaded): before load_splashscreen_data returns.
+[[patches.hook]]
+func = "load_splashscreen_data"
+before_vram = 0x8001B588
+text = "extern void aidyn_splash_loaded(uint8_t* rdram); aidyn_splash_loaded(rdram);"
+
+# The field view's far clip (RenderZones: Scene::SetNearFarPlanes(scene, 1.0, 180.0)), scaled by settings.json's
+# draw_distance in src/game/patches.cpp. The hook runs after the far value is loaded into a2, before the call.
+[[patches.hook]]
+func = "RenderZones"
+before_vram = 0x8000D690
+text = "extern uint32_t aidyn_field_far_plane(uint32_t far_bits); ctx->r6 = (int32_t)aidyn_field_far_plane((uint32_t)ctx->r6);"
+
+# The pause menu's opening reveal stops with its clip short of the screen edges (17..303 when it opens on the
+# equipment page); src/game/patches.cpp aidyn_menu_opened finishes it at 0..320. Runs only on the path where
+# bigAssOpenCallback_1 marks the menu open (state = 2); s7 = &gGlobals.scrollLocation - 0x18.
+[[patches.hook]]
+func = "bigAssOpenCallback_1"
+before_vram = 0x8002F340
+text = "extern void aidyn_menu_opened(uint8_t* rdram, gpr scroll); aidyn_menu_opened(rdram, ctx->r23);"
+
+# Right-stick camera while walking (src/game/patches.cpp aidyn_camera_stick): after Actor::Move's reset of the
+# camera turn and height, s3 = player handler, s2 = actor.
+[[patches.hook]]
+func = "Actor__Move"
+before_vram = 0x8001532C
+text = "extern void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor); aidyn_camera_stick(rdram, ctx->r19, ctx->r18);"
+
+# Widescreen clouds (src/game/patches.cpp): Clouds::Draw keeps the display list pointer in s1 and returns it in v0.
+[[patches.hook]]
+func = "Clouds__Draw"
+before_vram = 0x800276B4   # outdoor branch, before CalcWind
+text = "extern gpr aidyn_clouds_begin(uint8_t* rdram, gpr g); ctx->r17 = aidyn_clouds_begin(rdram, ctx->r17);"
+
+[[patches.hook]]
+func = "Clouds__Draw"
+before_vram = 0x800279BC   # each cloud's jal Borg8_DrawSimple (x in a2)
+text = "extern void aidyn_cloud_x(recomp_context* ctx); aidyn_cloud_x(ctx);"
+
+[[patches.hook]]
+func = "Clouds__Draw"
+before_vram = 0x800279E4   # common exit, v0 = display list pointer
+text = "extern gpr aidyn_clouds_end(uint8_t* rdram, gpr g); ctx->r2 = aidyn_clouds_end(rdram, ctx->r2);"
+
+# Symbol-file input only: sections and their functions, if not using elf_path.
+# [[section]]
+# name = ".text"
+# rom = 0x1000
+# vram = 0x80000400
+# size = 0x1000
+# functions = [ { name = "entrypoint", vram = 0x80000400, size = 0x60 } ]

@@ -1,0 +1,35 @@
+# aspMain.us.toml: RSPRecomp config for the game's audio microcode.
+# Run through tools/recomp.sh. Every key RSPRecomp (ffb39cd) reads is listed.
+# Find the values from the game's symbols (e.g. aspMainTextStart) or with
+# ucode_scan.py, then confirm text_address from how the microcode is loaded.
+# RSPRecomp refuses to run until text_offset, text_size and text_address are set.
+
+# ROM offset and size of the microcode's text (IMEM code).
+text_offset = 0x1140   # ROM: aspMainTextStart in the decomp symbols
+text_size = 0xE20      # up to gspF3DEX2_fifoTextStart at ROM 0x1F60
+
+# IMEM address the text is loaded at. 0x04001080 is common (after rspboot's 0x80 bytes);
+# some games load at 0x04001000. Confirm before trusting it.
+text_address = 0x04001080   # rspboot (ROM 0x1070) DMAs the ucode text to SP_MEM_ADDR 0x1080 and jumps there
+
+rom_file_path = "baserom.z64"
+output_file_path = "rsp/aspMain.cpp"
+output_function_name = "aspMain"
+
+# IMEM addresses reached by indirect jumps (jr) that RSPRecomp can't find on its own.
+# Gather these from RSPRecomp's failures.
+# The 16-entry audio command table: halfwords at DMEM 0x10, from the ucode data at ROM 0xD7E70.
+extra_indirect_branch_targets = [
+    0x1118, 0x1470, 0x11DC, 0x1B38,
+    0x1214, 0x187C, 0x1254, 0x12D0,
+    0x12EC, 0x1328, 0x140C, 0x1294,
+    0x1E24, 0x138C, 0x170C, 0x144C,
+]
+
+# IMEM addresses of instructions RSPRecomp should treat as unsupported (abort if reached).
+# unsupported_instructions = []
+
+# Microcode overlays swapped into IMEM at runtime.
+# [[overlay_slots]]
+# text_address = 0x04001000
+# overlays = [ { offset = 0x0, size = 0x0 } ]

@@ -1,0 +1,69 @@
+{
+ "_": "Small pre-drawn word images, keyed by build_pack.py's image key (format, size, pixels, palette). \"text\": redrawn with the pack's text font in the original colour and place (\"dot\": which side the town dot is on; it is redrawn as a ring); \"upscale\": an image that build_pack.py would otherwise skip as a tiny label, upscaled like any other. \"numbers\": [x0, y0, x1, y1] region of a picture whose painted numbers (the journal calendar) are removed before the upscale and redrawn with the text font after it. \"buttons\": [[x0, y0, w, h, n64 button]] controller-button icons painted into a picture (the inventory page's \"Details\" C-down), erased before the upscale and redrawn as the Xbox button after it (buttons.py). \"marks\": [[x0, y0, w, h, text]] small text painted into a picture over nothing (the title card's TM), made transparent before the upscale and redrawn with the text font after it, in its colour, capitals one texel short of the box.",
+ "278678fb2c7c5d80": {
+  "text": "UGARIT",
+  "dot": "below"
+ },
+ "2c8a1e88fc31d5c3": {
+  "text": "TALEWOK",
+  "dot": "below"
+ },
+ "91110a37112e260d": {
+  "text": "ERROMON",
+  "dot": "above"
+ },
+ "182e43135d8dfd77": {
+  "text": "GWERNIA",
+  "dot": "below"
+ },
+ "75cfd76ebeffa3dc": {
+  "text": "PORT SAIID",
+  "dot": "below"
+ },
+ "9748cdf165f0ae7d": {
+  "text": "TERMINOR",
+  "dot": "right"
+ },
+ "b79817eaddf456fb": {
+  "text": "CAMP"
+ },
+ "ece1c4d20f55392b": {
+  "text": "JOURNAL"
+ },
+ "33dd171819c4e60e": {
+  "text": "PRESS START"
+ },
+ "87823b4be8b9098e": {
+  "upscale": true
+ },
+ "8bd29ae433464ad6": {
+  "numbers": [
+   160,
+   50,
+   300,
+   135
+  ]
+ },
+ "99a10b42821b0510": {
+  "buttons": [
+   [
+    281,
+    209,
+    11,
+    11,
+    "CD"
+   ]
+  ]
+ },
+ "23acc7ae6c912fc7": {
+  "marks": [
+   [
+    174,
+    131,
+    13,
+    8,
+    "TM"
+   ]
+  ]
+ }
+}

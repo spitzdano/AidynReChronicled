@@ -1,0 +1,23 @@
+{
+  "format": "z64",
+  "format_name": "big-endian .z64",
+  "size": 33554432,
+  "sha1": "47ae795a2b12783a13e2b8d03439ce9a39fc826c",
+  "file_sha1": "47ae795a2b12783a13e2b8d03439ce9a39fc826c",
+  "internal_name": "AIDYN_CHRONICLES",
+  "game_code": "NAYE",
+  "region": "North America",
+  "version": 0,
+  "libultra_version": "D",
+  "header_entry_point": "0x80000400",
+  "entry_point": "0x80000400",
+  "cic": "6102",
+  "cic_pal": "7101",
+  "cic_known": true,
+  "ipl3_crc32": "0x90BB6CB5",
+  "header_crc1": "0xE6A95A4F",
+  "header_crc2": "0xBAD2EA23",
+  "warnings": [
+    "non-traditional entrypoint: splat's create_config analysis may be wrong"
+  ]
+}

@@ -1,0 +1,2 @@
+// Functions referenced only from data (vtables, callback tables): found by tools/find_missing_funcs.py (H3). Do not hand-edit.
+func_8003E904 = 0x8003E904; // type:func size:0x34  (from 1 data word(s), first at ROM 0xD14CC)

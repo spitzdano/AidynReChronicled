@@ -1,0 +1,11 @@
+// Our additions to the decomp's symbols (H3/H4 fixes). One line each, with the reason.
+// func_8003E7E0 is a switch whose jump-table targets run past splat's guessed function end; it really ends after the delay slot of its last `jr $ra` (0x8003E904, where func_8003E904 starts).
+func_8003E7E0 = 0x8003E7E0; // type:func size:0x124
+// N64Recomp needs a function at the entrypoint (0x1000 ROM, 0x70 bytes: stack setup, BSS clear, jal bootproc).
+romMain = 0x80000400; // type:func size:0x70
+// N64Recomp's libultra lists spell it osInvalDCache; the decomp has osInvalDcache.
+osInvalDCache = 0x800b97a0; // type:func rom:0xba3a0
+// libultra's osViGetNextFramebuffer, unnamed upstream. The scheduler's gfx-ready test compares it with the current framebuffer,
+// and the game's own copy reads libultra's __osViNext (which the runtime never updates): gfx tasks never ran. Naming it lets
+// N64Recomp hand it to the runtime's implementation.
+osViGetNextFramebuffer = 0x800C7F60; // type:func

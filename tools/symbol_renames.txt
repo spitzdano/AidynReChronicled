@@ -1,0 +1,19 @@
+# Game functions renamed so N64Recomp recompiles them instead of substituting the runtime's versions.
+# N64Recomp (and N64ModernRuntime) provide "no Controller Pak" osPfs* functions, matched by name. The game's own
+# copies are the real libultra file system; renamed, they run over src/game/pak.cpp's __osContRamRead/Write.
+# One "old new" per line; addresses are untouched, so the ROM still rebuilds byte for byte.
+osPfsInitPak aidyn_osPfsInitPak
+osPfsFreeBlocks aidyn_osPfsFreeBlocks
+osPfsAllocateFile aidyn_osPfsAllocateFile
+osPfsDeleteFile aidyn_osPfsDeleteFile
+osPfsFileState aidyn_osPfsFileState
+osPfsReadWriteFile aidyn_osPfsReadWriteFile
+osPfsRepairId aidyn_osPfsRepairId
+osPfsFindFile aidyn_osPfsFindFile
+__osCheckId aidyn___osCheckId
+__osCheckPackId aidyn___osCheckPackId
+__osGetId aidyn___osGetId
+__osPfsCheckRamArea aidyn___osPfsCheckRamArea
+__osPfsRWInode aidyn___osPfsRWInode
+__osPfsSelectBank aidyn___osPfsSelectBank
+__osRepairPackId aidyn___osRepairPackId

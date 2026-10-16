@@ -1,0 +1,3 @@
+# Symbols dropped from decomp/symbol_addrs.us.txt: they sit inside another function (found by tools/find_fallthrough.py).
+n_alResampleParam      # 0x800034f4: inside WidgetMenuHealer_LayOnHands
+MusPtrBankGetCurrent   # 0x800bda60: inside osPiGetCmdQueue
