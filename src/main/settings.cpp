@@ -60,6 +60,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["right_stick_camera"] = g_graphics.right_stick_camera;
         j["graphics"]["overscan_borders"] = g_graphics.overscan_borders;
         j["graphics"]["smooth_animation_loops"] = g_graphics.smooth_animation_loops;
+        j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
         j["graphics"]["texture_packs"] = g_graphics.texture_packs;
         std::ofstream out(path);
         out << j.dump(4) << "\n";
@@ -90,6 +91,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.right_stick_camera = gfx.value("right_stick_camera", g_graphics.right_stick_camera);
         g_graphics.overscan_borders = gfx.value("overscan_borders", g_graphics.overscan_borders);
         g_graphics.smooth_animation_loops = gfx.value("smooth_animation_loops", g_graphics.smooth_animation_loops);
+        g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
         g_graphics.texture_packs = gfx.value("texture_packs", g_graphics.texture_packs);
         const std::string aspect = gfx.value("aspect", g_graphics.aspect_text);
         g_graphics.aspect_text = aspect;

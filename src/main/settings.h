@@ -35,6 +35,7 @@ namespace aidyn::settings {
         bool menus_4_3 = true;       // with 16:9/window: show the pause menu, inventory and shops in 4:3 (their layouts break widened)
         bool right_stick_camera = true; // walking: right stick turns the camera (x) and raises/lowers it (y)
         bool overscan_borders = false; // the black frame the game draws for CRT overscan (Graphics::EndList)
+        bool hud_at_edges = true;    // widescreen: the time-of-day dial and portraits at the left edge, the compass at the right
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops
         std::vector<std::string> texture_packs{ "hd-ui", "hd-world", "rechronicled" }; // RT64 packs in <data>/texture-packs (folders or .rtz), later ones win
     };

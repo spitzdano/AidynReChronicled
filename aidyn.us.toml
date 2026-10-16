@@ -168,6 +168,61 @@ func = "func_80096570"
 before_vram = 0x8009676C
 text = "extern void aidyn_anim_loop_speed(uint8_t* rdram, gpr anim, int branched); aidyn_anim_loop_speed(rdram, ctx->r17, (int)ctx->r19);"
 
+# Far map cells (src/game/patches.cpp, "Far map cells"): the game is told it has 15 MB (MemoryCheck, after
+# osGetMemSize returns in v0); rings of map cells are kept loaded and drawn after the game's own cells (RenderZones at
+# L_8000DB34, display list at sp+0x64); leaving the field frees them (FreeZoneEngine, FreeZoneEngineMemory entries).
+[[patches.hook]]
+func = "MemoryCheck"
+before_vram = 0x800053FC
+text = "extern uint32_t aidyn_game_memory(uint32_t reported); ctx->r2 = (int32_t)aidyn_game_memory((uint32_t)ctx->r2);"
+
+[[patches.hook]]
+func = "RenderZones"
+before_vram = 0x8000DB34
+text = "extern void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx); aidyn_far_cells(rdram, ctx);"
+
+[[patches.hook]]
+func = "FreeZoneEngine"
+before_vram = 0x8000E6C8
+text = "extern void aidyn_far_cells_free_all(uint8_t* rdram, recomp_context* ctx); aidyn_far_cells_free_all(rdram, ctx);"
+
+[[patches.hook]]
+func = "FreeZoneEngineMemory"
+before_vram = 0x8000AE84
+text = "extern void aidyn_far_cells_free_all(uint8_t* rdram, recomp_context* ctx); aidyn_far_cells_free_all(rdram, ctx);"
+
+# Field HUD at the screen edges (src/game/patches.cpp, "Field HUD at the screen edges"): on entry (display list in a0)
+# and before the return (in v0) of the dial, portraits (left edge) and compass (right edge).
+[[patches.hook]]
+func = "Sundial__Draw"
+before_vram = 0x800248A4
+text = "extern void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int right); aidyn_hud_begin(rdram, ctx, 0);"
+
+[[patches.hook]]
+func = "Sundial__Draw"
+before_vram = 0x800254AC
+text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
+
+[[patches.hook]]
+func = "Portraits__Draw"
+before_vram = 0x8002569C
+text = "extern void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int right); aidyn_hud_begin(rdram, ctx, 0);"
+
+[[patches.hook]]
+func = "Portraits__Draw"
+before_vram = 0x800256F8
+text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
+
+[[patches.hook]]
+func = "Compass__Draw"
+before_vram = 0x800240B8
+text = "extern void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int right); aidyn_hud_begin(rdram, ctx, 1);"
+
+[[patches.hook]]
+func = "Compass__Draw"
+before_vram = 0x800246F0
+text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
+
 # Startup logos skipped (src/game/patches.cpp aidyn_splash_loaded): before load_splashscreen_data returns.
 [[patches.hook]]
 func = "load_splashscreen_data"

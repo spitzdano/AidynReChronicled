@@ -4,6 +4,7 @@ Like portraits.py, for images the game draws with N64BorgImageDraw in one load (
 palette, 4 KiB without): each image is loaded whole, or cropped while a page slides (left or right part, full height)
 or a list scrolls (top or bottom part, full width). For every such load the TMEM contents are rebuilt and hashed with
 RT64's own function (portraits.tmem_image / hashes), and the replacement is cut from the image upscaled once.
+The time-of-day dial's pieces are redrawn instead (hudart.py).
 Full-colour images (icons) are first doubled with a smooth bicubic filter, then upscaled 4x with the anime model:
 8x in all, with cleaner shapes and more detail than a direct 4x (compared on the hat, hide, spice, club and sword).
 Their cropped variants (only seen while a page slides) are box-filtered to 4x to keep the pack small. Greyscale images
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+import hudart
 import portraits
 import romassets
 from pngio import decode_borg8, read_png, upscale_bicubic, write_png
@@ -73,6 +75,8 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         src.mkdir()
         big.mkdir()
         for index, (fmt, w, h, pixels, palette) in images.items():
+            if names.get(index) in hudart.NAMES:
+                continue  # redrawn by hudart.py, not upscaled
             rgba = decode_borg8(fmt, w, h, pixels, palette)
             if fmt in (4, 7):
                 w, h, rgba = upscale_bicubic(w, h, rgba, 2)
@@ -92,7 +96,10 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         hs = portraits.hashes(tool, jobs)
         ups = {}
         for index, (fmt, w, h, pixels, palette) in images.items():
-            W, H, up = read_png(big / f"{index}.png")
+            if names.get(index) in hudart.NAMES:
+                W, H, up = hudart.redraw(names[index], w, h, decode_borg8(fmt, w, h, pixels, palette))
+            else:
+                W, H, up = read_png(big / f"{index}.png")
             big_img = np.frombuffer(bytes(up), np.uint8).reshape(H, W, 4)
             per = W // w
             small = big_img

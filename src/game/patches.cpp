@@ -477,7 +477,10 @@ namespace {
         return std::atan(std::tan(22.5f * kPi / 180.0f) * view_aspect()) * 180.0f / kPi;
     }
 
-    // Depth (along the view) at which the picture first leaves the loaded 3x3 block of cells.
+    int far_ring_radius();  // below, "Far map cells": 1 = only the game's 3x3 block
+    float far_clip_now = 180.0f;  // the field's far clip this frame (aidyn_field_far_plane)
+
+    // Depth (along the view) at which the picture first leaves the loaded block of cells.
     float loaded_edge_depth(uint8_t* rdram) {
         const gpr g = (gpr)kGlobals;
         const float px = read_f32(rdram, g + 0x214), pz = read_f32(rdram, g + 0x21C);  // gCamera.pos
@@ -491,15 +494,16 @@ namespace {
         fx /= len;
         fz /= len;
         const float half = half_view_degrees() * kPi / 180.0f;
+        const float r = (float)far_ring_radius();
         float depth = 1e9f;
         for (int k = -4; k <= 4; k++) {
             const float a = half * (float)k / 4.0f, c = std::cos(a), sn = std::sin(a);
             const float dx = fx * c - fz * sn, dz = fx * sn + fz * c;
             float t = 1e9f;
-            if (dx > 1e-5f) t = std::min(t, (2.0f * cx - px) / dx);
-            if (dx < -1e-5f) t = std::min(t, (-cx - px) / dx);
-            if (dz > 1e-5f) t = std::min(t, (2.0f * cz - pz) / dz);
-            if (dz < -1e-5f) t = std::min(t, (-cz - pz) / dz);
+            if (dx > 1e-5f) t = std::min(t, ((r + 1.0f) * cx - px) / dx);
+            if (dx < -1e-5f) t = std::min(t, (-r * cx - px) / dx);
+            if (dz > 1e-5f) t = std::min(t, ((r + 1.0f) * cz - pz) / dz);
+            if (dz < -1e-5f) t = std::min(t, (-r * cz - pz) / dz);
             depth = std::min(depth, std::max(t, 0.0f) * c);
         }
         return depth;
@@ -542,6 +546,7 @@ extern "C" uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, u
     static float current = 0.0f;
     current = current <= 0.0f ? target : current + (target - current) * 0.12f;
     const float far = std::clamp(current, original, original * scale);
+    far_clip_now = far;
     const float half = half_view_degrees();
     write_f32_at(rdram, 0x800CD6F4, far * (200.0f / 180.0f));                  // cell wedge length (200 at 180)
     write_f32_at(rdram, 0x800CD6FC, std::max(42.5f, half + 13.6f));            // cell wedge angle, degrees
@@ -572,6 +577,258 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
 // it is full the prop is drawn at once instead (aidyn.us.toml hook where an entry is taken).
 extern "C" int aidyn_prop_table_full(uint8_t* rdram) {
     return MEM_HU(0, (gpr)(int32_t)0x800DA38E) >= 32;
+}
+
+// Far map cells. Outdoors the game keeps only the 3x3 block of map cells around the player, so the ground ends 100 to
+// 280 units away. With settings.json draw_distance above 1, rings of cells around that block are loaded and drawn too
+// (their ground only: no props, people or collision), out to radius R (5x5 at R = 2 ... 9x9 at R = 4, so the far
+// clip, which follows the loaded edge, can reach 180 x draw_distance):
+// - Each frame (aidyn.us.toml hook in RenderZones after the game's own cells, display list at sp+0x64): cells that left
+//   the rings or became part of the 3x3 are freed through the game's free queue; missing ring cells are loaded, two a
+//   frame, nearest first, with the game's BorgAnimLoadScene, while its heap's largest free block stays over 512 KB;
+//   each is placed as the game places its neighbours (ZoneMoveSceneDat: flags 0x10, fog, 0x8, 0x4, identity matrices,
+//   matrixA at (dx, 0, dz) cells from the centre cell's origin) and drawn, when in view, with SetSceneColors +
+//   BorgAnimDrawScene, as the game draws a cell.
+// - A ring cell is skipped when the 3x3 neighbour between it and the player isn't loaded: the game leaves some
+//   neighbours out on purpose (the centre cell's map hides them), and what lies past them wasn't meant to be seen.
+// - The game is told it has 15 MB of RAM, not 8 (aidyn.us.toml hook in MemoryCheck): its heap grows from 6.2 to 13 MB
+//   and its framebuffers move up to just under 15 MB. Nothing in the game assumes 8 MB; RT64 sees 16 MB of addresses.
+// - FreeZoneEngine and FreeZoneEngineMemory (leaving the field) free every ring cell.
+// The ring cells' scene pointers live in RDRAM (kFarTable) so the game's free queue can clear them.
+extern "C" void BorgAnimLoadScene(uint8_t* rdram, recomp_context* ctx);
+extern "C" void BorgAnimDrawScene(uint8_t* rdram, recomp_context* ctx);
+extern "C" void SetSceneColors(uint8_t* rdram, recomp_context* ctx);
+extern "C" void get_memFree_2(uint8_t* rdram, recomp_context* ctx);
+extern "C" void AllocFreeQueueItem(uint8_t* rdram, recomp_context* ctx);
+
+namespace {
+    constexpr uint32_t kGameMemory = 15u << 20;
+    constexpr int32_t kFarTable = 0x80F10000;     // RDRAM, above the branding pictures
+    constexpr int32_t kQueueA = 0x800D96B0;       // gGlobals.QueueA, the free queue
+    constexpr int32_t kMapIndices = 0x800DCBD0;   // gLoadedMapIndecies[22][30][3]: borg5, borg9, borg5 ALT
+    constexpr int32_t kZoneDatMtx = 0x800D8168;   // ZoneDat[3][3], 0x20 each, rows of 0x60
+    constexpr int kMaxRing = 4, kSide = 2 * kMaxRing + 1;
+
+    struct FarCell {
+        int gx = 0, gy = 0;       // map grid cell
+        uint16_t borg5 = 0;
+        bool used = false;
+    };
+    FarCell far_cells[kSide * kSide];  // slot k's scene pointer is at kFarTable + 4k
+    int far_center_x = -1000, far_center_y = -1000;
+    int far_radius_now = 1;
+
+    uint32_t call_game(uint8_t* rdram, recomp_context* ctx, void (*fn)(uint8_t*, recomp_context*),
+                       uint32_t a0 = 0, uint32_t a1 = 0, uint32_t a2 = 0, uint32_t a3 = 0) {
+        recomp_context saved = *ctx;  // mid-function in the game: every register is someone's
+        ctx->r4 = (int32_t)a0;
+        ctx->r5 = (int32_t)a1;
+        ctx->r6 = (int32_t)a2;
+        ctx->r7 = (int32_t)a3;
+        fn(rdram, ctx);
+        const uint32_t v0 = (uint32_t)ctx->r2;
+        *ctx = saved;
+        return v0;
+    }
+
+    gpr far_slot(int k) {
+        return (gpr)(kFarTable + 4 * k);
+    }
+
+    bool outdoors(uint8_t* rdram) {
+        return MEM_HU(0, (gpr)(int32_t)0x800D8414) == 0  // gGlobals.gameVars.mapDatA: MAPA_Overworld
+               && read_f32(rdram, (gpr)(int32_t)0x800D8404) == 100.0f;
+    }
+
+    int wanted_radius() {
+        const float dd = aidyn::settings::graphics().draw_distance;
+        if (dd <= 1.0f) {
+            return 1;
+        }
+        return std::clamp((int)std::ceil(180.0f * dd / 100.0f), 2, kMaxRing);
+    }
+
+    uint16_t map_index(uint8_t* rdram, int gx, int gy, int k) {
+        if (gx < 1 || gx > 21 || gy < 1 || gy > 29) {
+            return 0;
+        }
+        return MEM_HU(((gx * 30 + gy) * 3 + k) * 2, (gpr)kMapIndices);
+    }
+
+    void free_far_cell(uint8_t* rdram, recomp_context* ctx, int k) {
+        if (!far_cells[k].used) {
+            return;
+        }
+        far_cells[k].used = false;
+        const uint32_t scene = (uint32_t)MEM_W(0, far_slot(k));
+        if (scene == 0) {
+            return;
+        }
+        // Through the game's free queue, which frees at the start of the next frame (the renderer may still be
+        // reading this frame's display list) and clears the slot now.
+        call_game(rdram, ctx, AllocFreeQueueItem, (uint32_t)kQueueA, (uint32_t)far_slot(k), 1 /* QueueType_Scene */, 0);
+    }
+
+    void place_far_cell(uint8_t* rdram, int k, int dx, int dz) {
+        const gpr scene = (gpr)(int32_t)MEM_W(0, far_slot(k));
+        const float cx = read_f32(rdram, (gpr)(int32_t)0x800D8404), cz = read_f32(rdram, (gpr)(int32_t)0x800D8408);
+        MEM_W(0x1F4, scene) = 0x10 | 0x100 | 0x8 | 0x4;  // ZoneMoveSceneDat: SetFlag10, SetFogFlag, SetFlag8, SetFlag4
+        for (int m : { 0x88, 0xC8 }) {                    // matrixA, matrixB = identity
+            for (int i = 0; i < 16; i++) {
+                write_f32(rdram, scene + m + i * 4, (i % 5 == 0) ? 1.0f : 0.0f);
+            }
+        }
+        write_f32(rdram, scene + 0x88 + 48, dx * cx);     // MatrixASetPos: matrixA[3][0..2]
+        write_f32(rdram, scene + 0x88 + 56, dz * cz);
+    }
+
+    // In view: some corner of the cell within the picture's width (plus a margin) and the far clip.
+    bool far_cell_visible(uint8_t* rdram, int dx, int dz, float far) {
+        const gpr g = (gpr)kGlobals;
+        const float px = read_f32(rdram, g + 0x214), pz = read_f32(rdram, g + 0x21C);
+        float fx = read_f32(rdram, g + 0x220) - px, fz = read_f32(rdram, g + 0x228) - pz;
+        const float len = std::sqrt(fx * fx + fz * fz);
+        if (len < 1e-4f) {
+            return true;
+        }
+        fx /= len;
+        fz /= len;
+        const float cx = read_f32(rdram, (gpr)(int32_t)0x800D8404), cz = read_f32(rdram, (gpr)(int32_t)0x800D8408);
+        const float cosv = std::cos((half_view_degrees() + 15.0f) * kPi / 180.0f);
+        for (int i = 0; i <= 2; i++) {
+            for (int j = 0; j <= 2; j++) {  // corners and edge midpoints
+                const float x = (dx + i * 0.5f) * cx - px, z = (dz + j * 0.5f) * cz - pz;
+                const float d = std::sqrt(x * x + z * z);
+                if (d < 1.0f) {
+                    return true;
+                }
+                if ((x * fx + z * fz) / d >= cosv && d * ((x * fx + z * fz) / d) <= far + 10.0f) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+}
+
+namespace {
+    int far_ring_radius() {
+        return far_radius_now;
+    }
+}
+
+extern "C" uint32_t aidyn_game_memory(uint32_t reported) {
+    return std::max(reported, kGameMemory);
+}
+
+extern "C" void aidyn_far_cells_free_all(uint8_t* rdram, recomp_context* ctx) {
+    for (int k = 0; k < kSide * kSide; k++) {
+        free_far_cell(rdram, ctx, k);
+    }
+    far_center_x = far_center_y = -1000;
+    far_radius_now = 1;
+}
+
+extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
+    const int radius = outdoors(rdram) ? wanted_radius() : 1;
+    const int sx = MEM_H(0, (gpr)(int32_t)0x800D83FA), sy = MEM_H(0, (gpr)(int32_t)0x800D83FC);  // mapShort1/2
+    // Free cells no longer in the rings (or now in the game's 3x3).
+    for (int k = 0; k < kSide * kSide; k++) {
+        if (!far_cells[k].used) {
+            continue;
+        }
+        const int dx = far_cells[k].gx - sx, dz = far_cells[k].gy - sy;
+        if (std::abs(dx) > radius || std::abs(dz) > radius || (std::abs(dx) <= 1 && std::abs(dz) <= 1)) {
+            free_far_cell(rdram, ctx, k);
+        }
+    }
+    const bool moved = sx != far_center_x || sy != far_center_y;
+    far_center_x = sx;
+    far_center_y = sy;
+    if (radius <= 1) {
+        far_radius_now = 1;
+        return;
+    }
+    // Place the loaded ones again after the centre moved, and find the missing ones, nearest first.
+    struct Want { int gx, gy, dx, dz; };
+    Want missing[kSide * kSide];
+    int n_missing = 0;
+    bool complete = true;
+    for (int dz = -radius; dz <= radius; dz++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            if (std::abs(dx) <= 1 && std::abs(dz) <= 1) {
+                continue;
+            }
+            const int gx = sx + dx, gy = sy + dz;
+            const uint16_t borg5 = map_index(rdram, gx, gy, 0);
+            if (borg5 == 0) {
+                continue;
+            }
+            // The 3x3 neighbour toward it must be loaded (the game hides some on purpose).
+            const int ni = std::clamp(dx, -1, 1) + 1, nj = std::clamp(dz, -1, 1) + 1;
+            if (MEM_W(4, (gpr)(kZoneDatMtx + ni * 0x60 + nj * 0x20)) == 0) {
+                continue;
+            }
+            int found = -1;
+            for (int k = 0; k < kSide * kSide; k++) {
+                if (far_cells[k].used && far_cells[k].gx == gx && far_cells[k].gy == gy) {
+                    found = k;
+                    break;
+                }
+            }
+            if (found >= 0) {
+                if (moved) {
+                    place_far_cell(rdram, found, dx, dz);
+                }
+            } else {
+                missing[n_missing++] = { gx, gy, dx, dz };
+                complete = false;
+            }
+        }
+    }
+    far_radius_now = complete ? radius : std::max(1, radius - 1);
+    std::sort(missing, missing + n_missing, [](const Want& a, const Want& b) {
+        return std::max(std::abs(a.dx), std::abs(a.dz)) * 100 + std::abs(a.dx) + std::abs(a.dz) <
+               std::max(std::abs(b.dx), std::abs(b.dz)) * 100 + std::abs(b.dx) + std::abs(b.dz);
+    });
+    for (int i = 0, loads = 0; i < n_missing && loads < 2; i++) {
+        if (call_game(rdram, ctx, get_memFree_2) < 0x80000) {
+            break;  // keep room for the game's own loads
+        }
+        int k = 0;
+        while (k < kSide * kSide && far_cells[k].used) {
+            k++;
+        }
+        if (k == kSide * kSide || MEM_W(0, far_slot(k)) != 0) {
+            break;  // (a slot still waiting in the free queue)
+        }
+        const uint16_t borg5 = map_index(rdram, missing[i].gx, missing[i].gy, 0);
+        const uint32_t scene = call_game(rdram, ctx, BorgAnimLoadScene, borg5);
+        if (scene == 0) {
+            break;
+        }
+        MEM_W(0, far_slot(k)) = (int32_t)scene;
+        far_cells[k] = { missing[i].gx, missing[i].gy, borg5, true };
+        place_far_cell(rdram, k, missing[i].dx, missing[i].dz);
+        loads++;
+    }
+    // Draw the ones in view, after the game's own cells (display list pointer at sp+0x64 in RenderZones).
+    const gpr sp = ctx->r29;
+    uint32_t g = (uint32_t)MEM_W(0x64, sp);
+    for (int k = 0; k < kSide * kSide; k++) {
+        if (!far_cells[k].used || MEM_W(0, far_slot(k)) == 0) {
+            continue;
+        }
+        const int dx = far_cells[k].gx - sx, dz = far_cells[k].gy - sy;
+        if (!far_cell_visible(rdram, dx, dz, far_clip_now)) {
+            continue;
+        }
+        const uint32_t scene = (uint32_t)MEM_W(0, far_slot(k));
+        call_game(rdram, ctx, SetSceneColors, scene, 0xFF, 1, 0);
+        g = call_game(rdram, ctx, BorgAnimDrawScene, g, scene);
+    }
+    MEM_W(0x64, sp) = (int32_t)g;
 }
 
 // Widescreen clouds. Clouds::Draw positions each cloud (a 2D image) from the 3D camera, so in 16:9 some belong outside
@@ -803,7 +1060,7 @@ extern "C" void aidyn_splash_loaded(uint8_t* rdram) {
 #include "branding_images.h"
 
 namespace {
-    constexpr uint32_t kBrandingBase = 0x80800000;  // RDRAM the game never touches (it is told it has 8 MB)
+    constexpr uint32_t kBrandingBase = 0x80F00000;  // RDRAM the game never touches (it is told it has 15 MB, "Far map cells")
     gpr branding_address[std::size(aidyn::branding::kImages)];
 
     void copy_branding(uint8_t* rdram) {
@@ -905,4 +1162,48 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     c[2].values.word1 = ((h * 4) & 0xFFF) << 12 | ((v * 4) & 0xFFF);
     g = put_cmds(rdram, g, c, 3);
     return g;
+}
+
+// Field HUD at the screen edges. draw_hud_elements draws the time-of-day dial (Sundial::Draw) and the party portraits
+// (Portraits::Draw) at the bottom left and the compass (Compass::Draw) at the bottom right, in 320x240 coordinates,
+// which RT64 keeps in the middle 4:3 of a widescreen picture. With settings.json hud_at_edges (default) each is drawn
+// with RT64's rectangle alignment set to the picture's left or right edge (aidyn.us.toml hooks on entry, display list
+// in a0, and before the return, display list in v0), so they keep their place relative to that edge: the dial 19
+// texels from the left, the compass ring 19 from the right. The scissor is widened meanwhile and put back after.
+namespace {
+    bool hud_wide() {
+        const auto& gfx = aidyn::settings::graphics();
+        return gfx.hud_at_edges && gfx.aspect != aidyn::settings::Aspect::Original;
+    }
+
+    gpr hud_begin(uint8_t* rdram, gpr g, bool right) {
+        GfxCommand c[5];
+        gEXEnable(&c[0]);
+        gEXSetScissor(&c[1], 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, 240);
+        const int off = right ? -320 * 4 : 0;  // RIGHT adds the frame width to x
+        gEXSetRectAlign(&c[3], right ? G_EX_ORIGIN_RIGHT : G_EX_ORIGIN_LEFT, right ? G_EX_ORIGIN_RIGHT : G_EX_ORIGIN_LEFT,
+                        off, 0, off, 0);
+        return put_cmds(rdram, g, c, 5);
+    }
+
+    gpr hud_end(uint8_t* rdram, gpr g) {
+        const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager), v = MEM_HU(kVres1, (gpr)gGfxManager);
+        GfxCommand c[3];
+        gEXSetRectAlign(&c[0], G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, 0, 0, 0);
+        c[2].values.word0 = 0xED000000;                                   // gDPSetScissor(G_SC_NON_INTERLACE, 0, 0, h, v)
+        c[2].values.word1 = ((h * 4) & 0xFFF) << 12 | ((v * 4) & 0xFFF);
+        return put_cmds(rdram, g, c, 3);
+    }
+}
+
+extern "C" void aidyn_hud_begin(uint8_t* rdram, recomp_context* ctx, int right) {
+    if (hud_wide()) {
+        ctx->r4 = hud_begin(rdram, ctx->r4, right != 0);
+    }
+}
+
+extern "C" void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx) {
+    if (hud_wide()) {
+        ctx->r2 = hud_end(rdram, ctx->r2);
+    }
 }
