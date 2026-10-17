@@ -247,6 +247,13 @@ func = "RenderVoxelScenes"
 before_vram = 0x8000C820
 text = "extern void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx); aidyn_prop_distance(rdram, ctx);"
 
+# The animation sounds' volume (func_8004EB90, player_audiokey's only helper): 1 - distance / 15 in f0 right after
+# Sound_Volume_proximity, clamped to 0..1 outside combat (src/game/patches.cpp, "Sound falloff").
+[[patches.hook]]
+func = "func_8004EB90"
+before_vram = 0x8004EBBC
+text = "extern void aidyn_sound_falloff(uint8_t* rdram, recomp_context* ctx); aidyn_sound_falloff(rdram, ctx);"
+
 # WidgetBarter's constructor (the treasure and shop screens), once s2 = this: src/game/patches.cpp "Treasure hints"
 # keeps the newest one, to tell which list A acts on.
 [[patches.hook]]

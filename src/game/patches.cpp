@@ -1810,6 +1810,20 @@ bool sfx_log() {
 }
 }
 
+// Sound falloff. A character's animation sounds (footsteps, swings, hits: player_audiokey) take their volume from
+// func_8004EB90: 1 - distance / 15 from the camera's aim (Sound_Volume_proximity), times 255, stored as a byte with
+// no clamp. Past 15 units that is negative and the byte wraps round: 20 units away gives 171 of 255, loud. The game
+// skips a sound at volume 0, so 15 units was meant as the edge; it went unnoticed while characters only moved within
+// 30 units, but with them moving farther (draw_distance) distant footsteps were loud. Outside combat the volume is
+// clamped to 0..1 right after the call, so they fade out at 15 units as intended; combat keeps the old behaviour
+// (its sounds were all heard as they are).
+extern "C" void aidyn_sound_falloff(uint8_t* rdram, recomp_context* ctx) {
+    if (MEM_BU(0, (gpr)(int32_t)0x800D80C8) == 2) {  // gGlobals.gameStateA: 2 = combat
+        return;
+    }
+    ctx->f0.fl = std::clamp(ctx->f0.fl, 0.0f, 1.0f);
+}
+
 extern "C" void aidyn_sfx_key(uint8_t* rdram, recomp_context* ctx) {
     if (!sfx_log()) {
         return;
