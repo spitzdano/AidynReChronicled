@@ -285,17 +285,21 @@ def page_prompt(button):
     return draw
 
 
-def menu_hint(label, button):
+def menu_hint(label, button, light=False):
     """A button hint on a menu's parchment, like the inventory page's "DETAILS [X]": the word in the pages' brown ink
     (capitals 7 texels tall, as DETAILS), then the button icon (11 texels, as its X). Left-aligned; the game measures
-    the ink to space a row of them (src/game/patches.cpp, "Treasure hints")."""
+    the ink to space a row of them (src/game/patches.cpp, "Treasure hints"). light: for the combat menus' dark see-through
+    box, light letters with a dark edge like the controls card's."""
     def draw(w, h):
         W, H = w * SS, h * SS
         img = np.zeros((H, W, 4), np.float32)
         size = 78  # Marcellus SC capitals about 7 texels tall
         baseline = int(H - 2 * SS)
-        m = dilate(text_mask(label, MARCELLUS, size, W, H, SS // 2, baseline), 2)
-        over(img, rgb("#945a4a"), m)
+        if light:
+            text_line(img, SS // 2, label, size, baseline, "#f2e6c8")
+        else:
+            m = dilate(text_mask(label, MARCELLUS, size, W, H, SS // 2, baseline), 2)
+            over(img, rgb("#945a4a"), m)
         x = SS // 2 + ink_width(label, MARCELLUS, size) + 2 * SS
         bw, px = icon(button, h)
         if x + bw * SS > W:
@@ -343,6 +347,10 @@ IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
           ("art_off", 64, 8, art_off)]
 IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
 IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in HINTS]
+# The combat menus held open with Y (items) or X (spells and skills): choosing, and letting go to use.
+IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPAD", True)),
+           ("chint_use_items", 90, 11, menu_hint("Release to use", "CU", True)),
+           ("chint_use_spells", 90, 11, menu_hint("Release to use", "CD", True))]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
 

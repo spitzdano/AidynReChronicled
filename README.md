@@ -286,6 +286,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   lists widget is kept from its setup, `func_80030C50`), "Lists" (the D-pad: Inventory, Spells, Skills, Stats)
   between the RB prompt and DETAILS, and View / RT beside the portraits when there is more than one in the party.
   After a battle the page trains with experience: "Train" and "Lists" inside the Train panel.
+  In combat, the menus held open with Y (potions and item spells) and X (spells and skills) get "Choose" (the D-pad)
+  and "Release to use" with the button held, under the menu's box (the union of its frame pieces: the menu widget
+  itself is placed at 0 by 0). The list is kept as `Combat_menu_C_Up` / `combat_menu_C_down` store it in
+  `gCombatCVertMenu`; their "No potions..." / "No spells..." messages get none. `AIDYN_HINT_LOG=1` prints the box.
 - **Menu lettering.** With the HD UI pack the brown words of the inventory and shop pages are in the text font too: the
   titles Treasure, Inventory, Buy, Sell, Skills, Spells, Stats and Train redrawn whole (`labels.json` "text" with "fit":
   the font's own proportions; the ones never drawn while the UI was collected are redrawn from the ROM), and HitPoints,

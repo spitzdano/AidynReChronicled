@@ -1977,6 +1977,16 @@ namespace {
     TitleSeen inventory_page;  // the page's texel (0, 0) on screen, this frame
     gpr doll_lists = 0;
 
+    // Combat menu hints. In combat the items (Y) and spells and skills (X) are menus held open: the game keeps one
+    // while its button is held (combat_control_case_0x16 / 0x17) and, when it is let go, uses the highlighted entry
+    // (the menu's destructor calls its A function); A itself does nothing there. So under the box: "Choose" (D-pad or
+    // stick) and "Release to use [Y]" or "[X]". The menu is gCombatCVertMenu (0x800E3170); a real list, not the "No
+    // potions..." message stored there too, is the one Combat_menu_C_Up / combat_menu_C_down just made (aidyn.us.toml
+    // hooks where they store it). Its place is the widget's: posX +0x60, posY +0x62, width +0x74, height +0x72.
+    gpr combat_menu = 0;
+    int combat_menu_kind = 0;  // 1 items (Y), 0 spells and skills (X)
+    struct { bool seen; int x, y, w, h; } combat_menu_box{};
+
     bool heap_pointer(gpr p) {
         const uint32_t u = (uint32_t)p;
         return u >= 0x80000400u && u < 0x80E6A000u && (u & 3) == 0;
@@ -2177,6 +2187,54 @@ void note_inventory_page(uint8_t* rdram, recomp_context* ctx, gpr img) {
     inventory_page.alpha = MEM_BU(0x37, sp);
 }
 
+// Combat_menu_C_Up / combat_menu_C_down: 0 at their entry, then the list they made (v0) as they store it in
+// gCombatCVertMenu (the "No potions..." path never stores one, so its message gets no hints).
+extern "C" void aidyn_combat_menu_made(gpr menu, int items) {
+    combat_menu = menu;
+    combat_menu_kind = items;
+}
+
+// Combat_RenderCVertMenu's entry: the held menu is drawn this frame. Its own place says nothing (0 by 0): the box
+// is the menu's nine frame pieces (WidgetChoiceDia: WidgetBorg8 pointers +0x80..+0xA0, each placed on screen), their
+// union; failing those, its scroll list (+0x7C: posX +0x60, posY +0x62, boundX1 +0x66, boundY1 +0x6A).
+extern "C" void aidyn_combat_menu_drawn(uint8_t* rdram) {
+    const gpr menu = MEM_W(0, (gpr)(int32_t)0x800E3170);
+    if (menu == 0 || menu != combat_menu) {
+        return;
+    }
+    int x0 = 10000, y0 = 10000, x1 = -10000, y1 = -10000;
+    for (int k = 0; k < 9; k++) {
+        const gpr piece = MEM_W(0x80 + 4 * k, menu);
+        if (!heap_pointer(piece)) continue;
+        const int px = (int16_t)MEM_HU(0x60, piece), py = (int16_t)MEM_HU(0x62, piece);
+        const int pw = MEM_HU(0x74, piece), ph = MEM_HU(0x72, piece);
+        if (pw == 0 || ph == 0) continue;
+        x0 = std::min(x0, px); y0 = std::min(y0, py); x1 = std::max(x1, px + pw); y1 = std::max(y1, py + ph);
+    }
+    const gpr list = MEM_W(0x7C, menu);
+    if (x1 <= x0 && heap_pointer(list)) {
+        x0 = (int16_t)MEM_HU(0x60, list); y0 = (int16_t)MEM_HU(0x62, list);
+        x1 = (int16_t)MEM_HU(0x66, list); y1 = (int16_t)MEM_HU(0x6A, list);
+    }
+    if (x1 <= x0 || y1 <= y0) {
+        return;
+    }
+    combat_menu_box = { true, x0, y0, x1 - x0, y1 - y0 };
+    static const bool log = std::getenv("AIDYN_HINT_LOG") != nullptr;
+    static int last[4] = {};
+    const int now[4] = { x0, y0, x1 - x0, y1 - y0 };
+    if (log && std::memcmp(now, last, sizeof(now)) != 0) {
+        fprintf(stderr, "combat menu (%s): box x %d y %d w %d h %d; list", combat_menu_kind ? "items" : "spells", now[0],
+                now[1], now[2], now[3]);
+        if (heap_pointer(list)) {
+            fprintf(stderr, " x %d y %d to %d %d", (int16_t)MEM_HU(0x60, list), (int16_t)MEM_HU(0x62, list),
+                    (int16_t)MEM_HU(0x66, list), (int16_t)MEM_HU(0x6A, list));
+        }
+        fprintf(stderr, "\n");
+        std::memcpy(last, now, sizeof(now));
+    }
+}
+
 // DollMenuLists::InitMenu (func_80030C50; a0 = this): the inventory page's lists, just set up.
 extern "C" void aidyn_doll_lists(gpr lists) {
     doll_lists = lists;
@@ -2290,7 +2348,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     }
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
-    if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen) {
+    if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen && !combat_menu_box.seen) {
         return g;
     }
     copy_branding(rdram);
@@ -2368,7 +2426,17 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             }
         }
     }
+    if (combat_menu_box.seen) {
+        // Under the box, centred on it.
+        const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+        const TitleSeen origin{ true, false, 0.0f, 0.0f, hs, vs, 255 };
+        const int row[] = { branding_index("chint_choose"),
+                            branding_index(combat_menu_kind ? "chint_use_items" : "chint_use_spells") };
+        g = draw_hint_row(rdram, g, origin, row, 2, combat_menu_box.x + combat_menu_box.w / 2.0f,
+                          (float)(combat_menu_box.y + combat_menu_box.h + 3), true);
+    }
     treasure_title.seen = false;
     inventory_page.seen = false;
+    combat_menu_box.seen = false;
     return g;
 }

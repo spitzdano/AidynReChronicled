@@ -254,6 +254,35 @@ func = "func_8004EB90"
 before_vram = 0x8004EBBC
 text = "extern void aidyn_sound_falloff(uint8_t* rdram, recomp_context* ctx); aidyn_sound_falloff(rdram, ctx);"
 
+# The combat menus held open with Y / X: where Combat_menu_C_Up stores the item list it made (LoadCombatItems) and
+# combat_menu_C_down the spell and skill list (InitCombatSkillsMenu) in gCombatCVertMenu, v0 = the list (not the
+# "No potions..." message, stored elsewhere; both entries forget the last list first, so a message that lands where
+# that list was freed gets no hints); and Combat_RenderCVertMenu's entry (src/game/patches.cpp "Combat menu hints").
+[[patches.hook]]
+func = "Combat_menu_C_Up"
+before_vram = 0x80087F2C
+text = "extern void aidyn_combat_menu_made(gpr menu, int items); aidyn_combat_menu_made(0, 1);"
+
+[[patches.hook]]
+func = "combat_menu_C_down"
+before_vram = 0x80088028
+text = "extern void aidyn_combat_menu_made(gpr menu, int items); aidyn_combat_menu_made(0, 0);"
+
+[[patches.hook]]
+func = "Combat_menu_C_Up"
+before_vram = 0x80087FD0
+text = "extern void aidyn_combat_menu_made(gpr menu, int items); aidyn_combat_menu_made(ctx->r2, 1);"
+
+[[patches.hook]]
+func = "combat_menu_C_down"
+before_vram = 0x800880C4
+text = "extern void aidyn_combat_menu_made(gpr menu, int items); aidyn_combat_menu_made(ctx->r2, 0);"
+
+[[patches.hook]]
+func = "Combat_RenderCVertMenu"
+before_vram = 0x80087E30
+text = "extern void aidyn_combat_menu_drawn(uint8_t* rdram); aidyn_combat_menu_drawn(rdram);"
+
 # DollMenuLists::InitMenu (the inventory page's lists), a0 = this: src/game/patches.cpp "Inventory page hints" keeps the
 # newest, to read the highlighted item and the list shown.
 [[patches.hook]]
