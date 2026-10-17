@@ -295,6 +295,15 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   the font's own proportions; the ones never drawn while the UI was collected are redrawn from the ROM), and HitPoints,
   Level, Gold and DETAILS painted into the inventory page filled in from the parchment and written again
   (`labels.json` "words"). The glowing purple titles (Menu, Options, Pause...) keep their own lettering.
+- **Save pictures in full resolution.** The game keeps a 64x32 picture in each save (the middle half of the frame
+  when the pause menu opens) and stretches it into the Load and Save screens' box. As it takes that picture, RT64
+  copies the same area out of the frame it rendered (square pixels around the same centre, averaged down to at most
+  720 lines); saving writes the copy to `save-pictures/<key>.jpg` beside the pack (the newest 64 are kept), the key
+  being a hash of the save's own small picture. When a Load or Save screen draws a small picture with a copy, the
+  texture RT64 loads from it gets the copy as its replacement, so the menus place and fade it as before. Saves made
+  before this, or on another machine without the folder, keep the small picture. Code: `src/game/save_pictures.cpp`
+  and `tools/patches/rt64-save-pictures.patch` + `plume-copy-to-buffer.patch` (applied by CMake to the submodules);
+  `AIDYN_PICTURE_LOG=1` prints each step.
 - **Start-up screens** skipped (`skip_intro`). The intro music starts with them and plays on into the title screen,
   so it is moved on to where it was when the title screen used to appear (12,947 ticks of the music player, about
   13 s): the game's command stream is read ahead without playing it, checked against the real player

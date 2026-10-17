@@ -183,6 +183,7 @@ static std::filesystem::path data_folder() {
 }
 
 void aidyn_pak_set_path(const std::filesystem::path& path); // src/game/pak.cpp
+void aidyn_save_pictures_set_dir(const std::filesystem::path& dir); // src/game/save_pictures.cpp
 
 // The two ROMs the port runs. Aidyn Patch (u/halibabica's community patch, applied by the player to their own 1.0 ROM)
 // changes only data (potion recipes and prices, skill and weapon XP rates, the item/spell/enemy database), no code, so
@@ -324,8 +325,10 @@ int main(int argc, char** argv) {
 
     // The Controller Pak in port 1. AIDYN_MPK points it elsewhere (an emulator's .mpk, or a scratch copy for tests).
     const char* mpk = std::getenv("AIDYN_MPK");
-    aidyn_pak_set_path(mpk != nullptr && *mpk != '\0' ? std::filesystem::path(mpk)
-                       : data_folder() / (aidyn_patch ? "aidyn-patch.mpk" : "aidyn.mpk"));
+    const std::filesystem::path pak = mpk != nullptr && *mpk != '\0' ? std::filesystem::path(mpk)
+                                      : data_folder() / (aidyn_patch ? "aidyn-patch.mpk" : "aidyn.mpk");
+    aidyn_pak_set_path(pak);
+    aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");
 
     recomp::GameEntry entry{
         .rom_hash = 0x79127D0E9CAF38BCULL, // XXH3-64 of the big-endian NTSC-U 1.0 ROM (SHA-1 47ae795a...)

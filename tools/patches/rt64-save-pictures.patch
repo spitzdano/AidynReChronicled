@@ -1,0 +1,325 @@
+Aidyn ReChronicled: save pictures in full resolution (src/game/save_pictures.cpp). Adds TextureCache::addDynamicReplacement
+(a picture handed over at run time for one texture hash), State::dynamicReplacementProvider (asked for each new texture
+hash with the RDRAM address its data came from) and SharedQueueResources::framebufferCaptures (part of a framebuffer's
+high resolution picture copied before the next workload draws).
+
+diff --git i/src/hle/rt64_rdp_tmem.cpp w/src/hle/rt64_rdp_tmem.cpp
+index 6051f4e..c5bb069 100644
+--- i/src/hle/rt64_rdp_tmem.cpp
++++ w/src/hle/rt64_rdp_tmem.cpp
+@@ -49,11 +49,34 @@ namespace RT64 {
+         return hash;
+     }
+ 
++    // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): where in RDRAM the data last loaded into the tile's
++    // TMEM address starts (as dumpTexture works it out).
++    static uint32_t loadedRdramAddress(const State *state, const LoadTile &loadTile) {
++        const LoadOperation &loadOp = state->rdp->rice.lastLoadOpByTMEM[loadTile.tmem];
++        const uint32_t commonBytesOffset = (loadOp.tile.uls >> 2) << loadOp.texture.siz >> 1;
++        const uint32_t commonBytesPerRow = loadOp.texture.width << loadOp.texture.siz >> 1;
++        if (loadOp.type == LoadOperation::Type::Block) {
++            return loadOp.texture.address + commonBytesOffset + commonBytesPerRow * loadOp.tile.ult;
++        }
++        else if (loadOp.type == LoadOperation::Type::Tile) {
++            return loadOp.texture.address + commonBytesOffset + commonBytesPerRow * (loadOp.tile.ult >> 2);
++        }
++
++        return loadOp.texture.address;
++    }
++
+     uint64_t TextureManager::uploadTexture(State *state, const LoadTile &loadTile, TextureCache *textureCache, uint64_t creationFrame, uint16_t width, uint16_t height, uint32_t tlut) {
+         const uint8_t *TMEM = reinterpret_cast<const uint8_t *>(state->rdp->TMEM);
+         uint64_t hash = TMEMHasher::hash(TMEM, loadTile, width, height, tlut, TMEMHasher::CurrentHashVersion);
+         if (hashSet.find(hash) == hashSet.end()) {
+             hashSet.insert(hash);
++            if (state->dynamicReplacementProvider) {
++                TextureCache::DynamicReplacement replacement;
++                if (state->dynamicReplacementProvider(loadedRdramAddress(state, loadTile), width, height, loadTile.fmt, loadTile.siz, replacement)) {
++                    textureCache->addDynamicReplacement(hash, std::move(replacement));
++                }
++            }
++
+             textureCache->queueGPUUploadTMEM(hash, creationFrame, TMEM, RDP_TMEM_BYTES, width, height, tlut, loadTile, true);
+         }
+ 
+diff --git i/src/hle/rt64_shared_queue_resources.h w/src/hle/rt64_shared_queue_resources.h
+index 8858dac..f46bc42 100644
+--- i/src/hle/rt64_shared_queue_resources.h
++++ w/src/hle/rt64_shared_queue_resources.h
+@@ -4,7 +4,9 @@
+ 
+ #pragma once
+ 
++#include <functional>
+ #include <mutex>
++#include <vector>
+ 
+ #include "common/rt64_common.h"
+ #include "common/rt64_emulator_configuration.h"
+@@ -58,6 +60,23 @@ namespace RT64 {
+         std::condition_variable interpolatedCondition;
+         std::mutex workloadMutex;
+ 
++        // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): copies of part of a framebuffer's high resolution
++        // picture, taken before the next workload draws anything (WorkloadQueue::threadCaptureFramebuffers). The area is
++        // in native pixels; its height sets the copy's scale and its width keeps square pixels around the area's centre
++        // (a widened picture shows more at the sides). The callback runs on the workload thread with RGBA8 rows, or
++        // nothing if the framebuffer has no picture.
++        struct FramebufferCapture {
++            uint32_t address = 0;
++            float left = 0.0f;
++            float top = 0.0f;
++            float right = 0.0f;
++            float bottom = 0.0f;
++            std::function<void(std::vector<uint8_t> &&rgba, uint32_t width, uint32_t height)> callback;
++        };
++
++        std::vector<FramebufferCapture> framebufferCaptures;
++        std::mutex framebufferCaptureMutex;
++
+         void setSwapChainSize(uint32_t width, uint32_t height) {
+             std::scoped_lock<std::mutex> configurationLock(configurationMutex);
+             if ((swapChainWidth != width) || (swapChainHeight != height)) {
+diff --git i/src/hle/rt64_state.h w/src/hle/rt64_state.h
+index 7a8c13b..8a0db6e 100644
+--- i/src/hle/rt64_state.h
++++ w/src/hle/rt64_state.h
+@@ -4,6 +4,8 @@
+ 
+ #pragma once
+ 
++#include <functional>
++
+ #include "xxHash/xxh3.h"
+ 
+ #include "common/rt64_emulator_configuration.h"
+@@ -115,6 +117,12 @@ namespace RT64 {
+         ProfilingTimer screenCpuProfiler = ProfilingTimer(120);
+         ProfilingTimer viChangedProfiler = ProfilingTimer(120);
+         std::filesystem::path dumpingTexturesDirectory;
++
++        // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): asked once for each new texture hash, with the
++        // RDRAM address its loaded data starts at and the tile's size and format; filling in the replacement picture
++        // and returning true hands it to the texture cache for that hash.
++        std::function<bool(uint32_t rdramAddress, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
++            TextureCache::DynamicReplacement &replacement)> dynamicReplacementProvider;
+         bool configurationSaveQueued = false;
+         uint64_t workloadId = 0;
+         uint64_t presentId = 0;
+diff --git i/src/hle/rt64_workload_queue.cpp w/src/hle/rt64_workload_queue.cpp
+index 5a331aa..2c83dbd 100644
+--- i/src/hle/rt64_workload_queue.cpp
++++ w/src/hle/rt64_workload_queue.cpp
+@@ -4,6 +4,9 @@
+ 
+ #include "rt64_workload_queue.h"
+ 
++#include <algorithm>
++#include <cmath>
++
+ #include "common/rt64_thread.h"
+ 
+ #include "rt64_present_queue.h"
+@@ -864,6 +867,92 @@ namespace RT64 {
+ #   endif
+     }
+ 
++    void WorkloadQueue::threadCaptureFramebuffers() {
++        std::vector<SharedQueueResources::FramebufferCapture> captures;
++        {
++            std::scoped_lock<std::mutex> captureLock(ext.sharedResources->framebufferCaptureMutex);
++            captures.swap(ext.sharedResources->framebufferCaptures);
++        }
++
++        for (SharedQueueResources::FramebufferCapture &capture : captures) {
++            std::vector<uint8_t> rgba;
++            uint32_t width = 0;
++            uint32_t height = 0;
++            {
++                std::scoped_lock<std::mutex> managerLock(ext.sharedResources->workloadMutex);
++                std::scoped_lock<std::mutex> workerLock(workerMutex);
++                Framebuffer *fb = ext.sharedResources->framebufferManager.find(capture.address);
++                RenderTarget *target = nullptr;
++                if (fb != nullptr) {
++                    RenderTargetKey targetKey(fb->addressStart, fb->width, fb->siz, Framebuffer::Type::Color);
++                    target = &ext.sharedResources->renderTargetManager.get(targetKey, true);
++                }
++
++                if ((target != nullptr) && !target->isEmpty()) {
++                    const float scaleX = float(target->resolutionScale.x);
++                    const float scaleY = float(target->resolutionScale.y);
++                    const float centreX = (capture.left + capture.right) * 0.5f * scaleX;
++                    const float halfWidth = (capture.right - capture.left) * 0.5f * scaleY;
++                    const int32_t left = std::clamp(int32_t(lround(centreX - halfWidth)), 0, int32_t(target->width));
++                    const int32_t right = std::clamp(int32_t(lround(centreX + halfWidth)), 0, int32_t(target->width));
++                    const int32_t top = std::clamp(int32_t(lround(capture.top * scaleY)), 0, int32_t(target->height));
++                    const int32_t bottom = std::clamp(int32_t(lround(capture.bottom * scaleY)), 0, int32_t(target->height));
++                    if ((right > left) && (bottom > top)) {
++                        width = uint32_t(right - left);
++                        height = uint32_t(bottom - top);
++
++                        RenderWorker *worker = ext.workloadGraphicsWorker;
++                        const RenderFormat format = target->format;
++                        const uint32_t texelSize = RenderFormatSize(format);
++                        const uint32_t rowWidth = (width + 63) & ~63U;
++                        std::unique_ptr<RenderBuffer> readbackBuffer = worker->device->createBuffer(RenderBufferDesc::ReadbackBuffer(uint64_t(rowWidth) * texelSize * height));
++                        worker->commandList->begin();
++                        target->resolveTarget(worker, ext.shaderLibrary);
++                        RenderTexture *texture = target->getResolvedTexture();
++                        worker->commandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture, RenderTextureLayout::COPY_SOURCE));
++                        const RenderBox srcBox(left, top, right, bottom);
++                        worker->commandList->copyTextureRegion(
++                            RenderTextureCopyLocation::PlacedFootprint(readbackBuffer.get(), format, width, height, 1, rowWidth),
++                            RenderTextureCopyLocation::Subresource(texture), 0, 0, 0, &srcBox);
++                        worker->commandList->barriers(RenderBarrierStage::GRAPHICS_AND_COMPUTE, RenderTextureBarrier(texture, RenderTextureLayout::SHADER_READ));
++                        worker->commandList->end();
++                        worker->execute();
++                        worker->wait();
++
++                        const RenderRange readRange(0, uint64_t(rowWidth) * texelSize * height);
++                        const uint8_t *data = reinterpret_cast<const uint8_t *>(readbackBuffer->map(0, &readRange));
++                        rgba.resize(size_t(width) * height * 4);
++                        for (uint32_t y = 0; y < height; y++) {
++                            const uint8_t *src = data + size_t(y) * rowWidth * texelSize;
++                            uint8_t *dst = rgba.data() + size_t(y) * width * 4;
++                            for (uint32_t x = 0; x < width; x++) {
++                                if (format == RenderFormat::R16G16B16A16_UNORM) {
++                                    // Each channel's high byte (little-endian 16-bit values).
++                                    dst[x * 4 + 0] = src[x * 8 + 1];
++                                    dst[x * 4 + 1] = src[x * 8 + 3];
++                                    dst[x * 4 + 2] = src[x * 8 + 5];
++                                }
++                                else {
++                                    dst[x * 4 + 0] = src[x * 4 + 0];
++                                    dst[x * 4 + 1] = src[x * 4 + 1];
++                                    dst[x * 4 + 2] = src[x * 4 + 2];
++                                }
++
++                                dst[x * 4 + 3] = 255;
++                            }
++                        }
++
++                        readbackBuffer->unmap();
++                    }
++                }
++            }
++
++            if (capture.callback) {
++                capture.callback(std::move(rgba), width, height);
++            }
++        }
++    }
++
+     void WorkloadQueue::threadAdvanceBarrier() {
+         std::scoped_lock<std::mutex> cursorLock(cursorMutex);
+         barrierCursor = (barrierCursor + 1) % workloads.size();
+@@ -913,6 +1002,7 @@ namespace RT64 {
+                 ElapsedTimer workloadTimer;
+                 workloadProfiler.start();
+                 threadConfigurationUpdate(workload.viFbSize, workloadConfig);
++                threadCaptureFramebuffers();
+ 
+                 // FIXME: This is a very hacky way to find out if we need to advance the frame if the workload was paused for the first time.
+                 if (!workload.paused || (!gameFrames[curFrameIndex].workloads.empty() && (gameFrames[curFrameIndex].workloads[0] != (uint32_t)processCursor))) {
+diff --git i/src/hle/rt64_workload_queue.h w/src/hle/rt64_workload_queue.h
+index bde2f03..0b6a269 100644
+--- i/src/hle/rt64_workload_queue.h
++++ w/src/hle/rt64_workload_queue.h
+@@ -113,6 +113,7 @@ namespace RT64 {
+         void updateMultisampling();
+         void threadConfigurationUpdate(hlslpp::uint2 viFbSize, WorkloadConfiguration &workloadConfig);
+         void threadConfigurationValidate();
++        void threadCaptureFramebuffers();
+         void threadRenderFrame(GameFrame &curFrame, const GameFrame &prevFrame, const WorkloadConfiguration &workloadConfig,
+             const DebuggerRenderer &debuggerRenderer, const DebuggerCamera &debuggerCamera, float curFrameWeight, float prevFrameWeight,
+             float deltaTimeMs, RenderTargetKey overrideTargetKey, int32_t overrideTargetFbPairIndex, RenderTarget *overrideTarget,
+diff --git i/src/render/rt64_texture_cache.cpp w/src/render/rt64_texture_cache.cpp
+index 0848f3e..d4d221f 100644
+--- i/src/render/rt64_texture_cache.cpp
++++ w/src/render/rt64_texture_cache.cpp
+@@ -965,6 +965,11 @@ namespace RT64 {
+         }
+     }
+ 
++    void TextureCache::addDynamicReplacement(uint64_t hash, DynamicReplacement &&replacement) {
++        std::unique_lock queueLock(uploadQueueMutex);
++        dynamicReplacements[hash] = std::move(replacement);
++    }
++
+     void TextureCache::uploadThreadLoop() {
+         Thread::setCurrentThreadName("RT64 Texture");
+ 
+@@ -976,6 +981,7 @@ namespace RT64 {
+         std::vector<StreamResult> streamResultQueueCopy;
+         std::vector<TextureMapAddition> textureMapAdditions;
+         std::vector<ReplacementMapAddition> replacementMapAdditions;
++        std::vector<ReplacementMapAddition> dynamicMapAdditions;
+         std::vector<RenderTextureBarrier> beforeCopyBarriers;
+         std::vector<RenderTextureBarrier> beforeDecodeBarriers;
+         std::vector<RenderTextureBarrier> afterDecodeBarriers;
+@@ -1059,6 +1065,7 @@ namespace RT64 {
+                 // issues that can't be accounted for. Using dedicated copy queues for these operations has shown to eliminate these issues entirely.
+                 copyWorker->commandList->begin();
+                 textureMapAdditions.clear();
++                dynamicMapAdditions.clear();
+ 
+                 for (size_t i = 0; i < queueSize; i++) {
+                     static uint32_t TMEMGlobalCounter = 0;
+@@ -1113,6 +1120,26 @@ namespace RT64 {
+                     }
+ 
+                     addResolvedPaths(upload.hash, upload.width, upload.height, upload.tlut, upload.loadTile, upload.bytesTMEM, upload.decodeTMEM, resolvedPathQueueCopy);
++
++                    // A picture handed over at run time for this hash (addDynamicReplacement).
++                    DynamicReplacement dynamicReplacement;
++                    {
++                        std::unique_lock queueLock(uploadQueueMutex);
++                        auto dynamicIt = dynamicReplacements.find(upload.hash);
++                        if (dynamicIt != dynamicReplacements.end()) {
++                            dynamicReplacement = std::move(dynamicIt->second);
++                            dynamicReplacements.erase(dynamicIt);
++                        }
++                    }
++
++                    if (!dynamicReplacement.rgba.empty()) {
++                        Texture *dynamicTexture = new Texture();
++                        replacementUploadResources.emplace_back();
++                        TextureCache::setRGBA32(dynamicTexture, copyWorker->device, copyWorker->commandList.get(), dynamicReplacement.rgba.data(), dynamicReplacement.rgba.size(),
++                            dynamicReplacement.width, dynamicReplacement.height, dynamicReplacement.width * 4, replacementUploadResources.back());
++                        afterDecodeBarriers.emplace_back(dynamicTexture->texture.get(), RenderTextureLayout::SHADER_READ);
++                        dynamicMapAdditions.emplace_back(ReplacementMapAddition{ upload.hash, dynamicTexture, ReplacementShift::None, false });
++                    }
+                 }
+ 
+                 replacementMapAdditions.clear();
+@@ -1176,6 +1203,8 @@ namespace RT64 {
+                     }
+                 }
+                 
++                replacementMapAdditions.insert(replacementMapAdditions.end(), dynamicMapAdditions.begin(), dynamicMapAdditions.end());
++
+                 // Execute the copy worker and signal a semaphore so it synchronizes with the direct worker afterwards.
+                 const RenderCommandList *copyCommandList = copyWorker->commandList.get();
+                 RenderCommandSemaphore *syncSemaphore = copyToDirectSemaphore.get();
+diff --git i/src/render/rt64_texture_cache.h w/src/render/rt64_texture_cache.h
+index 9131697..6f54542 100644
+--- i/src/render/rt64_texture_cache.h
++++ w/src/render/rt64_texture_cache.h
+@@ -230,6 +230,17 @@ namespace RT64 {
+         uint32_t lockCounter;
+         bool developerMode;
+ 
++        // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): a picture handed over at run time, used for one
++        // texture hash in place of the texture like a pack's replacement (kept until the cache is destroyed).
++        struct DynamicReplacement {
++            std::vector<uint8_t> rgba;
++            uint32_t width = 0;
++            uint32_t height = 0;
++        };
++
++        std::unordered_map<uint64_t, DynamicReplacement> dynamicReplacements;
++        void addDynamicReplacement(uint64_t hash, DynamicReplacement &&replacement);
++
+         TextureCache(RenderWorker *directWorker, RenderWorker *copyWorker, uint32_t threadCount, const ShaderLibrary *shaderLibrary);
+         ~TextureCache();
+         void uploadThreadLoop();

@@ -454,3 +454,16 @@ text = "extern void aidyn_dcm_tick(uint8_t* rdram, recomp_context* ctx); aidyn_d
 func = "load_intro_music"
 before_vram = 0x8001B0E8
 text = "extern gpr aidyn_sound_test_track(gpr index); ctx->r4 = aidyn_sound_test_track(ctx->r4);"
+
+# Save pictures in full resolution (src/game/save_pictures.cpp): QuestData::TakeSnapshot right after getGfxLastFrame
+# made the game's 64x32 picture (RT64 copies the same area in full resolution), and CopySnapshot's entry (func_80019EF0,
+# memcpy of gQuestdataSnapshot into the save being made: the copy goes to disk).
+[[patches.hook]]
+func = "QuestData__TakeSnapshot"
+before_vram = 0x8001A400
+text = "extern void aidyn_save_picture_taken(uint8_t* rdram, recomp_context* ctx); aidyn_save_picture_taken(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80019EF0"
+before_vram = 0x80019EF0
+text = "extern void aidyn_save_picture_saved(uint8_t* rdram, recomp_context* ctx); aidyn_save_picture_saved(rdram, ctx);"

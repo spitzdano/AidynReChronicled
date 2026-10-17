@@ -3,7 +3,10 @@
 // parts removed: this shell has no menus, so there is nothing to draw over the game.
 #pragma once
 
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <vector>
 
 #include "ultramodern/renderer_context.hpp"
 
@@ -36,6 +39,15 @@ namespace aidyn {
     // F2: the redrawn art pack (rechronicled-art) off and on again, to compare with what is under it.
     void toggle_redrawn_art();
     bool redrawn_art();
+
+    // Save pictures (src/game/save_pictures.cpp). RT64 copies part of a framebuffer's full-resolution picture (area in
+    // native pixels; see SharedQueueResources::FramebufferCapture) before it draws the next frame, and calls done with
+    // RGBA8 rows on its own thread (empty when the framebuffer has no picture).
+    void capture_framebuffer(uint32_t address, float left, float top, float right, float bottom,
+                             std::function<void(std::vector<uint8_t>&& rgba, uint32_t width, uint32_t height)> done);
+    // ... and asks, for each new texture, whether a save picture replaces it (defined in save_pictures.cpp).
+    bool save_picture_for_texture(uint32_t address, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
+                                  std::vector<uint8_t>& rgba, uint32_t& out_width, uint32_t& out_height);
 
     std::unique_ptr<ultramodern::renderer::RendererContext> create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, bool developer_mode);
 }

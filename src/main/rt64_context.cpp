@@ -247,6 +247,9 @@ static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool repo
 
 static std::atomic_bool redrawn_art_on{ true }, redrawn_art_reload{ false };
 
+// The renderer that takes save pictures' copies (aidyn::capture_framebuffer).
+static std::atomic<RT64::Application*> capture_app{ nullptr };
+
 void aidyn::toggle_redrawn_art() {
     const auto& packs = aidyn::settings::graphics().texture_packs;
     if (std::find(packs.begin(), packs.end(), "rechronicled-art") == packs.end()) {
@@ -389,6 +392,14 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
         fprintf(stderr, "Texture packs failed to load (see above)\n");
     }
 
+    // Save pictures in full resolution (src/game/save_pictures.cpp).
+    app->state->dynamicReplacementProvider = [](uint32_t address, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
+                                                RT64::TextureCache::DynamicReplacement& replacement) {
+        return aidyn::save_picture_for_texture(address, width, height, fmt, siz, replacement.rgba, replacement.width,
+                                               replacement.height);
+    };
+    capture_app = app.get();
+
     // AIDYN_DUMP_TEXTURES=<folder>: RT64 writes every texture the game loads there (raw TMEM plus tile info), for
     // building texture packs (tools/hdui). Off unless set.
     if (const char* dump = std::getenv("AIDYN_DUMP_TEXTURES"); dump != nullptr && *dump != '\0') {
@@ -398,7 +409,21 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
     }
 }
 
-aidyn::RT64Context::~RT64Context() = default;
+aidyn::RT64Context::~RT64Context() {
+    capture_app = nullptr;
+}
+
+void aidyn::capture_framebuffer(uint32_t address, float left, float top, float right, float bottom,
+                                std::function<void(std::vector<uint8_t>&& rgba, uint32_t width, uint32_t height)> done) {
+    RT64::Application* app = capture_app;
+    if (app == nullptr) {
+        done({}, 0, 0);
+        return;
+    }
+    RT64::SharedQueueResources& shared = *app->sharedQueueResources;
+    std::scoped_lock lock(shared.framebufferCaptureMutex);
+    shared.framebufferCaptures.push_back({ address, left, top, right, bottom, std::move(done) });
+}
 
 // AIDYN_FPS=1 prints how many frames the game submits per second (one graphics task per game frame), how many are
 // shown, and how many game ticks pass (60 a second, more under fast-forward).
