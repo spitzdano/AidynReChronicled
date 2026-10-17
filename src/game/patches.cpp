@@ -66,6 +66,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <set>
 #include <string>
@@ -475,7 +476,7 @@ extern "C" void aidyn_image_draw_done(uint8_t* rdram, recomp_context* ctx) {
 // Draw distance. The field keeps a 3x3 block of map cells loaded around the player (100 units each outdoors; world
 // space has its origin at the centre cell's corner) and draws them with a far clip of 180 units (RenderZones,
 // aidyn.us.toml hook), so with the fog at the far end of the depth range the loaded ground ends 100 to 280 units away.
-// settings.json draw_distance (1..3) is used three ways:
+// settings.json draw_distance (1..3) is used three ways (and a fourth further down: monsters, people and items):
 // - The far clip follows the loaded ground: each frame it goes to where the view (the whole picture's width) leaves
 //   the 3x3 block, never under the original 180 nor over 180 x draw_distance, eased so it doesn't jump when turning.
 //   The game's fog still thickens into it, so the edge of the loaded world never shows.
@@ -585,18 +586,104 @@ extern "C" uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, u
     return bits;
 }
 
+// Monsters, people and items farther away. Props are drawn to about 40 units (their typical cut-off) x draw_distance,
+// but the field shows characters only within 20 units of the camera's aim and moves them only within 30, and the
+// items lying about (the models loot containers show: chests, bags, herb patches, gem veins...) have cut-offs of 5 to
+// 30. With draw_distance above 1 they reach as far as the props do: the original x draw_distance at least, and 40 x
+// draw_distance from draw_distance 2 up (80 units at 2, 120 at 3; the far clip there is 180 or more, the fog clear).
+namespace {
+    float reach(float original) {
+        const float dd = aidyn::settings::graphics().draw_distance;
+        const float scaled = original * dd;
+        return std::max(scaled, scaled + (40.0f * dd - scaled) * std::clamp(dd - 1.0f, 0.0f, 1.0f));
+    }
+
+    // Every model a loot container's linked scene object shows, in any map (Borg9 Container voxel objects -> their
+    // Scene link -> its Borg5 models): LootChestClosed, LootBagClosed, LootCloverPatch, LootPepperPlant, LootGemVein,
+    // LootKendallsHat, crates and barrels and the odd one-off. Where the same model stands as plain decoration it
+    // reaches as far too, so seeing one from afar doesn't tell it holds loot.
+    bool item_model(uint32_t model) {
+        static constexpr uint32_t kItems[] = { 1969, 2032, 2072, 2218, 2246, 2311, 2339, 2508, 2546, 2598, 2947,
+                                               2952, 2986, 3007, 3033, 3219, 3221, 3223, 14342 };
+        return std::find(std::begin(kItems), std::end(kItems), model) != std::end(kItems);
+    }
+
+    // PlayerHandler (gGlobals.gameVars.PlayerHandler, 0x800D8440): characters are drawn within shadowDist (+0x64) of
+    // the camera's aim and moved, animated and kept loaded within +0x68. ZoneEngineInit sets them to 20 and 30 for the
+    // field (128 in combat, 0 on the title screen).
+    constexpr int32_t kActorDraw = (int32_t)0x800D84A4;
+    constexpr int32_t kActorMove = (int32_t)0x800D84A8;
+
+    // AIDYN_ACTOR_LOG=1: every 2 s, how many characters a frame are drawn (fade checks) and the farthest.
+    bool actor_log() {
+        static const bool on = std::getenv("AIDYN_ACTOR_LOG") != nullptr;
+        return on;
+    }
+    int actor_checks = 0, actor_frames = 0, items_seen = 0, items_before = 0, items_now = 0;
+    float actor_farthest = 0.0f;
+}
+
 extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
     const float scale = aidyn::settings::graphics().draw_distance;
     float prox;
     uint32_t bits = ctx->f0.u32l;
     std::memcpy(&prox, &bits, sizeof(prox));
-    const float size = read_f32(rdram, ctx->r19 + 0xC);  // the prop's cut-off distance (s3 = the prop)
+    const gpr prop = ctx->r19;  // s3: the prop's voxel object (header.size +0xC, models from +0x28, count +0x68)
+    const float size = read_f32(rdram, prop + 0xC);  // the prop's cut-off distance
     props_tried++;
     props_original += prox < size;
-    prox /= scale;
+    const uint16_t models = MEM_HU(0x68, prop);
+    if ((MEM_HU(0x6A, prop) & 2) == 0 && models >= 1 && models <= 3 && item_model((uint32_t)MEM_W(0x2C, prop))) {
+        // An item: its cut-off (the nearer of size and its farthest level of detail) moves out to reach().
+        const float own = std::min(size, read_f32(rdram, prop + 0x28 + 12 * (models - 1)));
+        items_seen++;
+        items_before += prox / scale < own;
+        prox *= own / reach(own);
+        items_now += prox < own;
+    } else {
+        prox /= scale;
+    }
     props_scaled += prox < size;
     std::memcpy(&bits, &prox, sizeof(prox));
     ctx->f0.u32l = bits;
+}
+
+// ProcessPlayers' entry, each frame: the field's own character distances (20 and 30) become reach(20) and 10 more.
+extern "C" void aidyn_actor_reach(uint8_t* rdram) {
+    if (read_f32(rdram, kActorDraw) == 20.0f && read_f32(rdram, kActorMove) == 30.0f) {
+        const float draw = reach(20.0f);
+        if (draw != 20.0f) {
+            write_f32_at(rdram, kActorDraw, draw);
+            write_f32_at(rdram, kActorMove, std::max(30.0f, draw + 10.0f));
+            fprintf(stderr, "Characters: drawn within %.0f units, moving within %.0f (draw_distance %.1f)\n", draw,
+                    std::max(30.0f, draw + 10.0f), aidyn::settings::graphics().draw_distance);
+        }
+    }
+    if (actor_log() && ++actor_frames >= 120) {
+        fprintf(stderr, "actors: %.1f drawn a frame, farthest %.0f units (limit %.0f); items in view a frame: %.1f, "
+                "near enough %.1f (was %.1f)\n", actor_checks / 120.0f, actor_farthest, read_f32(rdram, kActorDraw),
+                items_seen / 120.0f, items_now / 120.0f, items_before / 120.0f);
+        actor_checks = actor_frames = items_seen = items_before = items_now = 0;
+        actor_farthest = 0.0f;
+    }
+}
+
+// PlayerShadowAlpha(handler, actor, dist, alpha), replaced: the game fades a character out over the last 2 units
+// before shadowDist; farther out that is a pop, so the fade takes the last tenth of it once that is wider.
+extern "C" uint32_t aidyn_actor_alpha(uint8_t* rdram, recomp_context* ctx) {
+    const float limit = read_f32(rdram, ctx->r4 + 0x64);
+    float dist;
+    const uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&dist, &bits, sizeof(dist));
+    const float fade = std::max(2.0f, limit * 0.1f);
+    actor_checks++;
+    actor_farthest = std::max(actor_farthest, dist);
+    uint32_t a = (uint32_t)ctx->r7 & 0xFF;
+    if (limit - fade < dist) {
+        a = (uint32_t)std::clamp((limit - dist) / fade * 255.0f, 0.0f, 255.0f);
+    }
+    const uint32_t own = MEM_BU(0x70C, ctx->r5);  // the actor's shadowAlpha
+    return std::min(a, own);
 }
 
 // RenderVoxelScenes puts props that are fading (or drawn see-through) in a 32-entry table drawn after the rest
@@ -1665,8 +1752,9 @@ extern "C" gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g) {
 // and advances by it. The original pixel font is wide and loosely spaced, so the HD pack's letters (tools/hdui/font.py)
 // have their own proportions and these widths (src/game/font_widths.h, generated with them). aidyn.us.toml hooks
 // LoadFace right after SetupBorg8 (s4 = the face's Borg8 index, s0 = its FontSubstruct, widths at +0x10) and the two
-// font sheets (BORG8_MainFont 28, BORG8_SlimFont 29) get them, only when the HD UI pack is in use: with the original
-// letters the original widths stay.
+// font sheets (BORG8_MainFont 28, BORG8_SlimFont 29) get them, only when the HD UI pack in use was drawn for them:
+// its aidyn-text-widths.txt holds the id of these widths (build_pack.py writes it). An older pack (letters drawn for
+// other widths) or one with the original letters would have its letters cut off, so the original widths stay.
 #include "font_widths.h"
 
 namespace {
@@ -1680,8 +1768,20 @@ namespace {
             const std::filesystem::path beside =
                 std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
             for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
-                if (std::filesystem::exists(dir / "hd-ui", ec) || std::filesystem::exists(dir / "hd-ui.rtz", ec)) {
-                    return true;
+                if (std::filesystem::is_directory(dir / "hd-ui", ec)) {
+                    std::ifstream in(dir / "hd-ui" / aidyn::font::kPackMarker);
+                    std::string id;
+                    in >> id;
+                    if (id == aidyn::font::kWidthsId) {
+                        return true;
+                    }
+                    fprintf(stderr, "HD text: %s was drawn for other letter widths (%s): the game keeps its own. "
+                            "A newer hd-ui pack (tools/hdui/build_pack.py) gives the HD text its spacing.\n",
+                            (dir / "hd-ui").c_str(), id.empty() ? "an older pack" : id.c_str());
+                    return false;
+                }
+                if (std::filesystem::exists(dir / "hd-ui.rtz", ec)) {
+                    return false;  // a packed pack can't be checked: the original widths fit any letters
                 }
             }
             return false;

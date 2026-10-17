@@ -53,6 +53,10 @@ def _magick(args):
 BOLD = 0.32           # extra stroke weight in texels (the game's pixel font is heavy; book fonts are light)
 TRACK = 0.6           # texels of letter-spacing on top of each letter's own advance (small caps read better open)
 DEFAULT_FONT = Path(__file__).resolve().parent / "fonts/MarcellusSC-Regular.ttf"
+# In an hd-ui pack built with a font: the id of the widths its letters were drawn for (widths_id). The game gives
+# the font sheets its own widths only when this matches its kWidthsId, so an older pack, or one with the original
+# letters (build_pack.py --font none), keeps the original widths instead of cutting its letters off.
+PACK_MARKER = "aidyn-text-widths.txt"
 HEADER = Path(__file__).resolve().parents[2] / "src/game/font_widths.h"
 
 
@@ -154,6 +158,12 @@ def redraw(rgba, w, h, font, scale):
         return cells
 
 
+def widths_id(table):
+    """A short id of a width table ({cell: width}), the same in font_widths.h and an hd-ui pack's PACK_MARKER."""
+    import hashlib
+    return hashlib.sha1(",".join(f"{i}:{w}" for i, w in sorted(table.items())).encode()).hexdigest()[:12]
+
+
 def write_header(path=HEADER, font=DEFAULT_FONT):
     table = widths(font)
     rows = ", ".join(f"{{0x{i:02X}, {wd}}}" for i, wd in sorted(table.items()))
@@ -166,6 +176,9 @@ def write_header(path=HEADER, font=DEFAULT_FONT):
 namespace aidyn::font {{
     struct Width {{ uint8_t cell, width; }};
     inline constexpr Width kWidths[] = {{ {rows} }};
+    // An hd-ui pack drawn for these widths has {PACK_MARKER} holding this id (tools/hdui/font.py widths_id).
+    inline constexpr char kPackMarker[] = "{PACK_MARKER}";
+    inline constexpr char kWidthsId[] = "{widths_id(table)}";
 }}
 """)
     print(f"font.py: {len(table)} widths -> {path}")

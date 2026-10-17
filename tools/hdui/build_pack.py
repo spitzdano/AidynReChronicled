@@ -487,6 +487,8 @@ def main():
         "textures": textures, "operationFilters": [], "shiftFilters": [], "extraFiles": [],
     }
     (out / "rt64.json").write_text(json.dumps(db, indent=1) + "\n")
+    if new_widths:  # the letters are drawn for these widths: the game may give them to the font sheets
+        (out / fontsheet.PACK_MARKER).write_text(fontsheet.widths_id(new_widths) + "\n")
     old = final.with_name(final.name + ".old")
     if old.exists():
         shutil.rmtree(old)

@@ -247,6 +247,18 @@ func = "RenderVoxelScenes"
 before_vram = 0x8000C820
 text = "extern void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx); aidyn_prop_distance(rdram, ctx);"
 
+# Characters farther away (src/game/patches.cpp, "Monsters, people and items farther away"): the field's draw and
+# move distances raised each frame at ProcessPlayers' entry; PlayerShadowAlpha replaced (a wider fade).
+[[patches.hook]]
+func = "ProcessPlayers"
+before_vram = 0x80012784
+text = "extern void aidyn_actor_reach(uint8_t* rdram); aidyn_actor_reach(rdram);"
+
+[[patches.hook]]
+func = "PlayerShadowAlpha"
+before_vram = 0x800122C4
+text = "extern uint32_t aidyn_actor_alpha(uint8_t* rdram, recomp_context* ctx); ctx->r2 = aidyn_actor_alpha(rdram, ctx); return;"
+
 [[patches.hook]]
 func = "RenderVoxelScenes"
 before_vram = 0x8000CB90
