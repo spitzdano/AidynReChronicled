@@ -18,8 +18,9 @@ from 8 texels they came out as blurred zigzags. Redrawn: a 1.1-texel shaft, a no
 cross-guard behind it, a ring at the tail; the double arrow has a head at each end and a ring in the middle.
 
 HealthBar (77x8 colour, drawn stretched to 80x10, cut from the left to show the hit points left): a twisted rope.
-Its original's faint middle stretch upscaled into a smear. Redrawn: strands slanting down to the right every 3
-texels, each shaded round (light crest, dark groove), the rope shaded darker towards its top and bottom edges.
+Its original's faint middle stretch upscaled into a smear. Redrawn in the original's reddish browns: a strand every
+4.6 texels, each round and lit from the upper left with fine fibres and a little variety from strand to strand; the
+grooves pinch the outline in, so the page shows between strands at the edges as in the original.
 """
 import math
 
@@ -139,27 +140,32 @@ def _arrow(w, h, left, right, middle):
 def _rope(w, h):
     """The HitPoints bar: (colour H x W x 3 at 8x, alpha)."""
     x, y = _grid(w, h)
-    top, bottom = 0.55, h - 0.55
-    half = (bottom - top) / 2.0
-    cy = (top + bottom) / 2.0
-    period, slant = 3.0, 0.85
-    u = x - (y - cy) * slant
-    f = np.mod(u, period) / period
-    crest = np.sin(np.pi * f) ** 0.7                        # 0 in the groove, 1 on a strand's crest
-    across = np.clip(1.0 - ((y - cy) / half) ** 2, 0.0, 1.0) ** 0.5  # the rope's roundness, top to bottom
-    light = np.clip(0.15 + 0.62 * crest * (0.35 + 0.65 * across) + 0.25 * np.clip(1 - f * 2.2, 0, 1) * crest, 0, 1)
-    stops = [(0.0, (0x2c, 0x14, 0x08)), (0.22, (0x5e, 0x2f, 0x15)), (0.5, (0xa8, 0x6a, 0x3a)),
-             (0.78, (0xdc, 0xab, 0x74)), (1.0, (0xf6, 0xdc, 0xae))]
+    cy = h / 2.0
+    r = h / 2.0 - 0.35                                     # the rope's radius at a strand's crest
+    d = (y - cy) / r                                        # -1 top .. 1 bottom
+    period, slant = 4.6, 0.95                               # the original's twist: a strand every 4.6 texels
+    u = x + (y - cy) * slant                                # strand boundaries are lines of constant u
+    k = np.floor(u / period)                                # which strand
+    f = u / period - k                                      # 0..1 across one strand
+    lobe = np.sin(np.pi * f) ** 0.55                        # a strand's round cross-section
+    radius = 0.80 + 0.20 * np.sin(np.pi * f) ** 0.8         # strands bulge, grooves pinch in: the page shows between
+    alpha = (np.abs(d) <= radius).astype(np.float32)
+    across = np.sqrt(np.clip(1.0 - (d / radius) ** 2, 0, 1))  # the rope's roundness, top to bottom
+    side = np.clip(1.2 - 1.6 * f, 0.35, 1.0)                # each strand's left side faces the light
+    top = 0.72 + 0.28 * np.clip(-d, -1, 1)                  # the upper half a little brighter
+    jitter = np.random.default_rng(7).uniform(0.9, 1.08, 64)[k.astype(int) % 64]  # strands not all alike
+    v = x + (y - cy) * slant * 1.9                          # fibres, a little steeper than the strands
+    phase = 2 * np.pi * v / 0.38 + 1.7 * np.sin(2 * np.pi * k / 5.3)
+    fibre = 1.0 + 0.18 * (0.6 * np.sin(phase) + 0.4 * np.sin(2.3 * phase + 1.1))
+    shade = lobe * across * (0.45 + 0.55 * side) * top
+    light = np.clip(shade ** 0.72 * jitter * fibre + 0.3 * np.clip((shade - 0.62) / 0.38, 0, 1) ** 2, 0, 1)
+    stops = [(0.0, (0x40, 0x1c, 0x0a)), (0.22, (0x6b, 0x31, 0x18)), (0.45, (0x94, 0x63, 0x4a)),
+             (0.7, (0xbd, 0x9c, 0x84)), (1.0, (0xec, 0xdb, 0xc4))]  # the original's reddish browns
     colour = np.zeros(x.shape + (3,), np.float32)
     for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
         t = np.clip((light - p0) / (p1 - p0), 0, 1)[..., None]
         seg = ((light >= p0) & (light <= p1))[..., None]
         colour = np.where(seg, np.array(c0, np.float32) * (1 - t) + np.array(c1, np.float32) * t, colour)
-    groove = (f < 0.07) | (f > 0.93)
-    colour = np.where(groove[..., None], np.array((0x24, 0x10, 0x06), np.float32), colour)
-    edge = 1.0 - np.clip((np.abs(y - cy) - (half - 0.45)) / 0.45, 0, 1)  # dark rim along the top and bottom
-    colour *= (0.55 + 0.45 * edge)[..., None]
-    alpha = ((y >= top) & (y <= bottom)).astype(np.float32)
     return colour, alpha
 
 
@@ -168,7 +174,8 @@ def redraw(name, w, h, rgba=None):
     if name == "HealthBar":
         colour, alpha = _rope(w, h)
         n = SCALE
-        c = colour.reshape(h * n, SS, w * n, SS, 3).mean(axis=(1, 3))
+        cover = alpha.reshape(h * n, SS, w * n, SS).sum(axis=(1, 3))[..., None]  # colour of the rope's samples only
+        c = (colour * alpha[..., None]).reshape(h * n, SS, w * n, SS, 3).sum(axis=(1, 3)) / np.maximum(cover, 1e-6)
         a = _down(alpha, w, h)
         out = np.zeros(a.shape + (4,), np.uint8)
         out[..., :3] = np.clip(c + 0.5, 0, 255).astype(np.uint8)

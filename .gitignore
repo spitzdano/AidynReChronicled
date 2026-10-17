@@ -23,3 +23,6 @@ baserom*
 # Python bytecode from the tools.
 __pycache__/
 *.pyc
+
+# Full-resolution masters of the redrawn art (art-masters/README.md): too big for git, kept locally.
+/art-masters/

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """export_textures.py: the game's 3D textures (characters, land, buildings, items) as a package, for redrawing them.
 
-    tools/hdui/export_textures.py [--rom ROM] [--no-hd]   -> build/art-export/AidynTextures/ and AidynTextures.zip
+    tools/hdui/export_textures.py [--rom ROM] [--no-hd] [--to-paint]
+        -> build/art-export/AidynTextures/ and AidynTextures.zip
 
 Every world texture (Borg1 asset, romtextures.py), sorted by what uses it. The models are found the way the game
 loads them: a character is a Borg7 actor (named in the decomp's Borgindecies.h; the entity tables give every person
@@ -27,6 +28,10 @@ after the first copy (tex<ROM index>.png); textures under 4x4 texels (flat colou
 original/ (1 pixel per texel), x8/ (8x nearest-neighbour), current-hd/ (the hd-world pack's picture for it, 8x;
 --no-hd leaves it out), plus redone/ (empty), contact/ sheets, manifest.json and README.md
 (export_textures_README.md). It's the ROM's art: it stays in build/.
+
+--to-paint exports only what is left to paint: it leaves out the textures already redrawn (art/textures) and those
+triage_textures.py sorts to "upscale" (flat colours, tints, effects, scrolling haze: nothing for a painter to add), and
+gives each texture left its "triage" (painted: wanted, optional: later) and "triage_why" in manifest.json.
 """
 import argparse
 import json
@@ -42,8 +47,10 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import redone  # noqa: E402
 import romassets  # noqa: E402
 import romtextures  # noqa: E402
+import triage_textures  # noqa: E402
 from build_pack import PROJECT  # noqa: E402
 from pngio import write_png  # noqa: E402
 from world import arr, hashes, load_decoder  # noqa: E402
@@ -233,6 +240,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--rom", type=Path, default=PROJECT / "baserom.z64")
     ap.add_argument("--no-hd", action="store_true", help="leave out current-hd/ (the zip is much smaller)")
+    ap.add_argument("--to-paint", action="store_true",
+                    help="only what is left to paint: not redrawn yet (art/textures), not upscale-only (triage)")
     args = ap.parse_args()
     tool = PROJECT / "build/cmake/tmemhash"
     if not tool.exists():
@@ -258,7 +267,9 @@ def main():
 
     root = OUT / "AidynTextures"
     shutil.rmtree(root, ignore_errors=True)
+    done = set(redone.collect_textures())
     entries, skipped, missing_hd = [], 0, 0
+    left_out = defaultdict(int)
     for h, copies in by_hash.items():
         index, info = copies[0], texinfo[copies[0]]
         w, ht = info["w"], info["h"]
@@ -271,6 +282,26 @@ def main():
         fmt, siz, line, words, _, _, tlut = info["tiles"][0]
         img = arr(w, ht, decode(info["tmem"], {"fmt": fmt, "siz": siz, "line": line, "tmem": words, "palette": 0},
                                 w, ht, "RGBA16" if tlut else "None"))
+        alpha = img[..., 3]
+        t = info["type"]
+        mode = tiling.get(h)
+        entry = {
+            "file": rel.as_posix(), "rom_index": index, "copies": copies[1:], "hash": h,
+            "width": w, "height": ht, "format": FORMATS[t], "mip_levels": len(info["tiles"]),
+            "transparency": "none" if alpha.min() == 255 else ("cut-out" if t == 0 or set(np.unique(alpha)) <= {0, 255}
+                                                               else "soft"),
+            "scrolls": info["moving"],
+            "tiling": [TILING[mode[0]], TILING[mode[1]]] if mode else None,
+            "used_by": sorted({label for _, _, label in uses}),
+            "areas": sorted({g for c, g, _ in uses if c == "world"}),
+            "redo_size": [w * SCALE, ht * SCALE]}
+        if args.to_paint:
+            bucket, why = triage_textures.classify(entry, triage_textures.measure_rgba(img), done)
+            if bucket in ("done", "upscale"):
+                left_out[bucket] += 1
+                continue
+            entry["triage"], entry["triage_why"] = bucket, why
+        entries.append(entry)
         big = np.repeat(np.repeat(img, SCALE, axis=0), SCALE, axis=1)
         for variant, im in (("original", img), ("x8", big)):
             (root / variant / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -283,23 +314,12 @@ def main():
                 shutil.copyfile(hd, root / "current-hd" / rel)
             else:
                 missing_hd += 1
-        alpha = img[..., 3]
-        t = info["type"]
-        mode = tiling.get(h)
-        entries.append({
-            "file": rel.as_posix(), "rom_index": index, "copies": copies[1:], "hash": h,
-            "width": w, "height": ht, "format": FORMATS[t], "mip_levels": len(info["tiles"]),
-            "transparency": "none" if alpha.min() == 255 else ("cut-out" if t == 0 or set(np.unique(alpha)) <= {0, 255}
-                                                               else "soft"),
-            "scrolls": info["moving"],
-            "tiling": [TILING[mode[0]], TILING[mode[1]]] if mode else None,
-            "used_by": sorted({label for _, _, label in uses}),
-            "areas": sorted({g for c, g, _ in uses if c == "world"}),
-            "redo_size": [w * SCALE, ht * SCALE]})
 
     (root / "manifest.json").write_text(json.dumps({
         "game": "Aidyn Chronicles: The First Mage (N64, NTSC-U 1.0)",
         "scale": SCALE,
+        **({"selection": "left to paint: not redrawn yet, not upscale-only; triage: painted (wanted) or optional "
+                         "(later)"} if args.to_paint else {}),
         "variants": {"original": "as stored in the ROM (mip level 0)", "x8": "nearest-neighbour 8x",
                      "current-hd": "the hd-world pack's picture, 8x", "redone": "new versions go here"},
         "textures": entries}, indent=1) + "\n")
@@ -327,7 +347,13 @@ def main():
     for e in entries:
         counts[e["file"].split("/")[0]] += 1
     print(f"export_textures.py: {len(entries)} textures ({', '.join(f'{k} {v}' for k, v in sorted(counts.items()))}); "
-          f"{skipped} flat colours left out" + (f"; {missing_hd} without an HD version" if missing_hd else ""))
+          f"{skipped} flat colours left out" + (f"; {missing_hd} without an HD version" if missing_hd else "")
+          + "".join(f"; {v} {k} left out" for k, v in sorted(left_out.items())))
+    if args.to_paint:
+        tri = defaultdict(int)
+        for e in entries:
+            tri[e["triage"]] += 1
+        print(f"export_textures.py: to paint: {tri['painted']} wanted, {tri['optional']} optional")
     print(f"export_textures.py: {root}\n                    {zip_path} ({zip_path.stat().st_size // 1024 // 1024} MB)")
 
 

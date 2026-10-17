@@ -361,7 +361,7 @@ text = "extern void aidyn_sfx_key(uint8_t* rdram, recomp_context* ctx); aidyn_sf
 [[patches.hook]]
 func = "DCM__Add"
 before_vram = 0x800907A4
-text = "extern void aidyn_sfx_dcm(uint8_t* rdram, recomp_context* ctx); aidyn_sfx_dcm(rdram, ctx);"
+text = "extern int aidyn_sfx_dcm(uint8_t* rdram, recomp_context* ctx); if (aidyn_sfx_dcm(rdram, ctx)) { ctx->r2 = 0; return; }"
 
 [[patches.hook]]
 func = "PlayAudioSound"
@@ -385,3 +385,10 @@ text = "extern void aidyn_sfx_attack_pick(uint8_t* rdram, recomp_context* ctx); 
 func = "func_80090C94"
 before_vram = 0x80090C94
 text = "extern void aidyn_dcm_tick(uint8_t* rdram, recomp_context* ctx); aidyn_dcm_tick(rdram, ctx);"
+
+# AIDYN_SOUND_TEST (src/game/patches.cpp, "Sound test"): load_intro_music loads the given Borg12 in place of the title
+# theme (a0 = the index, just before its loadBorg12 call); DCM::Add above refuses every other sound meanwhile.
+[[patches.hook]]
+func = "load_intro_music"
+before_vram = 0x8001B0E8
+text = "extern gpr aidyn_sound_test_track(gpr index); ctx->r4 = aidyn_sound_test_track(ctx->r4);"

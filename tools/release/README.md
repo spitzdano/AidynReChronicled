@@ -55,9 +55,10 @@ All in `~/.local/share/AidynReChronicled`:
 - `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's. `backups/` keeps its last
   20 states (at each start and before each save).
 - `logs/last-run.log`: what the last start printed. Look there if something goes wrong.
-- `texture-packs/`: HD texture packs. This release includes, next to the game, newly painted portraits and item
-  icons (`rechronicled-art`) and the title-screen branding (`rechronicled`); the HD menu and world packs (upscales of
-  the game's own pictures) are not part of it.
+- `texture-packs/`: HD texture packs. This release includes, next to the game, newly painted art
+  (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
+  the first world textures: Alaron, the starting forest, part of Gwernia Castle) and the title-screen branding
+  (`rechronicled`); the HD menu and world packs (upscales of the game's own pictures) are not part of it.
 
 ## About
 

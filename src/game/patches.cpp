@@ -1719,11 +1719,40 @@ extern "C" void aidyn_sfx_key(uint8_t* rdram, recomp_context* ctx) {
             (uint32_t)ctx->r18, (uint32_t)ctx->r19, prox);
 }
 
-extern "C" void aidyn_sfx_dcm(uint8_t* rdram, recomp_context* ctx) {
+// Sound test (AIDYN_SOUND_TEST=<Borg12 index>, for exporting the game's music and sounds with AIDYN_AUDIO_DUMP): the
+// title screen plays that Borg12 in place of its theme (load_intro_music hook), and nothing else gets a voice: the
+// title's flying camera loads map areas whose own music and ambient sounds would otherwise mix in.
+namespace {
+    int sound_test_track() {
+        static const int track = [] {
+            const char* v = std::getenv("AIDYN_SOUND_TEST");
+            return (v != nullptr && *v != '\0') ? (int)std::strtol(v, nullptr, 0) : -1;
+        }();
+        return track;
+    }
+}
+
+extern "C" gpr aidyn_sound_test_track(gpr index) {
+    const int track = sound_test_track();
+    if (track < 0) {
+        return index;
+    }
+    fprintf(stderr, "sound test: Borg12 %d (0x%X) in place of the title theme %u\n", track, track, (uint32_t)index);
+    return (gpr)track;
+}
+
+// DCM::Add's entry; returns 1 to refuse the sound (the hook returns 0 from DCM::Add).
+extern "C" int aidyn_sfx_dcm(uint8_t* rdram, recomp_context* ctx) {
     if (sfx_log()) {
         fprintf(stderr, "sfx dcm add: sub %08X vol %u pan %d\n", (uint32_t)ctx->r6, (uint32_t)(ctx->r7 & 0xFF),
                 (int8_t)MEM_BU(0x10, ctx->r29));
     }
+    if (sound_test_track() < 0) {
+        return 0;
+    }
+    const gpr music = MEM_W(0, (gpr)(int32_t)0x800D809C);  // gGlobals.titleSplashVars.introMusic (Borg12Header*)
+    const uint32_t mine = music != 0 ? (uint32_t)MEM_W(8, music) + 8 : 0;  // &header->dat->sub
+    return (uint32_t)ctx->r6 != mine;
 }
 
 extern "C" void aidyn_sfx_play(uint8_t* rdram, recomp_context* ctx) {

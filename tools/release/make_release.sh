@@ -9,6 +9,7 @@
 # (rechronicled-art: tools/hdui/art_pack.py from art/), all made here from fonts and our own art,
 # README.md (tools/release/README.md) and LICENSE. Nothing from the ROM: the game asks for the player's ROM on its
 # first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
+# tools/release/notes/<version>.md, if there, goes into the release notes (what's new).
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/../.."
 die() { echo "make_release.sh: $*" >&2; exit 1; }
@@ -70,9 +71,13 @@ trap 'rm -f "$notes"' EXIT
     echo "has the rest: controls, Aidyn Patch, settings."
     echo
     echo "Needs glibc 2.38+ (any current distribution), a Vulkan driver and libdbus. Contains no game data. Includes the"
-    echo "newly painted portraits and item icons; the HD menu and world texture packs (upscales of the game's own"
-    echo "pictures) aren't part of it."
+    echo "newly painted art (portraits, item and slot icons, button prompts, HUD pieces, the first world textures); the"
+    echo "HD menu and world texture packs (upscales of the game's own pictures) aren't part of it."
     echo
+    if [[ -f tools/release/notes/$version.md ]]; then
+        cat "tools/release/notes/$version.md"
+        echo
+    fi
     echo "Built from $(git rev-parse --short HEAD). SHA-256: \`$(cut -d' ' -f1 "$out/$name.tar.gz.sha256")\`"
 } >"$notes"
 gh release create "$tag" "$out/$name.tar.gz" "$out/$name.tar.gz.sha256" --verify-tag \

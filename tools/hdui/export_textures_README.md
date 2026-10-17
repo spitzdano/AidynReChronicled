@@ -18,6 +18,11 @@ ReChronicled. The portraits and item icons are a separate package (AidynArt).
 | `contact/` | One sheet per folder, every texture at a glance, labelled with its number and size |
 | `manifest.json` | Every texture: file, ROM asset number, size, N64 format, transparency, tiling, whether it scrolls, every model and area that uses it, and the size a new version should have |
 
+If the manifest has a `selection`, this package holds only what is left to paint: textures already redrawn are not
+in it, nor those an upscale serves as well (flat colours, glows and smoke the game tints, spell effects, scrolling
+haze). Each texture's `triage` says `painted` (worth painting: detailed, seen up close or used widely) or `optional`
+(little structure or little seen: later), and `triage_why` why.
+
 Inside each of the four picture folders, the textures are sorted the same way:
 
 | | Count | |
