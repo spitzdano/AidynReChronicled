@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # pad.sh: drive the game for testing through AIDYN_PAD_FILE (src/main/input.cpp). State lives in build/dev.
-#   pad.sh start            launch, always windowed (AIDYN_WINDOWED; env passes through: AIDYN_MPK, AIDYN_SETTINGS_DIR,
-#                           AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS)
+#   pad.sh start            launch, always windowed (AIDYN_WINDOWED) and deaf to real controllers (with AIDYN_PAD_FILE
+#                           the game opens none); env passes through: AIDYN_MPK, AIDYN_SETTINGS_DIR,
+#                           AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS
 #   pad.sh tap BTN...       A B Z START DU DD DL DR L R CU CD CL CR R3 L3 F2 (the key: redrawn art off / on) (TAPGAP=seconds between taps, default 0.5)
 #   pad.sh hold SECS BTN [X Y [RX RY]]   hold a button (NONE for sticks only), left stick X Y -80..80,
 #                                        right stick RX RY -1..1

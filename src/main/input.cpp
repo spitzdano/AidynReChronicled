@@ -48,7 +48,10 @@ namespace {
     }
 
     void open_first_pad() {
-        if (pad != nullptr) {
+        // A test run (AIDYN_PAD_FILE, tools/dev/pad.sh) opens no controller: the game reads controllers in the
+        // background too, and presses meant for something else on the desktop would steer the test.
+        static const bool test_run = std::getenv("AIDYN_PAD_FILE") != nullptr;
+        if (pad != nullptr || test_run) {
             return;
         }
         for (int i = 0; i < SDL_NumJoysticks(); i++) {
