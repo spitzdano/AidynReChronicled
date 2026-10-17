@@ -189,7 +189,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate (and never above it). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
-| `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach as far as props do: 80 units at 2, 120 at 3 (originally 20 and 5 to 30) |
+| `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
@@ -243,10 +243,11 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   loaded edge, free heap and prop counts each second.
 - **Monsters, people and items farther away.** The field draws characters only within 20 units of the camera's aim
   (and moves them within 30), and the items lying about (the models loot containers show) have cut-offs of 5 to 30
-  units where props have about 40. With `draw_distance` above 1 they reach as far as props: at least their original
-  times `draw_distance`, 40 times it from 2 up; characters move within 10 units more and fade over the last tenth.
-  Items are picked by model (19 models), so a crate or barrel standing as decoration reaches as far as one with loot
-  in it. `AIDYN_ACTOR_LOG=1` prints characters and items drawn each 2 s.
+  units where props have about 40. With `draw_distance` above 1 they reach twice as far as props: at least their
+  original times `draw_distance`, 80 times it from 2 up (160 units), so one in view doesn't vanish as you back away;
+  characters move within 10 units more and fade over the last tenth. Past the game's own 3x3 map cells there are none
+  to show. Their footsteps still fade out at 15 units ("Sound falloff"). Items are picked by model (19 models), so a
+  crate or barrel standing as decoration reaches as far as one with loot in it. `AIDYN_ACTOR_LOG=1` prints characters and items drawn each 2 s.
 - **HD text widths and older packs.** The letters and the widths have to match: letters drawn for other widths come
   out squeezed or spread out. So the letters (and the Xbox button icons in the font) also come on their own in
   `rechronicled-text` (`tools/hdui/text_pack.py`, drawn from the fonts, about 9,200 textures), which every release

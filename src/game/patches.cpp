@@ -596,13 +596,16 @@ extern "C" uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, u
 // Monsters, people and items farther away. Props are drawn to about 40 units (their typical cut-off) x draw_distance,
 // but the field shows characters only within 20 units of the camera's aim and moves them only within 30, and the
 // items lying about (the models loot containers show: chests, bags, herb patches, gem veins...) have cut-offs of 5 to
-// 30. With draw_distance above 1 they reach as far as the props do: the original x draw_distance at least, and 40 x
-// draw_distance from draw_distance 2 up (80 units at 2, 120 at 3; the far clip there is 180 or more, the fog clear).
+// 30. With draw_distance above 1 they reach twice as far as the props: the original x draw_distance at least, and
+// 80 x draw_distance from draw_distance 2 up (160 units at 2, 240 at 3; the far clip there is 180 or more, the fog
+// clear), so one in view doesn't vanish as you back away. They exist only in the game's own 3x3 map cells (100 units
+// each, the party in the middle one), so past those there are none to show. Their footsteps and other animation
+// sounds still fade out at 15 units ("Sound falloff"): the game skips a sound at volume 0, so far ones cost nothing.
 namespace {
     float reach(float original) {
         const float dd = aidyn::settings::graphics().draw_distance;
         const float scaled = original * dd;
-        return std::max(scaled, scaled + (40.0f * dd - scaled) * std::clamp(dd - 1.0f, 0.0f, 1.0f));
+        return std::max(scaled, scaled + (80.0f * dd - scaled) * std::clamp(dd - 1.0f, 0.0f, 1.0f));
     }
 
     // Every model a loot container's linked scene object shows, in any map (Borg9 Container voxel objects -> their
