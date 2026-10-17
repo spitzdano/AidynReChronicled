@@ -15,8 +15,16 @@ endif()
 
 # RT64 and the runtime, as submodules pinned by new-game.sh (same arrangement as Zelda64Recomp).
 # Changes to the pinned RT64 (tools/patches/rt64-*.patch, see each file) and to its plume submodule
-# (tools/patches/plume-*.patch) are applied here once.
+# (tools/patches/plume-*.patch) are applied here once. Without git (the portable build's container) the tree is taken
+# as it is: the source it's given has them applied already.
+find_package(Git QUIET)
+if (NOT GIT_FOUND)
+    message(STATUS "git not found: tools/patches not checked (lib/rt64 is used as it is)")
+endif()
 foreach(target rt64 plume)
+    if (NOT GIT_FOUND)
+        break()
+    endif()
     if (target STREQUAL "rt64")
         set(patch_dir ${CMAKE_SOURCE_DIR}/lib/rt64)
     else()
@@ -24,10 +32,10 @@ foreach(target rt64 plume)
     endif()
     file(GLOB target_patches ${CMAKE_SOURCE_DIR}/tools/patches/${target}-*.patch)
     foreach(patch ${target_patches})
-        execute_process(COMMAND git -C ${patch_dir} apply --reverse --check ${patch}
+        execute_process(COMMAND ${GIT_EXECUTABLE} -C ${patch_dir} apply --reverse --check ${patch}
                         RESULT_VARIABLE already_applied OUTPUT_QUIET ERROR_QUIET)
         if (NOT already_applied EQUAL 0)
-            execute_process(COMMAND git -C ${patch_dir} apply ${patch} RESULT_VARIABLE applied)
+            execute_process(COMMAND ${GIT_EXECUTABLE} -C ${patch_dir} apply ${patch} RESULT_VARIABLE applied)
             if (NOT applied EQUAL 0)
                 message(FATAL_ERROR "Could not apply ${patch} to ${patch_dir}")
             endif()
