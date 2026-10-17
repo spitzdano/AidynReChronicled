@@ -8,6 +8,9 @@
 // and its backup, blocks 24..39 the 16-entry note directory, pages 5..127 the data.
 //
 // Every write is flushed to disk at once (temp file + rename), so a crash never leaves a torn file.
+//
+// The game only touches the pack to save or load, so a file changed by something else while the game runs (saves
+// synced in from another device, a backup put back) is read again at the next save or load: see refresh_locked.
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -39,11 +42,19 @@ constexpr size_t kBlock = 32;
 constexpr size_t kBlocks = 1024;
 constexpr size_t kImageSize = kBlock * kBlocks; // 32 KiB: one bank
 constexpr int kErrNoPack = 1;                    // PFS_ERR_NOPACK
+// libultra's one-entry cache of the inode table (__osPfsRWInode reads it from there while the bank and channel
+// match): the channel (contpfs_data_0000 in the decomp's symbols) and the bank, 0x800E8F80 the table.
+constexpr int32_t kInodeCacheChannel = (int32_t)0x800E4CE0;
+constexpr int32_t kInodeCacheBank = (int32_t)0x800E4CE4;
+constexpr size_t kIdBlocks[] = { 1, 3, 4, 6 };
 
 std::mutex g_mutex;
 std::filesystem::path g_path;
 std::array<uint8_t, kImageSize> g_image{};
 bool g_loaded = false;
+// The file as the game last read or wrote it, to notice when something else changes it.
+std::filesystem::file_time_type g_disk_time{};
+std::chrono::steady_clock::time_point g_last_access{};
 
 [[noreturn]] void fatal(const std::string& message) {
     std::string text = "Controller Pak: " + message;
@@ -85,7 +96,7 @@ void format_image() {
     id_checksum(id, sum, inverted);
     put16(id + 0x1C, sum);
     put16(id + 0x1E, inverted);
-    for (size_t block : { 1, 3, 4, 6 }) {
+    for (size_t block : kIdBlocks) {
         std::memcpy(&g_image[block * kBlock], id, kBlock);
     }
 
@@ -117,6 +128,7 @@ void flush_locked() {
     if (ec) {
         fatal("cannot replace " + g_path.string() + ": " + ec.message());
     }
+    g_disk_time = std::filesystem::last_write_time(g_path, ec);
 }
 
 // Backups (settings.json game.save_backups, default 20): a copy of the pack in <data>/backups/<name>-<date>-<time>.mpk
@@ -189,6 +201,7 @@ void load_locked() {
         if (std::filesystem::file_size(g_path, ec) != kImageSize) {
             fatal(g_path.string() + " is not a 32 KiB Controller Pak image; move it away or fix it");
         }
+        g_disk_time = std::filesystem::last_write_time(g_path, ec);
         std::ifstream in(g_path, std::ios::binary);
         in.read(reinterpret_cast<char*>(g_image.data()), g_image.size());
         if (!in) {
@@ -201,6 +214,48 @@ void load_locked() {
         fprintf(stderr, "Controller Pak: created %s\n", g_path.c_str());
     }
     g_loaded = true;
+}
+
+// The pack file changed since the game last read or wrote it (saves synced in from another device, a backup put
+// back): read it again, so the game saves on top of it instead of writing its older copy over it. Checked at the
+// first block access after a second without any (a save or load is a quick run of them, so one is never split).
+// The game's copy goes to backups/ first. Two things keep the running game consistent with the new contents: the
+// ID blocks stay the game's own (libultra compares them with the copy it took when it first opened the pack and
+// would report a different pack), and libultra's cached inode table is dropped.
+void refresh_locked(uint8_t* rdram) {
+    const auto now = std::chrono::steady_clock::now();
+    const bool quiet = now - g_last_access > std::chrono::seconds(1);
+    g_last_access = now;
+    std::error_code ec;
+    if (!quiet || !std::filesystem::exists(g_path, ec)) {
+        return;  // a missing file is written again by the next save
+    }
+    const auto time = std::filesystem::last_write_time(g_path, ec);
+    if (ec || time == g_disk_time) {
+        return;
+    }
+    g_disk_time = time;
+    std::array<uint8_t, kImageSize> disk{};
+    std::ifstream in(g_path, std::ios::binary);
+    if (std::filesystem::file_size(g_path, ec) != kImageSize ||
+        !in.read(reinterpret_cast<char*>(disk.data()), disk.size())) {
+        fprintf(stderr, "Controller Pak: %s changed, but isn't a 32 KiB pack now: kept the game's copy\n",
+                g_path.c_str());
+        return;
+    }
+    for (size_t block : kIdBlocks) {
+        std::memcpy(&disk[block * kBlock], &g_image[block * kBlock], kBlock);
+    }
+    if (disk == g_image) {
+        return;
+    }
+    backup_locked("replaced by a newer file");
+    g_image = disk;
+    g_written = false;  // the next save backs the new contents up first
+    MEM_W(0, (gpr)kInodeCacheChannel) = -1;
+    MEM_B(0, (gpr)kInodeCacheBank) = (int8_t)250;  // libultra's "nothing cached"
+    fprintf(stderr, "Controller Pak: %s changed on disk (saves from another device?): read it again\n",
+            g_path.c_str());
 }
 
 } // namespace
@@ -242,6 +297,7 @@ extern "C" void __osContRamRead_recomp(uint8_t* rdram, recomp_context* ctx) {
     }
     std::lock_guard<std::mutex> lock(g_mutex);
     load_locked();
+    refresh_locked(rdram);
     if (block >= kBlocks) {
         // Beyond the 32 KiB of bank 0 (a pack with more banks, which we don't have): reads as zeroes.
         for (size_t i = 0; i < kBlock; i++) {
@@ -267,6 +323,7 @@ extern "C" void __osContRamWrite_recomp(uint8_t* rdram, recomp_context* ctx) {
     }
     std::lock_guard<std::mutex> lock(g_mutex);
     load_locked();
+    refresh_locked(rdram);
     if (block >= kBlocks) {
         ctx->r2 = 0;
         return;
