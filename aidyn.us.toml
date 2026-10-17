@@ -467,3 +467,10 @@ text = "extern void aidyn_save_picture_taken(uint8_t* rdram, recomp_context* ctx
 func = "func_80019EF0"
 before_vram = 0x80019EF0
 text = "extern void aidyn_save_picture_saved(uint8_t* rdram, recomp_context* ctx); aidyn_save_picture_saved(rdram, ctx);"
+
+# The outdoor sky's fill below the horizon (RenderSky's DrawRectangle at 0x8001DD50: a2 = the horizon row, colour
+# bytes on the stack at sp + 0x14..0x20): src/game/patches.cpp "Below the horizon".
+[[patches.hook]]
+func = "RenderSky"
+before_vram = 0x8001DD50
+text = "extern void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx); aidyn_sky_fill(rdram, ctx);"

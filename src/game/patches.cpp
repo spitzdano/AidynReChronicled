@@ -1840,6 +1840,60 @@ bool sfx_log() {
 // 30 units, but with them moving farther (draw_distance) distant footsteps were loud. Outside combat the volume is
 // clamped to 0..1 right after the call, so they fade out at 15 units as intended; combat keeps the old behaviour
 // (its sounds were all heard as they are).
+// Below the horizon. Outdoors the sky is a gradient drawn row by row down to the horizon, and everything below it is
+// filled with the last row's colour (RenderSky's DrawRectangle at 0x8001DD50), meant to meet the fogged distant
+// ground. Where two pieces of ground or a cliff and the ground don't quite meet, that fill shows through: hairline
+// gaps the N64's own anti-aliasing blended away at 320x240 show as light blue lines at high resolution, and a hole
+// near the camera as a blue triangle. So the fill keeps the horizon colour only in a band just below the horizon
+// (where the distant ground meets it) and fades over 12 rows to a quarter of it: gaps nearer the camera read as dark
+// creases. AIDYN_SKY_FILL=rrggbb (testing) fills it all with one colour instead (magenta shows every gap);
+// AIDYN_SKY_LOG=1 prints the horizon row and colour.
+extern "C" void DrawRectangle(uint8_t* rdram, recomp_context* ctx);
+
+extern "C" void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx) {
+    static const char* fill = std::getenv("AIDYN_SKY_FILL");
+    static const bool log = std::getenv("AIDYN_SKY_LOG") != nullptr;
+    const gpr sp = ctx->r29;  // DrawRectangle(gfx, x0, y0, x1, y1, r, g, b, a): y1 and the colour on the stack
+    const uint32_t horizon[3] = { (uint32_t)MEM_W(0x14, sp) & 0xFF, (uint32_t)MEM_W(0x18, sp) & 0xFF,
+                                  (uint32_t)MEM_W(0x1C, sp) & 0xFF };
+    if (ctx->r6 == 0 && (horizon[0] | horizon[1] | horizon[2]) == 0) {
+        return;  // the black full-screen fill (indoors, or no sky), not the horizon's (which starts at row 0 too when
+                 // the camera looks down past it)
+    }
+    if (log) {
+        static int frames = 0;
+        if (++frames % 60 == 0) {
+            fprintf(stderr, "sky: horizon row %u colour %02X%02X%02X\n", (uint32_t)ctx->r6, horizon[0], horizon[1],
+                    horizon[2]);
+        }
+    }
+    auto colour = [&](float t) {  // t 0: the horizon's, 1: a quarter of it
+        for (int c = 0; c < 3; c++) {
+            MEM_W(0x14 + 4 * c, sp) = (uint32_t)std::lround(horizon[c] * (1.0f - 0.75f * t));
+        }
+    };
+    if (fill != nullptr) {
+        const uint32_t rgb = (uint32_t)std::strtoul(fill, nullptr, 16);
+        MEM_W(0x14, sp) = (rgb >> 16) & 0xFF;
+        MEM_W(0x18, sp) = (rgb >> 8) & 0xFF;
+        MEM_W(0x1C, sp) = rgb & 0xFF;
+        return;
+    }
+    constexpr int kBands = 6, kBandRows = 2;
+    const int bottom = (int)MEM_W(0x10, sp);
+    int y = (int)ctx->r6;
+    uint32_t gfx = (uint32_t)ctx->r4;
+    for (int k = 0; k < kBands && y + kBandRows < bottom; k++, y += kBandRows) {
+        MEM_W(0x10, sp) = y + kBandRows;
+        colour((k + 0.5f) / kBands);
+        gfx = call_game(rdram, ctx, DrawRectangle, gfx, 0, (uint32_t)y, (uint32_t)ctx->r7);  // a3: x1 (320)
+    }
+    MEM_W(0x10, sp) = bottom;  // the game's own call: the rest, dark
+    colour(1.0f);
+    ctx->r4 = (int32_t)gfx;
+    ctx->r6 = y;
+}
+
 extern "C" void aidyn_sound_falloff(uint8_t* rdram, recomp_context* ctx) {
     if (MEM_BU(0, (gpr)(int32_t)0x800D80C8) == 2) {  // gGlobals.gameStateA: 2 = combat
         return;

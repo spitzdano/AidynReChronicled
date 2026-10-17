@@ -241,6 +241,13 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   degrees); it is widened for the picture's real width, so nothing is cut at the sides of a 16:9 or 21:9 picture. A
   32-entry table of fading props the game never bounds-checks is guarded. `AIDYN_FAR_LOG=1` prints the far clip, the
   loaded edge, free heap and prop counts each second.
+- **Below the horizon.** Outdoors the game paints the sky as a gradient down to the horizon and fills everything below
+  it with the horizon's colour, meant to meet the fogged distant ground. Where pieces of ground, or a cliff and the
+  ground, don't quite meet, that fill shows through: hairline gaps the N64's own anti-aliasing blended away at 320x240
+  became light blue lines at high resolution, and a hole near the camera a blue triangle. The fill now keeps the
+  horizon colour for 12 rows below it and fades to a quarter of it, so gaps read as dark creases (`aidyn_sky_fill`,
+  hooked before RenderSky's last DrawRectangle). `AIDYN_SKY_FILL=ff00ff` fills it with one colour instead, to find gaps;
+  `AIDYN_SKY_LOG=1` prints the horizon row and colour.
 - **Monsters, people and items farther away.** The field draws characters only within 20 units of the camera's aim
   (and moves them within 30), and the items lying about (the models loot containers show) have cut-offs of 5 to 30
   units where props have about 40. With `draw_distance` above 1 they reach twice as far as props: at least their
