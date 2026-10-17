@@ -128,7 +128,7 @@ index 7a8c13b..9a7bdf3 100644
          uint64_t workloadId = 0;
          uint64_t presentId = 0;
 diff --git i/src/hle/rt64_workload_queue.cpp w/src/hle/rt64_workload_queue.cpp
-index 5a331aa..ffd2b16 100644
+index 5a331aa..cb71d47 100644
 --- i/src/hle/rt64_workload_queue.cpp
 +++ w/src/hle/rt64_workload_queue.cpp
 @@ -4,6 +4,9 @@
@@ -141,7 +141,18 @@ index 5a331aa..ffd2b16 100644
  #include "common/rt64_thread.h"
  
  #include "rt64_present_queue.h"
-@@ -806,11 +809,18 @@ namespace RT64 {
+@@ -706,6 +709,10 @@ namespace RT64 {
+             
+             // Record all framebuffer pairs.
+             uint32_t framebufferIndex = 0;
++
++            // Aidyn ReChronicled: the depth of the last pass that drew 3D, and the picture it drew into, for the gap fill.
++            RenderTarget *gapFillDepth = nullptr;
++            uint32_t gapFillColorAddress = 0;
+             for (uint32_t f = 0; f < fbPairCount; f++) {
+                 const FramebufferPair &fbPair = workload.fbPairs[f];
+                 bool validTargets = getTargetsFromPair(f);
+@@ -806,11 +813,25 @@ namespace RT64 {
                      }
  
                      // Do the resolve if using MSAA while target override is active and we're on the correct framebuffer pair index.
@@ -152,16 +163,23 @@ index 5a331aa..ffd2b16 100644
                          overrideTarget->resolveFromTarget(ext.workloadGraphicsWorker, colorTarget, ext.shaderLibrary);
                      }
  
-+                    // Aidyn ReChronicled: hairline gaps filled in the picture this pass leaves to be shown.
-+                    if (ext.sharedResources->gapFill && fbPair.depthWrite && (colorTarget != nullptr) && (depthTarget != nullptr)) {
++                    // Aidyn ReChronicled: hairline gaps filled in the picture this pass leaves to be shown. Also after a later pass
++                    // into the same picture that drew no 3D (the HUD, when the game draws it separately): with multisampling
++                    // the shown picture is resolved again after it, so the fill is redone there with the 3D pass's depth.
++                    if (fbPair.depthWrite && (colorTarget != nullptr) && (depthTarget != nullptr)) {
++                        gapFillDepth = depthTarget;
++                        gapFillColorAddress = colorImg.address;
++                    }
++
++                    if (ext.sharedResources->gapFill && (colorTarget != nullptr) && (gapFillDepth != nullptr) && (colorImg.address == gapFillColorAddress)) {
 +                        RenderTarget *shown = resolvedToOverride ? overrideTarget : colorTarget;
-+                        shown->fillGaps(ext.workloadGraphicsWorker, depthTarget, ext.shaderLibrary);
++                        shown->fillGaps(ext.workloadGraphicsWorker, gapFillDepth, ext.shaderLibrary);
 +                    }
 +
                      const uint64_t writeTimestamp = fbManager.nextWriteTimestamp();
                      FixedRect depthFbRect;
                      if (colorFb != nullptr) {
-@@ -864,6 +874,92 @@ namespace RT64 {
+@@ -864,6 +885,92 @@ namespace RT64 {
  #   endif
      }
  
@@ -254,7 +272,7 @@ index 5a331aa..ffd2b16 100644
      void WorkloadQueue::threadAdvanceBarrier() {
          std::scoped_lock<std::mutex> cursorLock(cursorMutex);
          barrierCursor = (barrierCursor + 1) % workloads.size();
-@@ -913,6 +1009,7 @@ namespace RT64 {
+@@ -913,6 +1020,7 @@ namespace RT64 {
                  ElapsedTimer workloadTimer;
                  workloadProfiler.start();
                  threadConfigurationUpdate(workload.viFbSize, workloadConfig);
@@ -570,10 +588,10 @@ index 9131697..6f54542 100644
          void uploadThreadLoop();
 diff --git i/src/shaders/GapFillCS.hlsl w/src/shaders/GapFillCS.hlsl
 new file mode 100644
-index 0000000..f40c9f7
+index 0000000..06f98e2
 --- /dev/null
 +++ w/src/shaders/GapFillCS.hlsl
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,92 @@
 +//
 +// RT64
 +//
@@ -581,8 +599,7 @@ index 0000000..f40c9f7
 +// N64 meshes meet with sub-pixel cracks that vanished at 320x240 and show as thin lines of background at high
 +// resolution. A pixel where some depth samples were never drawn (still the cleared 1.0) and whose neighbours on both
 +// sides along a row or a column were (at least half) drawn, within a gap no wider than about three quarters of an N64
-+// pixel, takes their colours (blended by distance, and by how much of the pixel was background). Wider stretches of
-+// background are left as they are.
++// pixel, takes their colours (blended by distance). Wider stretches of background are left as they are.
 +//
 +
 +#define BLOCK_SIZE 8
@@ -659,7 +676,9 @@ index 0000000..f40c9f7
 +        }
 +
 +        if (bestWidth <= maxGap) {
-+            color = lerp(color, fill, background);
++            // Replaced whole, not blended by the background share: a partly covered pixel's resolved colour already
++            // holds that much sky, and blending would leave a faint line.
++            color = fill;
 +        }
 +    }
 +
