@@ -802,8 +802,6 @@ namespace {
         call_game(rdram, ctx, AllocFreeQueueItem, (uint32_t)kQueueA, (uint32_t)far_slot(k), 1 /* QueueType_Scene */, 0);
     }
 
-    float cell_grow();  // "Seams between map cells", below
-
     void place_far_cell(uint8_t* rdram, int k, int dx, int dz) {
         const gpr scene = (gpr)(int32_t)MEM_W(0, far_slot(k));
         const float cx = read_f32(rdram, (gpr)(int32_t)0x800D8404), cz = read_f32(rdram, (gpr)(int32_t)0x800D8408);
@@ -815,8 +813,6 @@ namespace {
         }
         write_f32(rdram, scene + 0x88 + 48, dx * cx);     // MatrixASetPos: matrixA[3][0..2]
         write_f32(rdram, scene + 0x88 + 56, dz * cz);
-        write_f32(rdram, scene + 0x88 + 0, 1.0f + cell_grow());   // a hair bigger across, like the game's own cells
-        write_f32(rdram, scene + 0x88 + 40, 1.0f + cell_grow());
     }
 
     // In view: some corner of the cell within the picture's width (plus a margin) and the far clip.
@@ -1844,39 +1840,6 @@ bool sfx_log() {
 // 30 units, but with them moving farther (draw_distance) distant footsteps were loud. Outside combat the volume is
 // clamped to 0..1 right after the call, so they fade out at 15 units as intended; combat keeps the old behaviour
 // (its sounds were all heard as they are).
-// Seams between map cells. The land is drawn in cells (100 units square, each its own scene placed at its corner by
-// matrixA), and where two cells meet their edges don't quite line up: at 320x240 the N64's anti-aliasing blended the
-// hairline gaps away, at high resolution the sky behind showed through as thin bright lines along the cell edges
-// (ground to ground, and up cliff faces standing on an edge). Each cell is now drawn a hair bigger across (x and z
-// scaled by 1 + grow about its corner, so it reaches grow x 100 units into the next cell; height untouched), and the
-// cells overlap instead (the far cells too, place_far_cell). AIDYN_CELL_GROW=<fraction> (testing; 0 = off).
-namespace {
-    float cell_grow() {
-        static const float grow = [] {
-            const char* v = std::getenv("AIDYN_CELL_GROW");
-            return v != nullptr ? (float)std::atof(v) : 0.002f;
-        }();
-        return grow;
-    }
-
-    void grow_cell_scene(uint8_t* rdram, gpr scene) {
-        if (scene == 0) {
-            return;
-        }
-        write_f32(rdram, scene + 0x88 + 0, 1.0f + cell_grow());   // matrixA[0][0]: x
-        write_f32(rdram, scene + 0x88 + 40, 1.0f + cell_grow());  // matrixA[2][2]: z
-    }
-}
-
-extern "C" void aidyn_cell_drawn(uint8_t* rdram, recomp_context* ctx) {
-    const gpr zone = ctx->r5;  // a1: the cell's ZoneDat (scenes at +0x4 and +0x14)
-    if (zone == 0) {
-        return;
-    }
-    grow_cell_scene(rdram, MEM_W(0x4, zone));
-    grow_cell_scene(rdram, MEM_W(0x14, zone));
-}
-
 // Below the horizon. Outdoors the sky is a gradient drawn row by row down to the horizon, and everything below it is
 // filled with the last row's colour (RenderSky's DrawRectangle at 0x8001DD50), meant to meet the fogged distant
 // ground. Where two pieces of ground or a cliff and the ground don't quite meet, that fill shows through: hairline

@@ -474,15 +474,3 @@ text = "extern void aidyn_save_picture_saved(uint8_t* rdram, recomp_context* ctx
 func = "RenderSky"
 before_vram = 0x8001DD50
 text = "extern void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx); aidyn_sky_fill(rdram, ctx);"
-
-# A map cell's scenes drawn (func_8000D02C: its ground, ZoneDat +0x4; func_8000D088: its second layer, +0x14; a1 = the
-# ZoneDat): grown by a hair so neighbouring cells overlap (src/game/patches.cpp "Seams between map cells").
-[[patches.hook]]
-func = "func_8000D02C"
-before_vram = 0x8000D02C
-text = "extern void aidyn_cell_drawn(uint8_t* rdram, recomp_context* ctx); aidyn_cell_drawn(rdram, ctx);"
-
-[[patches.hook]]
-func = "func_8000D088"
-before_vram = 0x8000D088
-text = "extern void aidyn_cell_drawn(uint8_t* rdram, recomp_context* ctx); aidyn_cell_drawn(rdram, ctx);"
