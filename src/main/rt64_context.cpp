@@ -403,6 +403,12 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
     };
     capture_app = app.get();
 
+    // Hairline gaps between separately drawn geometry (map cells meeting, a wall and the ground) filled by RT64 after
+    // each 3D pass (tools/patches/rt64-save-pictures.patch, RenderTarget::fillGaps). AIDYN_GAP_FILL=0 turns it off.
+    if (const char* v = std::getenv("AIDYN_GAP_FILL"); v != nullptr && std::strcmp(v, "0") == 0) {
+        app->sharedQueueResources->gapFill = false;
+    }
+
     // AIDYN_DUMP_TEXTURES=<folder>: RT64 writes every texture the game loads there (raw TMEM plus tile info), for
     // building texture packs (tools/hdui). Off unless set.
     if (const char* dump = std::getenv("AIDYN_DUMP_TEXTURES"); dump != nullptr && *dump != '\0') {

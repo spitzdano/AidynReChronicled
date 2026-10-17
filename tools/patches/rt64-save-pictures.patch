@@ -2,8 +2,23 @@ Aidyn ReChronicled: textures made while the game runs (save pictures in full res
 the inventory page's words, src/game/page_words.cpp). Adds TextureCache::addDynamicReplacement (a picture handed over
 at run time for one texture hash, winning over the packs'), State::dynamicReplacementProvider (asked for each new
 texture hash with the hash and the RDRAM address its data came from) and SharedQueueResources::framebufferCaptures
-(part of a framebuffer's high resolution picture copied before the next workload draws).
+(part of a framebuffer's high resolution picture copied before the next workload draws); and a gap filler
+(shaders/GapFillCS.hlsl, RenderTarget::fillGaps, run after each framebuffer pass that wrote depth) for the hairline cracks
+between separately drawn meshes.
 
+diff --git i/CMakeLists.txt w/CMakeLists.txt
+index 79dfc38..41c11ee 100644
+--- i/CMakeLists.txt
++++ w/CMakeLists.txt
+@@ -518,6 +518,8 @@ build_compute_shader(rt64 "src/shaders/FbWriteDepthCS.hlsl")
+ build_compute_shader(rt64 "src/shaders/FbWriteDepthCS.hlsl" "src/shaders/FbWriteDepthCSMS.hlsl" "-D MULTISAMPLING")
+ build_compute_shader(rt64 "src/shaders/GaussianFilterRGB3x3CS.hlsl")
+ build_compute_shader(rt64 "src/shaders/BoxFilterCS.hlsl")
++build_compute_shader(rt64 "src/shaders/GapFillCS.hlsl")
++build_compute_shader(rt64 "src/shaders/GapFillCS.hlsl" "src/shaders/GapFillCSMS.hlsl" "-D MULTISAMPLING")
+ build_compute_shader(rt64 "src/shaders/BicubicScalingCS.hlsl")
+ build_compute_shader(rt64 "src/shaders/HistogramAverageCS.hlsl")
+ build_compute_shader(rt64 "src/shaders/HistogramClearCS.hlsl")
 diff --git i/src/hle/rt64_rdp_tmem.cpp w/src/hle/rt64_rdp_tmem.cpp
 index 6051f4e..8f0a7c0 100644
 --- i/src/hle/rt64_rdp_tmem.cpp
@@ -44,20 +59,21 @@ index 6051f4e..8f0a7c0 100644
          }
  
 diff --git i/src/hle/rt64_shared_queue_resources.h w/src/hle/rt64_shared_queue_resources.h
-index 8858dac..f46bc42 100644
+index 8858dac..691daff 100644
 --- i/src/hle/rt64_shared_queue_resources.h
 +++ w/src/hle/rt64_shared_queue_resources.h
-@@ -4,7 +4,9 @@
+@@ -4,7 +4,10 @@
  
  #pragma once
  
++#include <atomic>
 +#include <functional>
  #include <mutex>
 +#include <vector>
  
  #include "common/rt64_common.h"
  #include "common/rt64_emulator_configuration.h"
-@@ -58,6 +60,23 @@ namespace RT64 {
+@@ -58,6 +61,27 @@ namespace RT64 {
          std::condition_variable interpolatedCondition;
          std::mutex workloadMutex;
  
@@ -77,6 +93,10 @@ index 8858dac..f46bc42 100644
 +
 +        std::vector<FramebufferCapture> framebufferCaptures;
 +        std::mutex framebufferCaptureMutex;
++
++        // Aidyn ReChronicled: fill hairline gaps between separately drawn geometry (RenderTarget::fillGaps) in every
++        // framebuffer pass that wrote depth.
++        std::atomic<bool> gapFill = true;
 +
          void setSwapChainSize(uint32_t width, uint32_t height) {
              std::scoped_lock<std::mutex> configurationLock(configurationMutex);
@@ -108,7 +128,7 @@ index 7a8c13b..9a7bdf3 100644
          uint64_t workloadId = 0;
          uint64_t presentId = 0;
 diff --git i/src/hle/rt64_workload_queue.cpp w/src/hle/rt64_workload_queue.cpp
-index 5a331aa..2c83dbd 100644
+index 5a331aa..ffd2b16 100644
 --- i/src/hle/rt64_workload_queue.cpp
 +++ w/src/hle/rt64_workload_queue.cpp
 @@ -4,6 +4,9 @@
@@ -121,7 +141,27 @@ index 5a331aa..2c83dbd 100644
  #include "common/rt64_thread.h"
  
  #include "rt64_present_queue.h"
-@@ -864,6 +867,92 @@ namespace RT64 {
+@@ -806,11 +809,18 @@ namespace RT64 {
+                     }
+ 
+                     // Do the resolve if using MSAA while target override is active and we're on the correct framebuffer pair index.
+-                    if (usingMSAA && (overrideTarget != nullptr) && ((uint32_t)overrideTargetFbPairIndex == f)) {
++                    const bool resolvedToOverride = usingMSAA && (overrideTarget != nullptr) && ((uint32_t)overrideTargetFbPairIndex == f);
++                    if (resolvedToOverride) {
+                         overrideTarget->resize(ext.workloadGraphicsWorker, colorTarget->width, colorTarget->height);
+                         overrideTarget->resolveFromTarget(ext.workloadGraphicsWorker, colorTarget, ext.shaderLibrary);
+                     }
+ 
++                    // Aidyn ReChronicled: hairline gaps filled in the picture this pass leaves to be shown.
++                    if (ext.sharedResources->gapFill && fbPair.depthWrite && (colorTarget != nullptr) && (depthTarget != nullptr)) {
++                        RenderTarget *shown = resolvedToOverride ? overrideTarget : colorTarget;
++                        shown->fillGaps(ext.workloadGraphicsWorker, depthTarget, ext.shaderLibrary);
++                    }
++
+                     const uint64_t writeTimestamp = fbManager.nextWriteTimestamp();
+                     FixedRect depthFbRect;
+                     if (colorFb != nullptr) {
+@@ -864,6 +874,92 @@ namespace RT64 {
  #   endif
      }
  
@@ -214,7 +254,7 @@ index 5a331aa..2c83dbd 100644
      void WorkloadQueue::threadAdvanceBarrier() {
          std::scoped_lock<std::mutex> cursorLock(cursorMutex);
          barrierCursor = (barrierCursor + 1) % workloads.size();
-@@ -913,6 +1002,7 @@ namespace RT64 {
+@@ -913,6 +1009,7 @@ namespace RT64 {
                  ElapsedTimer workloadTimer;
                  workloadProfiler.start();
                  threadConfigurationUpdate(workload.viFbSize, workloadConfig);
@@ -234,6 +274,210 @@ index bde2f03..0b6a269 100644
          void threadRenderFrame(GameFrame &curFrame, const GameFrame &prevFrame, const WorkloadConfiguration &workloadConfig,
              const DebuggerRenderer &debuggerRenderer, const DebuggerCamera &debuggerCamera, float curFrameWeight, float prevFrameWeight,
              float deltaTimeMs, RenderTargetKey overrideTargetKey, int32_t overrideTargetFbPairIndex, RenderTarget *overrideTarget,
+diff --git i/src/render/rt64_descriptor_sets.h w/src/render/rt64_descriptor_sets.h
+index 69a82ac..35a3432 100644
+--- i/src/render/rt64_descriptor_sets.h
++++ w/src/render/rt64_descriptor_sets.h
+@@ -48,6 +48,25 @@ namespace RT64 {
+         }
+     };
+ 
++    // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): RenderTarget::fillGaps.
++    struct GapFillDescriptorSet : RenderDescriptorSetBase {
++        uint32_t gInput;
++        uint32_t gDepth;
++        uint32_t gOutput;
++
++        GapFillDescriptorSet(RenderDevice *device = nullptr) {
++            builder.begin();
++            gInput = builder.addTexture(1);
++            gDepth = builder.addTexture(2);
++            gOutput = builder.addReadWriteTexture(3);
++            builder.end();
++
++            if (device != nullptr) {
++                create(device);
++            }
++        }
++    };
++
+     struct FramebufferClearChangesDescriptorSet : RenderDescriptorSetBase {
+         uint32_t gOutputCount;
+ 
+diff --git i/src/render/rt64_render_target.cpp w/src/render/rt64_render_target.cpp
+index 81917bc..288da48 100644
+--- i/src/render/rt64_render_target.cpp
++++ w/src/render/rt64_render_target.cpp
+@@ -5,6 +5,7 @@
+ #include "rt64_render_target.h"
+ 
+ #include <algorithm>
++#include <cmath>
+ 
+ #include "gbi/rt64_f3d.h"
+ #include "shared/rt64_fb_common.h"
+@@ -407,6 +408,68 @@ namespace RT64 {
+         worker->commandList->dispatch(dispatchX, dispatchY, 1);
+     }
+ 
++    // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): hairline gaps between separately drawn geometry, where
++    // the background shows through, filled from the pixels on both sides (shaders/GapFillCS.hlsl). Works on the
++    // picture that is shown: the resolved copy of a multisampled target, or the target itself.
++    void RenderTarget::fillGaps(RenderWorker *worker, RenderTarget *depthTarget, const ShaderLibrary *shaderLibrary) {
++        assert(worker != nullptr);
++        if ((depthTarget == nullptr) || depthTarget->isEmpty() || isEmpty() || (depthTarget->width != width) || (depthTarget->height != height)) {
++            return;
++        }
++
++        resolveTarget(worker, shaderLibrary);
++        RenderTexture *target = getResolvedTexture();
++        if ((gapFillTexture == nullptr) || (gapFillWidth != width) || (gapFillHeight != height)) {
++            gapFillTexture = worker->device->createTexture(RenderTextureDesc::Texture2D(width, height, 1, format, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
++            gapFillTexture->setName("Render Target Gap Fill");
++            gapFillWidth = width;
++            gapFillHeight = height;
++        }
++
++        if (gapFillDescSet == nullptr) {
++            gapFillDescSet = std::make_unique<GapFillDescriptorSet>(worker->device);
++        }
++
++        gapFillDescSet->setTexture(gapFillDescSet->gInput, target, RenderTextureLayout::SHADER_READ);
++        gapFillDescSet->setTexture(gapFillDescSet->gDepth, depthTarget->texture.get(), RenderTextureLayout::SHADER_READ, depthTarget->textureView.get());
++        gapFillDescSet->setTexture(gapFillDescSet->gOutput, gapFillTexture.get(), RenderTextureLayout::GENERAL);
++
++        RenderTextureBarrier fillBarriers[] = {
++            RenderTextureBarrier(target, RenderTextureLayout::SHADER_READ),
++            RenderTextureBarrier(depthTarget->texture.get(), RenderTextureLayout::SHADER_READ),
++            RenderTextureBarrier(gapFillTexture.get(), RenderTextureLayout::GENERAL)
++        };
++
++        struct GapFillCB {
++            interop::int2 Resolution;
++            int32_t MaxGap;
++            int32_t Padding;
++        } gapFillCB;
++
++        gapFillCB.Resolution[0] = width;
++        gapFillCB.Resolution[1] = height;
++        gapFillCB.MaxGap = std::max(2, int32_t(std::ceil(float(resolutionScale.y) * 0.75f)));
++        gapFillCB.Padding = 0;
++
++        const ShaderRecord &shader = (depthTarget->multisampling.sampleCount > 1) ? shaderLibrary->gapFillMS : shaderLibrary->gapFill;
++        const uint32_t BlockSize = 8;
++        worker->commandList->barriers(RenderBarrierStage::COMPUTE, fillBarriers, uint32_t(std::size(fillBarriers)));
++        worker->commandList->setPipeline(shader.pipeline.get());
++        worker->commandList->setComputePipelineLayout(shader.pipelineLayout.get());
++        worker->commandList->setComputePushConstants(0, &gapFillCB);
++        worker->commandList->setComputeDescriptorSet(gapFillDescSet->get(), 0);
++        worker->commandList->dispatch((width + BlockSize - 1) / BlockSize, (height + BlockSize - 1) / BlockSize, 1);
++
++        RenderTextureBarrier copyBarriers[] = {
++            RenderTextureBarrier(gapFillTexture.get(), RenderTextureLayout::COPY_SOURCE),
++            RenderTextureBarrier(target, RenderTextureLayout::COPY_DEST)
++        };
++
++        worker->commandList->barriers(RenderBarrierStage::COPY, copyBarriers, uint32_t(std::size(copyBarriers)));
++        worker->commandList->copyTexture(target, gapFillTexture.get());
++        worker->commandList->barriers(RenderBarrierStage::GRAPHICS_AND_COMPUTE, RenderTextureBarrier(target, RenderTextureLayout::SHADER_READ));
++    }
++
+     void RenderTarget::resolveTarget(RenderWorker *worker, const ShaderLibrary *shaderLibrary) {
+         if (!resolvedTextureDirty || !usesResolve()) {
+             return;
+diff --git i/src/render/rt64_render_target.h w/src/render/rt64_render_target.h
+index 82d8a36..e66b149 100644
+--- i/src/render/rt64_render_target.h
++++ w/src/render/rt64_render_target.h
+@@ -34,6 +34,10 @@ namespace RT64 {
+         std::unique_ptr<TextureCopyDescriptorSet> textureCopyDescSet;
+         std::unique_ptr<TextureCopyDescriptorSet> textureResolveDescSet;
+         std::unique_ptr<BoxFilterDescriptorSet> filterDescSet;
++        std::unique_ptr<GapFillDescriptorSet> gapFillDescSet;
++        std::unique_ptr<RenderTexture> gapFillTexture;
++        uint32_t gapFillWidth = 0;
++        uint32_t gapFillHeight = 0;
+         std::unique_ptr<FramebufferWriteDescriptorTextureSet> fbWriteDescSet;
+         uint32_t addressForName = 0;
+         uint32_t width = 0;
+@@ -63,6 +67,7 @@ namespace RT64 {
+         void clearColorTarget(RenderWorker *worker);
+         void clearDepthTarget(RenderWorker *worker);
+         void downsampleTarget(RenderWorker *worker, const ShaderLibrary *shaderLibrary);
++        void fillGaps(RenderWorker *worker, RenderTarget *depthTarget, const ShaderLibrary *shaderLibrary);
+         void resolveTarget(RenderWorker *worker, const ShaderLibrary *shaderLibrary);
+         void recordRasterResolve(RenderWorker *worker, const TextureCopyDescriptorSet *srcDescriptorSet, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const ShaderLibrary *shaderLibrary);
+         void markForResolve();
+diff --git i/src/render/rt64_shader_library.cpp w/src/render/rt64_shader_library.cpp
+index d1c5273..5244f81 100644
+--- i/src/render/rt64_shader_library.cpp
++++ w/src/render/rt64_shader_library.cpp
+@@ -19,6 +19,8 @@
+ #include "shaders/FbWriteDepthCSMS.hlsl.spirv.h"
+ #include "shaders/GaussianFilterRGB3x3CS.hlsl.spirv.h"
+ #include "shaders/BoxFilterCS.hlsl.spirv.h"
++#include "shaders/GapFillCS.hlsl.spirv.h"
++#include "shaders/GapFillCSMS.hlsl.spirv.h"
+ #include "shaders/BicubicScalingCS.hlsl.spirv.h"
+ #include "shaders/HistogramAverageCS.hlsl.spirv.h"
+ #include "shaders/HistogramClearCS.hlsl.spirv.h"
+@@ -65,6 +67,8 @@
+ #   include "shaders/FbWriteDepthCSMS.hlsl.dxil.h"
+ #   include "shaders/GaussianFilterRGB3x3CS.hlsl.dxil.h"
+ #   include "shaders/BoxFilterCS.hlsl.dxil.h"
++#   include "shaders/GapFillCS.hlsl.dxil.h"
++#   include "shaders/GapFillCSMS.hlsl.dxil.h"
+ #   include "shaders/BicubicScalingCS.hlsl.dxil.h"
+ #   include "shaders/HistogramAverageCS.hlsl.dxil.h"
+ #   include "shaders/HistogramClearCS.hlsl.dxil.h"
+@@ -110,6 +114,8 @@
+ #   include "shaders/FbWriteDepthCSMS.hlsl.metal.h"
+ #   include "shaders/GaussianFilterRGB3x3CS.hlsl.metal.h"
+ #   include "shaders/BoxFilterCS.hlsl.metal.h"
++#   include "shaders/GapFillCS.hlsl.metal.h"
++#   include "shaders/GapFillCSMS.hlsl.metal.h"
+ #   include "shaders/BicubicScalingCS.hlsl.metal.h"
+ #   include "shaders/HistogramAverageCS.hlsl.metal.h"
+ #   include "shaders/HistogramClearCS.hlsl.metal.h"
+@@ -282,6 +288,25 @@ namespace RT64 {
+             boxFilter.pipeline = device->createComputePipeline(pipelineDesc);
+         }
+ 
++        // Gap fill (Aidyn ReChronicled, tools/patches/rt64-save-pictures.patch).
++        {
++            GapFillDescriptorSet descriptorSet;
++            layoutBuilder.begin();
++            layoutBuilder.addPushConstant(0, 0, sizeof(uint32_t) * 4, RenderShaderStageFlag::COMPUTE);
++            layoutBuilder.addDescriptorSet(descriptorSet);
++            layoutBuilder.end();
++            gapFill.pipelineLayout = layoutBuilder.create(device);
++            gapFillMS.pipelineLayout = layoutBuilder.create(device);
++
++            std::unique_ptr<RenderShader> computeShader = device->createShader(CREATE_SHADER_INPUTS(GapFillCSBlobDXIL, GapFillCSBlobSPIRV, GapFillCSBlobMSL, "CSMain", shaderFormat));
++            RenderComputePipelineDesc pipelineDesc(gapFill.pipelineLayout.get(), computeShader.get(), 8, 8, 1);
++            gapFill.pipeline = device->createComputePipeline(pipelineDesc);
++
++            std::unique_ptr<RenderShader> computeShaderMS = device->createShader(CREATE_SHADER_INPUTS(GapFillCSMSBlobDXIL, GapFillCSMSBlobSPIRV, GapFillCSMSBlobMSL, "CSMain", shaderFormat));
++            RenderComputePipelineDesc pipelineDescMS(gapFillMS.pipelineLayout.get(), computeShaderMS.get(), 8, 8, 1);
++            gapFillMS.pipeline = device->createComputePipeline(pipelineDescMS);
++        }
++
+         // Raytracing compose.
+         {
+             RaytracingComposeDescriptorSet descriptorSet(samplerLibrary);
+diff --git i/src/render/rt64_shader_library.h w/src/render/rt64_shader_library.h
+index 641f3ec..6ad84ea 100644
+--- i/src/render/rt64_shader_library.h
++++ w/src/render/rt64_shader_library.h
+@@ -20,6 +20,8 @@ namespace RT64 {
+         // All shaders.
+         ShaderRecord bicubicScaling;
+         ShaderRecord boxFilter;
++        ShaderRecord gapFill;
++        ShaderRecord gapFillMS;
+         ShaderRecord compose;
+         ShaderRecord debug;
+         ShaderRecord fbChangesClear;
 diff --git i/src/render/rt64_texture_cache.cpp w/src/render/rt64_texture_cache.cpp
 index 0848f3e..d4d221f 100644
 --- i/src/render/rt64_texture_cache.cpp
@@ -324,3 +568,100 @@ index 9131697..6f54542 100644
          TextureCache(RenderWorker *directWorker, RenderWorker *copyWorker, uint32_t threadCount, const ShaderLibrary *shaderLibrary);
          ~TextureCache();
          void uploadThreadLoop();
+diff --git i/src/shaders/GapFillCS.hlsl w/src/shaders/GapFillCS.hlsl
+new file mode 100644
+index 0000000..f40c9f7
+--- /dev/null
++++ w/src/shaders/GapFillCS.hlsl
+@@ -0,0 +1,91 @@
++//
++// RT64
++//
++// Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): fills hairline gaps between separately drawn geometry.
++// N64 meshes meet with sub-pixel cracks that vanished at 320x240 and show as thin lines of background at high
++// resolution. A pixel where some depth samples were never drawn (still the cleared 1.0) and whose neighbours on both
++// sides along a row or a column were (at least half) drawn, within a gap no wider than about three quarters of an N64
++// pixel, takes their colours (blended by distance, and by how much of the pixel was background). Wider stretches of
++// background are left as they are.
++//
++
++#define BLOCK_SIZE 8
++#define MAX_GAP_LIMIT 16
++#define SOLID 0.5f  // a pixel counts as drawn when at most this much of it is background (multisampled edges)
++
++struct GapFillCB {
++    int2 Resolution;
++    int MaxGap;  // widest gap filled, in pixels: about three quarters of an N64 pixel at this resolution
++    int Padding;
++};
++
++[[vk::push_constant]] ConstantBuffer<GapFillCB> gConstants : register(b0);
++Texture2D<float4> gInput : register(t1);
++#ifdef MULTISAMPLING
++Texture2DMS<float> gDepth : register(t2);
++#else
++Texture2D<float> gDepth : register(t2);
++#endif
++RWTexture2D<float4> gOutput : register(u3);
++
++// How much of a pixel shows background: the fraction of its depth samples still at the cleared depth.
++float BackgroundFraction(int2 coord) {
++    if (any(coord < 0) || any(coord >= gConstants.Resolution)) {
++        return 1.0f;
++    }
++
++#ifdef MULTISAMPLING
++    uint width, height, sampleCount;
++    gDepth.GetDimensions(width, height, sampleCount);
++    uint background = 0;
++    for (uint i = 0; i < sampleCount; i++) {
++        background += (gDepth.Load(coord, i) >= 1.0f) ? 1 : 0;
++    }
++
++    return float(background) / float(sampleCount);
++#else
++    return (gDepth.Load(int3(coord, 0)) >= 1.0f) ? 1.0f : 0.0f;
++#endif
++}
++
++[numthreads(BLOCK_SIZE, BLOCK_SIZE, 1)]
++void CSMain(uint2 coord : SV_DispatchThreadID) {
++    if (any(int2(coord) >= gConstants.Resolution)) {
++        return;
++    }
++
++    float4 color = gInput.Load(int3(coord, 0));
++    float background = BackgroundFraction(int2(coord));
++    if (background > 0.0f) {
++        // Along a row and along a column: the nearest drawn pixel on each side. A gap at most MaxGap pixels wide
++        // between them is filled, the colour blended between the two by distance; the narrower of the two gaps wins.
++        const int2 axes[2] = { int2(1, 0), int2(0, 1) };
++        const int maxGap = min(gConstants.MaxGap, MAX_GAP_LIMIT);
++        int bestWidth = maxGap + 1;
++        float4 fill = color;
++        for (int a = 0; a < 2; a++) {
++            int before = 0, after = 0;
++            for (int d = 1; (d <= maxGap) && (before == 0); d++) {
++                before = (BackgroundFraction(int2(coord) - axes[a] * d) <= SOLID) ? d : 0;
++            }
++
++            for (int d = 1; (d <= maxGap) && (after == 0); d++) {
++                after = (BackgroundFraction(int2(coord) + axes[a] * d) <= SOLID) ? d : 0;
++            }
++
++            const int width = before + after - 1;
++            if ((before > 0) && (after > 0) && (width < bestWidth)) {
++                bestWidth = width;
++                float4 colorBefore = gInput.Load(int3(int2(coord) - axes[a] * before, 0));
++                float4 colorAfter = gInput.Load(int3(int2(coord) + axes[a] * after, 0));
++                fill = lerp(colorBefore, colorAfter, float(before) / float(before + after));
++            }
++        }
++
++        if (bestWidth <= maxGap) {
++            color = lerp(color, fill, background);
++        }
++    }
++
++    gOutput[coord] = color;
++}
