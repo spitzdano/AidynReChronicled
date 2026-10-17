@@ -612,11 +612,13 @@ namespace {
     // Scene link -> its Borg5 models): LootChestClosed, LootBagClosed, LootCloverPatch, LootPepperPlant, LootGemVein,
     // LootKendallsHat, crates and barrels and the odd one-off; the chest and bag once opened or blown open
     // (LootChestOpened 0x909, LootChestExploded 0x905, LootBagOpened 0xBAC, LootBagExploded 0xBA8: the game swaps the
-    // model); and the teleporters' glowing ring (BORG5_Teleporter 0xC54). Where the same model stands as plain
-    // decoration it reaches as far too, so seeing one from afar doesn't tell it holds loot.
+    // model); the glowing lights you follow through the first forest back to the castle (0x1910, unnamed in the
+    // decomp; cut off at 24, found by hiding models); and the teleporters (BORG5_Teleporter 0xC54). Where the same
+    // model stands as plain decoration it reaches as far too, so seeing one from afar doesn't tell it holds loot.
     bool item_model(uint32_t model) {
         static constexpr uint32_t kItems[] = { 1969, 2032, 2072, 2218, 2246, 2309, 2311, 2313, 2339, 2508, 2546, 2598,
-                                               2947, 2952, 2984, 2986, 2988, 3007, 3033, 3156, 3219, 3221, 3223, 14342 };
+                                               2947, 2952, 2984, 2986, 2988, 3007, 3033, 3156, 3219, 3221, 3223, 6416,
+                                               14342 };
         return std::find(std::begin(kItems), std::end(kItems), model) != std::end(kItems);
     }
 
