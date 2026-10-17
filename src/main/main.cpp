@@ -376,7 +376,9 @@ int main(int argc, char** argv) {
     ultramodern::renderer::GraphicsConfig graphics{};
     graphics.developer_mode = false;
     graphics.res_option = ultramodern::renderer::Resolution::Auto;
-    graphics.wm_option = aidyn::settings::graphics().fullscreen ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+    // AIDYN_WINDOWED=1 (tools/dev/pad.sh's test runs): a window whatever settings.json says.
+    const bool fullscreen = aidyn::settings::graphics().fullscreen && std::getenv("AIDYN_WINDOWED") == nullptr;
+    graphics.wm_option = fullscreen ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
     graphics.hr_option = ultramodern::renderer::HUDRatioMode::Full; // extended-GBI origins span the window (clouds)
     graphics.api_option = ultramodern::renderer::GraphicsApi::Auto;
     graphics.ar_option = ultramodern::renderer::AspectRatio::Original;

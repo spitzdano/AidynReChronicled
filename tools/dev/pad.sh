@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # pad.sh: drive the game for testing through AIDYN_PAD_FILE (src/main/input.cpp). State lives in build/dev.
-#   pad.sh start            launch (env passes through: AIDYN_MPK, AIDYN_SETTINGS_DIR, AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS)
+#   pad.sh start            launch, always windowed (AIDYN_WINDOWED; env passes through: AIDYN_MPK, AIDYN_SETTINGS_DIR,
+#                           AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS)
 #   pad.sh tap BTN...       A B Z START DU DD DL DR L R CU CD CL CR R3 L3 F2 (the key: redrawn art off / on) (TAPGAP=seconds between taps, default 0.5)
 #   pad.sh hold SECS BTN [X Y [RX RY]]   hold a button (NONE for sticks only), left stick X Y -80..80,
 #                                        right stick RX RY -1..1
@@ -13,7 +14,7 @@ bit() { case $1 in A) echo 8000;; B) echo 4000;; Z) echo 2000;; START) echo 1000
 case $1 in
   start) if pgrep -f "build/cmake/AidynReChronicled" >/dev/null; then echo "pad.sh: the game is already running (close it first)" >&2; exit 1; fi
          echo "0 0 0" >"$F"
-         (cd "$P" && AIDYN_PAD_FILE=$F setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$P/build/play.log" 2>&1 &)
+         (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$P/build/play.log" 2>&1 &)
          for _ in $(seq 1 40); do hyprctl clients -j | grep -q AidynReChronicled && break; sleep 0.5; done
          hyprctl dispatch 'hl.dsp.window.move({ workspace = "1", follow = false, window = "class:AidynReChronicled" })' >/dev/null ;;
   tap)   shift; for b in "$@"; do echo "$(bit "$b") 0 0" >"$F"; sleep 0.2; echo "0 0 0" >"$F"; sleep "${TAPGAP:-0.5}"; done ;;

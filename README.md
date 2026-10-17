@@ -179,6 +179,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `save_backups` | how many copies of the Controller Pak to keep in `~/.local/share/AidynReChronicled/backups` (made at start and before each save; 0 = none) |
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |
+| `fullscreen` | `true`: borderless fullscreen on the display the window is on (F11 or Alt+Enter switches while playing); with `"aspect": "window"` the picture takes that display's shape (21:9 on an ultrawide). `AIDYN_WINDOWED=1` starts in a window whatever this says (`tools/dev/pad.sh` uses it) |
 | `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate (and never above it). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
