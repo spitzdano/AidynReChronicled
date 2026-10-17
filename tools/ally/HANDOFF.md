@@ -3,6 +3,9 @@
 How to move the game from the PC to the handheld over a USB stick, add it to Steam with its art, and play it in Game
 Mode. Takes about ten minutes, most of it copying.
 
+Once it's installed, updates come from GitHub and the saves sync with the PC: see [sync/README.md](sync/README.md)
+(`update-from-github.sh`, Syncthing).
+
 > The package contains your own ROM dumps and saves. It's for your own devices: don't share it.
 
 ## What's in the package

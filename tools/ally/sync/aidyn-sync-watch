@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# aidyn-sync-watch: runs Syncthing only while Aidyn ReChronicled runs (installed by setup-sync.sh as a user service,
+# aidyn-sync-watch.service, started at login).
+#
+# When the game starts, Syncthing starts: a newer save from the other machine arrives within seconds and the game
+# reads it at its next save or load screen (the game notices the file changed). When the game ends, Syncthing keeps
+# running until the other machine has the last save, at most WAIT_AFTER seconds (it may be off or out of reach: the
+# save then goes the next time both are on), then stops. Starting the game again meanwhile just keeps it running.
+# Works however the game ends (quit, crash, Steam's Exit game), since it watches the game's process, not the launcher.
+set -uo pipefail
+
+GAME=AidynReChronicl              # the process name (the kernel keeps 15 characters of AidynReChronicled)
+POLL=5                            # seconds between looks
+WAIT_AFTER=${AIDYN_SYNC_WAIT_AFTER:-600}
+
+log() { echo "aidyn-sync-watch: $*"; }
+running() { pgrep -x "$GAME" >/dev/null; }
+
+# Has every other machine sharing the saves got everything this one has? (aidyn-sync check: Syncthing's own view.)
+synced() { "$HOME/.local/bin/aidyn-sync" check >/dev/null 2>&1; }
+
+while true; do
+    if running; then
+        if ! systemctl --user is-active --quiet syncthing.service; then
+            log "game started: starting Syncthing"
+            systemctl --user start syncthing.service
+        fi
+        while running; do sleep "$POLL"; done
+        log "game ended: waiting for the other machine to have the save (at most ${WAIT_AFTER}s)"
+        sleep 15  # the last save is noticed after a couple of seconds and scanned
+        deadline=$((SECONDS + WAIT_AFTER))
+        until synced || running || (( SECONDS >= deadline )); do sleep "$POLL"; done
+        if running; then
+            continue
+        fi
+        if synced; then log "save delivered: stopping Syncthing"; else log "other machine not reached: stopping Syncthing (the save goes next time)"; fi
+        systemctl --user stop syncthing.service
+    fi
+    sleep "$POLL"
+done
