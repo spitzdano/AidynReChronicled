@@ -241,15 +241,6 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   degrees); it is widened for the picture's real width, so nothing is cut at the sides of a 16:9 or 21:9 picture. A
   32-entry table of fading props the game never bounds-checks is guarded. `AIDYN_FAR_LOG=1` prints the far clip, the
   loaded edge, free heap and prop counts each second.
-- **Seams between map cells.** The land is drawn in cells (100 units square, each its own scene), and where two cells
-  meet their edges don't quite line up: hairline gaps the N64's anti-aliasing blended away at 320x240 showed the sky
-  as thin bright lines at high resolution, across the ground and up cliff corners. The cells stay exactly where they
-  are (stretching them opened new gaps where geometry crosses a cell edge, and moved things); instead two copies of
-  each cell's ground are drawn first, just behind it: scaled 3% away from the camera (so they lie behind every
-  surface, facing any way), 0.05 lower and 0.1 to the camera's right or left, so their own gaps don't line up with
-  the cell's. Through a gap you see ground or wall just behind it instead of sky; the real cell is drawn on top
-  (`aidyn_cell_underlay`, hooked on func_8000D02C). It costs about 2,000 display-list commands (the game's buffer
-  holds 25,600). `AIDYN_UNDERLAY=0` turns it off.
 - **Below the horizon.** Outdoors the game paints the sky as a gradient down to the horizon and fills everything below
   it with the horizon's colour, meant to meet the fogged distant ground. Where pieces of ground, or a cliff and the
   ground, don't quite meet, that fill shows through: hairline gaps the N64's own anti-aliasing blended away at 320x240
