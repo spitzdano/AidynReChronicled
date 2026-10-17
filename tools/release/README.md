@@ -63,5 +63,9 @@ All in `~/.local/share/AidynReChronicled`:
 ## About
 
 Made by statically recompiling the game with N64Recomp, running on N64ModernRuntime and the RT64 renderer.
-Unofficial: not connected with THQ, H2O Entertainment or Nintendo. GPL-3.0 (see `LICENSE`). Made with AI
-assistance (Claude Code).
+Unofficial: not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. GPL-3.0 (see `LICENSE`).
+Built on blackgamma7's Aidyn Chronicles decompilation (https://github.com/blackgamma7/Aidyn).
+
+Made with heavy AI involvement: nearly all of the code was written by an AI coding assistant (Claude Code), directed
+and play-tested by Spitzdano, and the redrawn portraits, icons and world textures were made with an AI image
+generator from the game's originals.

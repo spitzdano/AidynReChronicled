@@ -13,8 +13,14 @@ checks it against this SHA-1:
 47ae795a2b12783a13e2b8d03439ce9a39fc826c  baserom.z64
 ```
 
-> **AI disclosure.** This project was built with AI assistance (Claude Code). Scaffolded by
-> the n64-recomp-toolkit's `new-game.sh`.
+> **Unofficial fan project.** Not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. *Aidyn
+> Chronicles: The First Mage* and its characters, art and music belong to their rights holders.
+
+> **Made with heavy AI involvement.** Nearly all of the code, tools and documentation here were written by an AI
+> coding assistant (Claude Code), directed and play-tested by Spitzdano. The redrawn portraits, icons and world
+> textures in `art/` were made with an AI image generator from the game's originals, each checked against its
+> original; the HD menu and world texture packs are AI upscales (Real-ESRGAN) of the game's own pictures. Scaffolded
+> by the n64-recomp-toolkit's `new-game.sh`.
 
 ## Download and play
 
@@ -322,6 +328,21 @@ as framebuffers (written to find the journal problem). `AIDYN_ANIM_LOG=1` prints
 `AIDYN_AUDIO_DUMP=<file>` writes everything the game plays to a file (raw 16-bit stereo at the game's rate, printed at
 start), for checking sound changes without listening.
 
+## Credits
+
+- **[Aidyn Chronicles decompilation](https://github.com/blackgamma7/Aidyn)** by blackgamma7: the symbol names, the
+  splat layout and the understanding of the game's code that every hook and patch here relies on. It is a git
+  submodule (`decomp/`), never modified; `split/` holds the NTSC-U 1.0 yaml and symbols made from it, with this
+  project's fixes in `tools/`.
+- **[N64Recomp](https://github.com/N64Recomp/N64Recomp)** and **[N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime)**:
+  the static recompiler and the runtime the game runs on.
+- **[RT64](https://github.com/rt64/rt64)**: the renderer (with this project's changes in `tools/patches/`).
+- **Aidyn Patch** by u/halibabica: the community rebalance the port can run instead of the original.
+- **Fonts** (SIL Open Font License 1.1, licences beside them): Marcellus SC, Kanit, Uncial Antiqua, Alegreya Sans.
+- **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)**: the upscaler behind the HD texture packs (a tool, not part
+  of the game).
+
 ## License
 
-GPL-3.0 (see `LICENSE`), because it links N64ModernRuntime.
+GPL-3.0 (see `LICENSE`), because it links N64ModernRuntime. Unofficial: not affiliated with or endorsed by THQ, H2O
+Entertainment or Nintendo; no game data is included.
