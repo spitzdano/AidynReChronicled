@@ -648,11 +648,17 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
     props_original += prox < size;
     const uint16_t models = MEM_HU(0x68, prop);
     if ((MEM_HU(0x6A, prop) & 2) == 0 && models >= 1 && models <= 3 && item_model((uint32_t)MEM_W(0x2C, prop))) {
-        // An item: its cut-off (the nearer of size and its farthest level of detail) moves out to reach().
+        // An item: its cut-off (the nearer of size and its farthest level of detail) moves out to reach(). Within its
+        // own cut-off the game gets the real distance, so its levels of detail switch where they always did (the
+        // first forest's guide lights vanish once you reach them through theirs: with the distance scaled down they
+        // vanished 30 units off, for good); beyond it, out to reach(), a distance inside its farthest level of detail.
         const float own = std::min(size, read_f32(rdram, prop + 0x28 + 12 * (models - 1)));
+        const float nearer = models >= 2 ? read_f32(rdram, prop + 0x28 + 12 * (models - 2)) : 0.0f;
         items_seen++;
         items_before += prox / scale < own;
-        prox *= own / reach(own);
+        if (prox >= own && prox < reach(own)) {
+            prox = (nearer + own) * 0.5f;
+        }
         items_now += prox < own;
     } else {
         prox /= scale;
