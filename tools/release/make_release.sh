@@ -5,8 +5,9 @@
 #   tools/release/make_release.sh <version> --publish   ... then tag v<version>, push the tag, create the GitHub release
 #
 # The download holds the portable build (tools/ally/build_portable.sh: glibc 2.38+, its own SDL2), the launcher, the
-# installer, the Steam shortcut script, the icon, the title branding pack and the redrawn portraits and icons
-# (rechronicled-art: tools/hdui/art_pack.py from art/), all made here from fonts and our own art,
+# installer, the Steam shortcut script, the icon, the title branding pack, the redrawn portraits and icons
+# (rechronicled-art: tools/hdui/art_pack.py from art/) and the HD letters (rechronicled-text: tools/hdui/text_pack.py),
+# all made here from fonts and our own art,
 # README.md (tools/release/README.md) and LICENSE. Nothing from the ROM: the game asks for the player's ROM on its
 # first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
 # tools/release/notes/<version>.md, if there, goes into the release notes (what's new).
@@ -39,6 +40,8 @@ if [[ ! -f $pack/rt64.json ]]; then
 fi
 echo "== redrawn art pack"
 python3 tools/hdui/art_pack.py
+echo "== HD letters pack"
+python3 tools/hdui/text_pack.py
 
 echo "== $name"
 rm -rf "$out/$name" "$out/$name.tar.gz" "$out/$name.tar.gz.sha256"
@@ -48,6 +51,7 @@ cp tools/ally/aidyn-rechronicled.sh tools/ally/steam_shortcut.py "$out/$name/gam
 python3 tools/ally/steam_art.py --icon "$out/$name/game/icon.png" >/dev/null
 cp -a "$pack" "$out/$name/game/texture-packs/rechronicled"
 cp -a "$packs/rechronicled-art" "$out/$name/game/texture-packs/rechronicled-art"
+cp -a "$packs/rechronicled-text" "$out/$name/game/texture-packs/rechronicled-text"
 cp tools/ally/install.sh tools/release/README.md LICENSE "$out/$name/"
 chmod +x "$out/$name/install.sh" "$out/$name/game/aidyn-rechronicled.sh" "$out/$name/game/steam_shortcut.py"
 # Nothing ROM-derived may ship: the only pictures are the icon, the branding pack and the redrawn art.

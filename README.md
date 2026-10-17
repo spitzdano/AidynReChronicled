@@ -171,7 +171,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "camera_invert_y": false,
         "overscan_borders": false,
         "smooth_animation_loops": true,
-        "texture_packs": ["hd-ui", "hd-world", "rechronicled-art", "rechronicled"]
+        "texture_packs": ["hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled"]
     }
 }
 ```
@@ -197,7 +197,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
-| `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` existed gets it added once |
+| `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
 
 The game's own Options › Graphics "High Resolution" mode (a 512x240 framebuffer for the Expansion Pak) should stay on
 "Normal Resolution": RT64 already renders at `render_height`, and the wider framebuffer stretches the HUD and menus off
@@ -232,7 +232,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.
-- **HD text spacing.** With the HD UI pack, the letters keep Marcellus SC's own proportions: the game is given each
+- **HD text spacing.** The HD letters keep Marcellus SC's own proportions: the game is given each
   letter's width (the font's advance plus 0.6 texels, `src/game/font_widths.h` from `tools/hdui/font.py --header`)
   in place of the widths it measures from the original, wide pixel font, which squeezed or spread the new letters.
 - **Draw distance.** `draw_distance` scales how far props are drawn (and their detail levels); the far clip follows
@@ -247,9 +247,12 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   times `draw_distance`, 40 times it from 2 up; characters move within 10 units more and fade over the last tenth.
   Items are picked by model (19 models), so a crate or barrel standing as decoration reaches as far as one with loot
   in it. `AIDYN_ACTOR_LOG=1` prints characters and items drawn each 2 s.
-- **HD text widths and older packs.** The new letter widths are given only when the hd-ui pack says its letters were
-  drawn for them (`aidyn-text-widths.txt`, written by `build_pack.py`); an older pack, or one built with `--font none`,
-  keeps the game's own widths instead of having its letters cut off.
+- **HD text widths and older packs.** The letters and the widths have to match: letters drawn for other widths come
+  out squeezed or spread out. So the letters (and the Xbox button icons in the font) also come on their own in
+  `rechronicled-text` (`tools/hdui/text_pack.py`, drawn from the fonts, about 9,200 textures), which every release
+  ships beside the game and which loads after `hd-ui`, so its letters win whatever `hd-ui` is installed (or none).
+  The new widths are given only when the pack the letters come from (the later of `rechronicled-text` and `hd-ui` in
+  `texture_packs`) says they were drawn for them (`aidyn-text-widths.txt`); otherwise the game keeps its own.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), at most two loads a frame and

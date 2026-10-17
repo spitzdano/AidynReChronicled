@@ -150,6 +150,20 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
                 f["game"]["art_pack_added"] = true;
             });
         }
+        // rechronicled-text (the HD letters, shipped with releases so they match the game's letter widths) came later
+        // still: in once, after hd-ui (its letters win over that pack's).
+        if (gfx.contains("texture_packs") && std::find(packs.begin(), packs.end(), "rechronicled-text") == packs.end()
+            && !game.value("text_pack_added", false)) {
+            auto at = std::find(packs.begin(), packs.end(), "rechronicled-art");
+            if (at == packs.end()) {
+                at = std::find(packs.begin(), packs.end(), "rechronicled");
+            }
+            packs.insert(at, "rechronicled-text");
+            edit_file(path, [&packs](nlohmann::ordered_json& f) {
+                f["graphics"]["texture_packs"] = packs;
+                f["game"]["text_pack_added"] = true;
+            });
+        }
         const std::string aspect = gfx.value("aspect", g_graphics.aspect_text);
         g_graphics.aspect_text = aspect;
         if (aspect == "4:3") {

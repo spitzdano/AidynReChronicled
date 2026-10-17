@@ -113,3 +113,8 @@ textures by number, `portraits.py` and `romimages.py` use the pictures instead o
 `art_pack.py` builds the `rechronicled-art` pack from them alone (textures too: every mip level and scroll position),
 which a release can ship and which wins over `hd-ui` and `hd-world`. Button icons go in `art/buttons`, where
 `buttons.py` picks them up for every prompt.
+
+`text_pack.py` builds `rechronicled-text`: only the letters redrawn with the text font and the Xbox button icons of
+the font sheets, in every whole and clipped form the game loads (about 9,200 textures, half a minute), with the
+widths id. `build_pack.py` makes the same letters for `hd-ui` through it. A release ships it and it loads after
+`hd-ui`, so the text always matches the game's letter widths, whatever `hd-ui` is installed.

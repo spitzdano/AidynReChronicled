@@ -38,8 +38,8 @@ import labels as wordlabels  # noqa: E402
 import repaint  # noqa: E402
 import portraits as romportraits  # noqa: E402
 import redone  # noqa: E402
-import romassets  # noqa: E402
 import romimages  # noqa: E402
+import text_pack  # noqa: E402
 import buttons  # noqa: E402
 import bigstrips  # noqa: E402
 import hudart  # noqa: E402
@@ -226,43 +226,11 @@ def main():
     # Font sheets: every cell smoothed (pngio.upscale_glyph), then letters, digits and punctuation redrawn with
     # --font (font.py). Glyph textures are cut from this 4x sheet.
     # The two font sheets come from the ROM (BORG8_MainFont, BORG8_SlimFont), so every letter is covered, seen or not.
-    rom = romassets.Rom(PROJECT / "baserom.z64")
-    font_raw, font_name = {}, {}
-    for index, name in romassets.borg8_names(PROJECT / "decomp").items():
-        if name in ("MainFont", "SlimFont"):
-            fmt, w, h, pixels, palette = rom.image(index)
-            key = hashlib.sha1(bytes([fmt]) + w.to_bytes(2, "big") + h.to_bytes(2, "big") + pixels).hexdigest()[:16]
-            images.setdefault(key, {"fmt": fmt, "w": w, "h": h, "rgba": decode_borg8(fmt, w, h, pixels, None)})
-            font_raw[key] = pixels
-            font_name[key] = name
+    font_info = text_pack.font_sheets(PROJECT / "baserom.z64", PROJECT / "decomp", args.font, SCALE)
     sheets = {}
-    for key in sorted(font_raw):
-        img = images[key]
-        W4 = img["w"] * SCALE
-        big4 = bytearray(W4 * img["h"] * SCALE * 4)
-        for index in range(fontsheet.COLS * fontsheet.ROWS):
-            cx, cy = fontsheet.cell_origin(index)
-            cell = bytearray(fontsheet.CW * fontsheet.CH * 4)
-            for y in range(fontsheet.CH):
-                o = ((cy + y) * img["w"] + cx) * 4
-                cell[y * fontsheet.CW * 4:(y + 1) * fontsheet.CW * 4] = img["rgba"][o:o + fontsheet.CW * 4]
-            cw4, ch4, px = upscale_glyph(fontsheet.CW, fontsheet.CH, cell, SCALE)
-            for y in range(ch4):
-                d = ((cy * SCALE + y) * W4 + cx * SCALE) * 4
-                big4[d:d + cw4 * 4] = px[y * cw4 * 4:(y + 1) * cw4 * 4]
-        if args.font != "none":
-            for index, (cw4, ch4, px) in fontsheet.redraw(img["rgba"], img["w"], img["h"], args.font, SCALE).items():
-                cx, cy = fontsheet.cell_origin(index)
-                for y in range(ch4):
-                    d = ((cy * SCALE + y) * W4 + cx * SCALE) * 4
-                    big4[d:d + cw4 * 4] = px[y * cw4 * 4:(y + 1) * cw4 * 4]
-        if font_name[key] == "MainFont":  # its controller-button icons become Xbox buttons (buttons.py)
-            for index, (cw4, ch4, px) in buttons.icons(SCALE).items():
-                cx, cy = fontsheet.cell_origin(index)
-                for y in range(ch4):
-                    d = ((cy * SCALE + y) * W4 + cx * SCALE) * 4
-                    big4[d:d + cw4 * 4] = px[y * cw4 * 4:(y + 1) * cw4 * 4]
-        sheets[key] = (W4, img["h"] * SCALE, big4)
+    for key, f in font_info.items():
+        images.setdefault(key, {"fmt": f["fmt"], "w": f["w"], "h": f["h"], "rgba": f["rgba"]})
+        sheets[key] = f["sheet"]
     print(f"build_pack.py: {len(sheets)} font sheet(s), text font: {Path(args.font).name if args.font != 'none' else 'original'}")
 
     glyphs = {}
@@ -466,32 +434,12 @@ def main():
                                    SCALE, redrawn_keys, key_of, art=art, labels=rom_labels, font=args.font)
     # Every letter of both font sheets, whole and clipped (Font::PrintMain trims a letter's box at a text box's
     # edges: any left/right part at full height, any top/bottom part at full width). Checked against capture: 321 of 321.
-    glyph_jobs, glyph_rects = [], []
     new_widths = fontsheet.widths(args.font) if args.font != "none" else {}  # what the game is given (font_widths.h)
-    for key, pixels in font_raw.items():
-        img = images[key]
-        for cell in range(fontsheet.COLS * fontsheet.ROWS):
-            cx, cy = fontsheet.cell_origin(cell)
-            base, kern = cy * img["w"] + cx, fontsheet.CW
-            while kern > 1 and pixels[base + kern - 2] == pixels[base + fontsheet.CW - 1]:
-                kern -= 1  # the letter's advance, as Font::SetupBorg8 measures it
-            if cell in new_widths and fontsheet.ink_box(img["rgba"], img["w"], cell) is not None:
-                kern = new_widths[cell]  # redrawn letters: the width the game is given instead
-            rects = {(cx + a, b - a, cy, fontsheet.CH) for a in range(kern) for b in range(a + 1, kern + 1)}
-            rects |= {(cx, kern, cy + c, d - c) for c in range(fontsheet.CH) for d in range(c + 1, fontsheet.CH + 1)}
-            for x0, tw, y0, th in sorted(rects):
-                tmem, line = romimages.tmem_rect(img["fmt"], img["w"], pixels, None, x0, tw, y0, th)
-                glyph_jobs.append((tmem, 3, 1, line, tw, th, 0))
-                glyph_rects.append((key, x0, tw, y0, th))
-    for h_, (key, x0, tw, y0, th) in zip(romportraits.hashes(tmemhash, glyph_jobs), glyph_rects):
-        W4, H4, big4 = sheets[key]
-        cut = bytearray(tw * SCALE * th * SCALE * 4)
-        for y in range(th * SCALE):
-            o = ((y0 * SCALE + y) * W4 + x0 * SCALE) * 4
-            cut[y * tw * SCALE * 4:(y + 1) * tw * SCALE * 4] = big4[o:o + tw * SCALE * 4]
-        write_png(out / f"{h_}.png", tw * SCALE, th * SCALE, cut)
+    letters = text_pack.letter_textures(font_info, new_widths, tmemhash, SCALE)
+    for h_, w_, h4, rgba in letters:
+        write_png(out / f"{h_}.png", w_, h4, rgba)
         rom_entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload"})
-    print(f"build_pack.py: {len(glyph_jobs)} letter textures from the ROM font sheets")
+    print(f"build_pack.py: {len(letters)} letter textures from the ROM font sheets")
     taken = {e["hashes"]["rt64"] for e in rom_entries}
     textures = [t for t in textures if t["hashes"]["rt64"] not in taken] + rom_entries
 

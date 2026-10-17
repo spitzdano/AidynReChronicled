@@ -57,8 +57,10 @@ All in `~/.local/share/AidynReChronicled`:
 - `logs/last-run.log`: what the last start printed. Look there if something goes wrong.
 - `texture-packs/`: HD texture packs. This release includes, next to the game, newly painted art
   (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
-  the first world textures: Alaron, the starting forest, part of Gwernia Castle) and the title-screen branding
-  (`rechronicled`); the HD menu and world packs (upscales of the game's own pictures) are not part of it.
+  the first world textures: Alaron, the starting forest, part of Gwernia Castle), the HD letters and Xbox button
+  icons for all the game's text (`rechronicled-text`, drawn from fonts; they win over any HD menu pack's, so the text
+  always matches this version's letter spacing) and the title-screen branding (`rechronicled`); the HD menu and world
+  packs (upscales of the game's own pictures) are not part of it.
 
 ## About
 
