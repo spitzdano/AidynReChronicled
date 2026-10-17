@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # update-from-github.sh [version]: download a release of Aidyn ReChronicled from GitHub and install it (install.sh
 # --no-steam: the Steam shortcut from the first install keeps working). Without a version: the newest release.
-# Needs the GitHub CLI signed in (gh auth login), since the repository is private; run it from anywhere in a clone.
+# Needs the GitHub CLI signed in (gh auth login), since the repository is private; run it from anywhere in a clone
+# (tools/ally/HANDOFF.md has the steps).
 #
 #   tools/ally/update-from-github.sh            the newest release
 #   tools/ally/update-from-github.sh 0.2.1      that one

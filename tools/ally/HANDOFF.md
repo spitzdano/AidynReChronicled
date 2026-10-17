@@ -3,8 +3,18 @@
 How to move the game from the PC to the handheld over a USB stick, add it to Steam with its art, and play it in Game
 Mode. Takes about ten minutes, most of it copying.
 
-Once it's installed, updates come from GitHub and the saves sync with the PC: see [sync/README.md](sync/README.md)
-(`update-from-github.sh`, Syncthing).
+Once it's installed, newer versions can come straight from GitHub instead of a USB stick (in Desktop Mode, Konsole;
+the repository is private, so the GitHub CLI signs in first; Homebrew comes with Bazzite):
+
+```sh
+brew install gh
+gh auth login                       # GitHub.com › HTTPS › Yes › Login with a web browser
+gh repo clone spitzdano/AidynReChronicled ~/AidynReChronicled -- --depth 1
+~/AidynReChronicled/tools/ally/update-from-github.sh          # the newest release (or: … 0.2.1)
+```
+
+Later updates: `git -C ~/AidynReChronicled pull`, then the same `update-from-github.sh`. It installs the game only
+(`install.sh --no-steam`): saves, settings and the Steam shortcut stay as they are.
 
 > The package contains your own ROM dumps and saves. It's for your own devices: don't share it.
 
