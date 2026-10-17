@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """steam_shortcut.py: add Aidyn ReChronicled to Steam as a non-Steam game, with its library art. Runs on the handheld.
 
-    python3 steam_shortcut.py [--dry-run]
+    python3 steam_shortcut.py [--dry-run] [--launcher PATH] [--art DIR] [--icon PNG]
+
+--launcher, --art and --icon point it at other files than the handheld package's (aidyn-rechronicled.sh, steam-art/
+and icon.png next to this script): on the PC, tools/dev/aidyn-steam.sh with build/ally/steam-art (see that script).
 
 Steam must be closed (in Desktop Mode: Steam menu > Exit; the script says so if it isn't). For every Steam account on
 the machine it:
   1. reads userdata/<account>/config/shortcuts.vdf (Steam's binary key-value format). It writes nothing unless
      reading and re-writing the file gives back exactly the same bytes, so a format it doesn't understand is never
      damaged. A copy is kept as shortcuts.vdf.before-aidyn.
-  2. adds the shortcut, or updates the one it added before (found by its Exe): name "Aidyn ReChronicled", the launcher
-     aidyn-rechronicled.sh next to this script, icon.png next to it, no launch options.
+  2. adds the shortcut, or updates the one it added before (found by its Exe: the launcher's file name): name
+     "Aidyn ReChronicled", the launcher, the icon, no launch options.
   3. copies the art in steam-art/ (made from the ROM by tools/ally/steam_art.py, so a release has none) into
      userdata/<account>/config/grid, named by the shortcut's app id the way Steam looks for it: <id>p.png (library
      capsule), <id>.png (wide capsule), <id>_hero.png, <id>_logo.png. Missing pictures are skipped.
 Steam picks it all up when it starts again (switching to Game Mode starts it).
 """
+import argparse
 import binascii
 import os
 import shutil
@@ -111,9 +115,16 @@ def steam_running():
 
 
 def main():
-    dry = "--dry-run" in sys.argv
-    if not LAUNCHER.exists():
-        sys.exit(f"steam_shortcut.py: {LAUNCHER} is missing")
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--launcher", type=Path, default=LAUNCHER)
+    ap.add_argument("--art", type=Path, default=ART)
+    ap.add_argument("--icon", type=Path)
+    args = ap.parse_args()
+    dry, launcher, art = args.dry_run, args.launcher.resolve(), args.art.resolve()
+    icon = (args.icon or (art / "icon.png" if args.art != ART else HERE / "icon.png")).resolve()
+    if not launcher.exists():
+        sys.exit(f"steam_shortcut.py: {launcher} is missing")
     root = next((r for r in STEAM_ROOTS if (r / "userdata").is_dir()), None)
     if root is None:
         sys.exit("steam_shortcut.py: no Steam found (start Steam once and log in, then run this again)")
@@ -124,8 +135,7 @@ def main():
         sys.exit("steam_shortcut.py: Steam is running. Close it first (Steam menu > Exit, or: steam -shutdown), "
                  "then run this again.")
 
-    exe = LAUNCHER.resolve()
-    icon = HERE / "icon.png"
+    exe = launcher
     # Steam's own id for a shortcut: CRC32 of exe + name, top bit set. Signed in shortcuts.vdf, unsigned in grid/.
     appid_u = (binascii.crc32((f'"{exe}"' + NAME).encode()) & 0xFFFFFFFF) | 0x80000000
     appid_s = struct.unpack("<i", struct.pack("<I", appid_u))[0]
@@ -152,7 +162,7 @@ def main():
         mine = None
         for e in entries:
             ex = get(e[2], b"Exe") or get(e[2], b"exe")
-            if ex and b"aidyn-rechronicled.sh" in ex[2]:
+            if ex and exe.name.encode() in ex[2]:
                 mine = e
                 break
         entry = shortcut_entry(appid_s, exe, exe.parent, icon)
@@ -181,8 +191,8 @@ def main():
         grid.mkdir(exist_ok=True)
         for src, dst in (("capsule.png", f"{appid_u}p.png"), ("wide.png", f"{appid_u}.png"),
                          ("hero.png", f"{appid_u}_hero.png"), ("logo.png", f"{appid_u}_logo.png")):
-            if (ART / src).exists():
-                shutil.copyfile(ART / src, grid / dst)
+            if (art / src).exists():
+                shutil.copyfile(art / src, grid / dst)
     print("Done. Start Steam (or switch to Game Mode): Aidyn ReChronicled is in the Library under Non-Steam.")
 
 
