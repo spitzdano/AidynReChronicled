@@ -14,7 +14,7 @@ if (NOT CMAKE_SYSTEM_NAME MATCHES "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES 
 endif()
 
 # RT64 and the runtime, as submodules pinned by new-game.sh (same arrangement as Zelda64Recomp).
-# Changes to the pinned RT64 (tools/patches/rt64-*.patch, see each file) are applied here once.
+# Changes to the pinned RT64 (tools/patches/rt64-*.patch, see each file; none now) are applied here once.
 file(GLOB RT64_PATCHES ${CMAKE_SOURCE_DIR}/tools/patches/rt64-*.patch)
 foreach(patch ${RT64_PATCHES})
     execute_process(COMMAND git -C ${CMAKE_SOURCE_DIR}/lib/rt64 apply --reverse --check ${patch}

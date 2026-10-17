@@ -431,23 +431,17 @@ static void count_game_frame(RT64::Application* app, const OSTask* task) {
 extern std::atomic_bool aidyn_menu_frame; // src/game/patches.cpp
 
 // Widescreen and 4:3 per frame: frames that draw a full-screen menu go 4:3 at once; the picture widens again after
-// 10 frames without one, so a menu's fade in and out doesn't flicker between the two. While a menu is 4:3, the sides
-// show the last wide picture, frozen and darkened, instead of black bars: RT64 keeps a copy of the picture every few
-// frames while backdropCapture is set and draws it under the 4:3 one while backdropShow is set
-// (tools/patches/rt64-menu-backdrop.patch).
+// 10 frames without one, so a menu's fade in and out doesn't flicker between the two.
 void aidyn::RT64Context::update_menu_aspect() {
     const aidyn::settings::Graphics& player = aidyn::settings::graphics();
     const bool menu = aidyn_menu_frame.exchange(false, std::memory_order_relaxed);
-    const bool switching = player.menus_4_3 && player.aspect != aidyn::settings::Aspect::Original;
-    app->presentQueue->backdropCapture = switching;
-    if (!switching) {
+    if (!player.menus_4_3 || player.aspect == aidyn::settings::Aspect::Original) {
         return;
     }
     frames_without_menu_ = menu ? 0 : frames_without_menu_ + 1;
     const bool want = menu || (menu_4_3 && frames_without_menu_ < 10);
     if (want != menu_4_3) {
         menu_4_3 = want;
-        app->presentQueue->backdropShow = want;
         set_application_user_config(app.get(), ultramodern::renderer::get_graphics_config());
         app->updateUserConfig(true);
     }

@@ -190,7 +190,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `right_stick_camera` | `false` turns the right-stick camera off |
 | `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
-| `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up, with the game as it was just before, frozen and darkened, at the sides instead of black bars. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
+| `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` existed gets it added once |
 
 The game's own Options › Graphics "High Resolution" mode (a 512x240 framebuffer for the Expansion Pak) should stay on
