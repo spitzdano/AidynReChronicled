@@ -610,11 +610,13 @@ namespace {
 
     // Every model a loot container's linked scene object shows, in any map (Borg9 Container voxel objects -> their
     // Scene link -> its Borg5 models): LootChestClosed, LootBagClosed, LootCloverPatch, LootPepperPlant, LootGemVein,
-    // LootKendallsHat, crates and barrels and the odd one-off. Where the same model stands as plain decoration it
-    // reaches as far too, so seeing one from afar doesn't tell it holds loot.
+    // LootKendallsHat, crates and barrels and the odd one-off; the chest and bag once opened or blown open
+    // (LootChestOpened 0x909, LootChestExploded 0x905, LootBagOpened 0xBAC, LootBagExploded 0xBA8: the game swaps the
+    // model); and the teleporters' glowing ring (BORG5_Teleporter 0xC54). Where the same model stands as plain
+    // decoration it reaches as far too, so seeing one from afar doesn't tell it holds loot.
     bool item_model(uint32_t model) {
-        static constexpr uint32_t kItems[] = { 1969, 2032, 2072, 2218, 2246, 2311, 2339, 2508, 2546, 2598, 2947,
-                                               2952, 2986, 3007, 3033, 3219, 3221, 3223, 14342 };
+        static constexpr uint32_t kItems[] = { 1969, 2032, 2072, 2218, 2246, 2309, 2311, 2313, 2339, 2508, 2546, 2598,
+                                               2947, 2952, 2984, 2986, 2988, 3007, 3033, 3156, 3219, 3221, 3223, 14342 };
         return std::find(std::begin(kItems), std::end(kItems), model) != std::end(kItems);
     }
 
