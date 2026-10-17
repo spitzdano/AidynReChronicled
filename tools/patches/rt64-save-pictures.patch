@@ -128,7 +128,7 @@ index 7a8c13b..9a7bdf3 100644
          uint64_t workloadId = 0;
          uint64_t presentId = 0;
 diff --git i/src/hle/rt64_workload_queue.cpp w/src/hle/rt64_workload_queue.cpp
-index 5a331aa..cb71d47 100644
+index 5a331aa..90cb183 100644
 --- i/src/hle/rt64_workload_queue.cpp
 +++ w/src/hle/rt64_workload_queue.cpp
 @@ -4,6 +4,9 @@
@@ -152,7 +152,7 @@ index 5a331aa..cb71d47 100644
              for (uint32_t f = 0; f < fbPairCount; f++) {
                  const FramebufferPair &fbPair = workload.fbPairs[f];
                  bool validTargets = getTargetsFromPair(f);
-@@ -806,11 +813,25 @@ namespace RT64 {
+@@ -806,11 +813,30 @@ namespace RT64 {
                      }
  
                      // Do the resolve if using MSAA while target override is active and we're on the correct framebuffer pair index.
@@ -171,7 +171,12 @@ index 5a331aa..cb71d47 100644
 +                        gapFillColorAddress = colorImg.address;
 +                    }
 +
-+                    if (ext.sharedResources->gapFill && (colorTarget != nullptr) && (gapFillDepth != nullptr) && (colorImg.address == gapFillColorAddress)) {
++                    const bool fillThis = ext.sharedResources->gapFill && (colorTarget != nullptr) && (gapFillDepth != nullptr) && (colorImg.address == gapFillColorAddress);
++                    if (colorTarget != nullptr) {
++                        colorTarget->gapFillDepth = fillThis ? gapFillDepth : nullptr;  // a pass without 3D clears it
++                    }
++
++                    if (fillThis) {
 +                        RenderTarget *shown = resolvedToOverride ? overrideTarget : colorTarget;
 +                        shown->fillGaps(ext.workloadGraphicsWorker, gapFillDepth, ext.shaderLibrary);
 +                    }
@@ -179,7 +184,7 @@ index 5a331aa..cb71d47 100644
                      const uint64_t writeTimestamp = fbManager.nextWriteTimestamp();
                      FixedRect depthFbRect;
                      if (colorFb != nullptr) {
-@@ -864,6 +885,92 @@ namespace RT64 {
+@@ -864,6 +890,92 @@ namespace RT64 {
  #   endif
      }
  
@@ -272,7 +277,7 @@ index 5a331aa..cb71d47 100644
      void WorkloadQueue::threadAdvanceBarrier() {
          std::scoped_lock<std::mutex> cursorLock(cursorMutex);
          barrierCursor = (barrierCursor + 1) % workloads.size();
-@@ -913,6 +1020,7 @@ namespace RT64 {
+@@ -913,6 +1025,7 @@ namespace RT64 {
                  ElapsedTimer workloadTimer;
                  workloadProfiler.start();
                  threadConfigurationUpdate(workload.viFbSize, workloadConfig);
@@ -323,7 +328,7 @@ index 69a82ac..35a3432 100644
          uint32_t gOutputCount;
  
 diff --git i/src/render/rt64_render_target.cpp w/src/render/rt64_render_target.cpp
-index 81917bc..288da48 100644
+index 81917bc..c0e12cc 100644
 --- i/src/render/rt64_render_target.cpp
 +++ w/src/render/rt64_render_target.cpp
 @@ -5,6 +5,7 @@
@@ -334,20 +339,39 @@ index 81917bc..288da48 100644
  
  #include "gbi/rt64_f3d.h"
  #include "shared/rt64_fb_common.h"
-@@ -407,6 +408,68 @@ namespace RT64 {
+@@ -38,6 +39,7 @@ namespace RT64 {
+     }
+ 
+     void RenderTarget::releaseTextures() {
++        gapFillDepth = nullptr;
+         textureView.reset();
+         resolvedTextureView.reset();
+         texture.reset();
+@@ -407,6 +409,79 @@ namespace RT64 {
          worker->commandList->dispatch(dispatchX, dispatchY, 1);
      }
  
 +    // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): hairline gaps between separately drawn geometry, where
 +    // the background shows through, filled from the pixels on both sides (shaders/GapFillCS.hlsl). Works on the
-+    // picture that is shown: the resolved copy of a multisampled target, or the target itself.
++    // picture that is shown: a multisampled target's resolved copy (filled each time it is resolved, see
++    // resolveTarget and gapFillDepth: it may be resolved again when shown), or the target itself.
 +    void RenderTarget::fillGaps(RenderWorker *worker, RenderTarget *depthTarget, const ShaderLibrary *shaderLibrary) {
 +        assert(worker != nullptr);
++        if (usesResolve()) {
++            gapFillDepth = depthTarget;
++            resolvedTextureDirty = true;
++            resolveTarget(worker, shaderLibrary);
++        }
++        else {
++            recordGapFill(worker, depthTarget, shaderLibrary);
++        }
++    }
++
++    void RenderTarget::recordGapFill(RenderWorker *worker, RenderTarget *depthTarget, const ShaderLibrary *shaderLibrary) {
 +        if ((depthTarget == nullptr) || depthTarget->isEmpty() || isEmpty() || (depthTarget->width != width) || (depthTarget->height != height)) {
 +            return;
 +        }
 +
-+        resolveTarget(worker, shaderLibrary);
 +        RenderTexture *target = getResolvedTexture();
 +        if ((gapFillTexture == nullptr) || (gapFillWidth != width) || (gapFillHeight != height)) {
 +            gapFillTexture = worker->device->createTexture(RenderTextureDesc::Texture2D(width, height, 1, format, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
@@ -403,11 +427,23 @@ index 81917bc..288da48 100644
      void RenderTarget::resolveTarget(RenderWorker *worker, const ShaderLibrary *shaderLibrary) {
          if (!resolvedTextureDirty || !usesResolve()) {
              return;
+@@ -433,6 +508,11 @@ namespace RT64 {
+         }
+ 
+         resolvedTextureDirty = false;
++
++        // Aidyn ReChronicled: the resolved picture of a target the last 3D pass drew into has its hairline gaps filled.
++        if (gapFillDepth != nullptr) {
++            recordGapFill(worker, gapFillDepth, shaderLibrary);
++        }
+     }
+ 
+     void RenderTarget::recordRasterResolve(RenderWorker *worker, const TextureCopyDescriptorSet *srcDescriptorSet, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const ShaderLibrary *shaderLibrary) {
 diff --git i/src/render/rt64_render_target.h w/src/render/rt64_render_target.h
-index 82d8a36..e66b149 100644
+index 82d8a36..1142946 100644
 --- i/src/render/rt64_render_target.h
 +++ w/src/render/rt64_render_target.h
-@@ -34,6 +34,10 @@ namespace RT64 {
+@@ -34,6 +34,11 @@ namespace RT64 {
          std::unique_ptr<TextureCopyDescriptorSet> textureCopyDescSet;
          std::unique_ptr<TextureCopyDescriptorSet> textureResolveDescSet;
          std::unique_ptr<BoxFilterDescriptorSet> filterDescSet;
@@ -415,14 +451,16 @@ index 82d8a36..e66b149 100644
 +        std::unique_ptr<RenderTexture> gapFillTexture;
 +        uint32_t gapFillWidth = 0;
 +        uint32_t gapFillHeight = 0;
++        RenderTarget *gapFillDepth = nullptr;  // fill the resolved picture with this depth's gaps on every resolve
          std::unique_ptr<FramebufferWriteDescriptorTextureSet> fbWriteDescSet;
          uint32_t addressForName = 0;
          uint32_t width = 0;
-@@ -63,6 +67,7 @@ namespace RT64 {
+@@ -63,6 +68,8 @@ namespace RT64 {
          void clearColorTarget(RenderWorker *worker);
          void clearDepthTarget(RenderWorker *worker);
          void downsampleTarget(RenderWorker *worker, const ShaderLibrary *shaderLibrary);
 +        void fillGaps(RenderWorker *worker, RenderTarget *depthTarget, const ShaderLibrary *shaderLibrary);
++        void recordGapFill(RenderWorker *worker, RenderTarget *depthTarget, const ShaderLibrary *shaderLibrary);
          void resolveTarget(RenderWorker *worker, const ShaderLibrary *shaderLibrary);
          void recordRasterResolve(RenderWorker *worker, const TextureCopyDescriptorSet *srcDescriptorSet, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const ShaderLibrary *shaderLibrary);
          void markForResolve();
@@ -588,10 +626,10 @@ index 9131697..6f54542 100644
          void uploadThreadLoop();
 diff --git i/src/shaders/GapFillCS.hlsl w/src/shaders/GapFillCS.hlsl
 new file mode 100644
-index 0000000..06f98e2
+index 0000000..775791f
 --- /dev/null
 +++ w/src/shaders/GapFillCS.hlsl
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,94 @@
 +//
 +// RT64
 +//
@@ -604,7 +642,7 @@ index 0000000..06f98e2
 +
 +#define BLOCK_SIZE 8
 +#define MAX_GAP_LIMIT 16
-+#define SOLID 0.5f  // a pixel counts as drawn when at most this much of it is background (multisampled edges)
++#define SOLID 0.0f  // the colours taken come from fully drawn pixels only: an edge pixel's resolved colour holds sky
 +
 +struct GapFillCB {
 +    int2 Resolution;
@@ -676,6 +714,8 @@ index 0000000..06f98e2
 +        }
 +
 +        if (bestWidth <= maxGap) {
++            // Replaced whole, not blended by the background share: a partly covered pixel's resolved colour already
++            // holds that much sky, and blending would leave a faint line.
 +            // Replaced whole, not blended by the background share: a partly covered pixel's resolved colour already
 +            // holds that much sky, and blending would leave a faint line.
 +            color = fill;

@@ -246,10 +246,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   Welding the cells' vertices doesn't help (measured: with their shared edges made identical the line still showed),
   so RT64 fills them after each 3D pass (`tools/patches/rt64-save-pictures.patch`: `shaders/GapFillCS.hlsl`,
   `RenderTarget::fillGaps`): a pixel where some depth samples were never drawn, with drawn pixels on both sides along a
-  row or a column within three quarters of an N64 pixel, takes their colours (replaced whole: blending a partly
-  covered pixel by its background share left a faint line). It runs after the 3D pass and again after a later pass
-  into the same picture (the HUD, when drawn separately: with multisampling the shown picture is resolved again), with
-  the 3D pass's depth. Wider background (sky, gaps between leaves) and frames that drew no 3D are untouched.
+  row or a column within three quarters of an N64 pixel, takes the colours of the nearest fully drawn pixels there
+  (replaced whole: a partly covered pixel's colour, or an edge pixel's, holds some sky and left a faint line). It runs
+  after the 3D pass, after a later pass into the same picture (the HUD), and every time a multisampled picture is
+  resolved (a shown game frame is resolved again at display time, after the 3D pass), with the last 3D pass's depth. Wider background (sky, gaps between leaves) and frames that drew no 3D are untouched.
   `AIDYN_GAP_FILL=0` turns it off.
 - **Below the horizon.** Outdoors the game paints the sky as a gradient down to the horizon and fills everything below
   it with the horizon's colour, meant to meet the fogged distant ground. Where pieces of ground, or a cliff and the
