@@ -4,6 +4,7 @@
 [submodule "lib/rt64"]
 	path = lib/rt64
 	url = https://github.com/rt64/rt64.git
+	ignore = dirty
 [submodule "decomp"]
 	path = decomp
 	url = https://github.com/blackgamma7/Aidyn.git
