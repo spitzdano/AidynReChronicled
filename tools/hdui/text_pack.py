@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """text_pack.py: build the rechronicled-text texture pack: the game's letters redrawn with the text font, and the
-controller-button icons drawn as Xbox buttons, in every form the game loads them.
+controller-button icons drawn as Xbox buttons, in every form the game loads them; the word pictures (page titles, map
+labels) redrawn with it; and the words painted into the inventory page, for the game to redraw there itself.
 
 The letters are the only part of the HD menu pack (hd-ui) whose look depends on the game: it gives the font sheets
 new widths (src/game/font_widths.h) when the letters were drawn for them, so letters from one version of the pack and
@@ -13,6 +14,15 @@ The ROM is needed only to work out which game texture each one replaces (the has
 
 build_pack.py uses the same functions for the hd-ui pack's letters, and also keeps the font sheets' other cells
 (rarer symbols, smoothed from the original pixels), which this pack leaves to hd-ui or the original.
+
+Word pictures (labels.json "text": Treasure, Inventory, Buy... the map's town names, CAMP, JOURNAL, PRESS START) are
+only their letters on nothing, so their redraws (labels.py) are in the pack, for every way the game loads them.
+Words painted into a page picture (labels.json "words" and "buttons": the inventory page's HitPoints, Level, Gold,
+DETAILS and its C-down button) sit on the game's own parchment, which can't ship. So the pack holds what goes on top
+(page-<name>.png: the new words and the Xbox button at 4x on nothing) and page-words.json (the page's FNV-1a hash,
+the boxes to erase); src/game/page_words.cpp erases the boxes from the game's own picture in memory and lays the
+words over it as RT64 loads the page. An hd-ui pack built from the same labels says so (aidyn-labels.txt, the same
+id as page-words.json's): it has the words already, and the game leaves its page alone.
 Needs build/cmake/tmemhash (cmake --build build/cmake --target tmemhash) and ImageMagick.
 """
 import argparse
@@ -29,10 +39,103 @@ import font as fontsheet  # noqa: E402
 import portraits as romportraits  # noqa: E402
 import romassets  # noqa: E402
 import romimages  # noqa: E402
+import labels as wordlabels  # noqa: E402
+import repaint  # noqa: E402
 
 PROJECT = Path(__file__).resolve().parents[2]
 SCALE = 4
 NAME = "rechronicled-text"
+LABELS = {k: v for k, v in json.loads((Path(__file__).resolve().parent / "labels.json").read_text()).items() if k != "_"}
+LABELS_MARKER = "aidyn-labels.txt"  # in hd-ui and in page-words.json: which redrawn words a pack holds
+
+
+def image_key(fmt, w, h, pixels, palette):
+    """build_pack.py's image key (format, size, pixels, palette), which labels.json is keyed by."""
+    return hashlib.sha1(bytes([fmt]) + w.to_bytes(2, "big") + h.to_bytes(2, "big") + pixels
+                        + (palette or b"")).hexdigest()[:16]
+
+
+def labels_id(font):
+    """An id of the redrawn words (labels.json's word pictures and painted words, and the font), the same in an
+    hd-ui pack's LABELS_MARKER and page-words.json."""
+    used = {k: v for k, v in LABELS.items() if any(f in v for f in ("text", "words", "buttons"))}
+    return hashlib.sha1((json.dumps(used, sort_keys=True) + Path(font).name).encode()).hexdigest()[:12]
+
+
+def fnv64(data):
+    """FNV-1a, 64-bit (as src/game/page_words.cpp hashes a page's pixels and palette)."""
+    h = 0xCBF29CE484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def rom_labelled(rom_path, decomp):
+    """[(index, name, (fmt, w, h, pixels, palette), labels.json entry)] for every ROM image labels.json lists."""
+    rom = romassets.Rom(rom_path)
+    names = romassets.borg8_names(decomp)
+    out = []
+    for index in range(rom.count):
+        if rom.entry(index)[0] != romassets.IMAGE:
+            continue
+        img = rom.image(index)
+        entry = LABELS.get(image_key(*img))
+        if entry is not None:
+            out.append((index, names.get(index, str(index)), img, entry))
+    return out
+
+
+def label_textures(labelled, tmemhash, font, scale=SCALE):
+    """The word pictures (labels.json "text") redrawn with `font` (labels.py), whole and as the game crops them while
+    a page slides or a list scrolls (romimages.variants): [(hash, w, h, rgba, whole)]."""
+    jobs, owners, redrawn = [], [], {}
+    for index, name, (fmt, w, h, pixels, palette), entry in labelled:
+        if "text" not in entry or not romimages.fits(fmt, w, h):
+            continue
+        W, H, up = wordlabels.render_label({"w": w, "h": h, "rgba": decode_borg8(fmt, w, h, pixels, palette)},
+                                           entry["text"], font, scale, entry.get("dot"), entry.get("fit", False))
+        redrawn[index] = (w, h, W, up)
+        rdp_fmt, siz = romportraits.FMT[fmt]
+        tlut = romportraits.G_TT_RGBA16 if palette else 0
+        for x0, tw, y0, th in romimages.variants(w, h):
+            tmem, line = romimages.tmem_rect(fmt, w, pixels, palette, x0, tw, y0, th)
+            jobs.append((tmem, rdp_fmt, siz, line, tw, th, tlut))
+            owners.append((index, x0, tw, y0, th))
+    out = []
+    for h_, (index, x0, tw, y0, th) in zip(romportraits.hashes(tmemhash, jobs), owners):
+        w, h, W, up = redrawn[index]
+        cut = bytearray(tw * scale * th * scale * 4)
+        for y in range(th * scale):
+            o = ((y0 * scale + y) * W + x0 * scale) * 4
+            cut[y * tw * scale * 4:(y + 1) * tw * scale * 4] = up[o:o + tw * scale * 4]
+        out.append((h_, tw * scale, th * scale, cut, (x0, y0, tw, th) == (0, 0, w, h)))
+    return out
+
+
+def page_words(labelled, font, out, scale=SCALE):
+    """For each page picture with painted words or buttons (labels.json "words", "buttons"): page-<name>.png (the
+    new words and Xbox buttons at `scale` on nothing) and its page-words.json entry. Erase boxes as build_pack.py's."""
+    pages = []
+    for index, name, (fmt, w, h, pixels, palette), entry in labelled:
+        if "words" not in entry and "buttons" not in entry:
+            continue
+        img = {"w": w, "h": h, "rgba": decode_borg8(fmt, w, h, pixels, palette)}
+        W, H = w * scale, h * scale
+        layer = bytearray(W * H * 4)
+        for x0, y0, bw, bh, text in entry.get("words", []):
+            colour = repaint.word_colour(img, (x0, y0, bw, bh))
+            layer = repaint.draw_word(W, H, layer, (x0, y0, bw, bh), text, colour, font, scale)
+        for x0, y0, bw, bh, button in entry.get("buttons", []):
+            icon = buttons.icon_for(button, bw, bh, scale)
+            for y in range(bh * scale):
+                d = ((y0 * scale + y) * W + x0 * scale) * 4
+                layer[d:d + bw * scale * 4] = icon[y * bw * scale * 4:(y + 1) * bw * scale * 4]
+        write_png(out / f"page-{name}.png", W, H, layer)
+        erase = [[x - 1, y - 1, bw + 2, bh + 2] for x, y, bw, bh, _ in entry.get("words", [])]
+        erase += [[x - 3, y - 2, bw + 6, bh + 4] for x, y, bw, bh, _ in entry.get("buttons", [])]
+        pages.append({"name": name, "format": fmt, "width": w, "height": h,
+                      "fnv": "%016x" % fnv64(pixels + (palette or b"")), "erase": erase, "words": f"page-{name}.png"})
+    return pages
 
 
 def font_sheets(rom_path, decomp, font, scale=SCALE):
@@ -137,6 +240,17 @@ def main():
         written.add(h_)
         write_png(out / f"{h_}.png", w, h, rgba)
         entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload"})
+    letters = len(entries)
+    labelled = rom_labelled(Path(args.rom), PROJECT / "decomp")
+    for h_, w, h, rgba, whole in label_textures(labelled, tmemhash, args.font):
+        if h_ in written:
+            continue
+        written.add(h_)
+        write_png(out / f"{h_}.png", w, h, rgba)
+        entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload" if whole else "stream"})
+    pages = page_words(labelled, args.font, out)
+    (out / "page-words.json").write_text(json.dumps({"labels": labels_id(args.font), "scale": SCALE, "pages": pages},
+                                                    indent=1) + "\n")
     db = {
         "configuration": {"configurationVersion": 3, "autoPath": "rt64", "defaultOperation": "stream",
                           "defaultShift": "none", "hashVersion": 5},
@@ -153,7 +267,8 @@ def main():
     out.rename(final)
     if old.exists():
         shutil.rmtree(old)
-    print(f"text_pack.py: {len(entries)} letter and button textures in {final}")
+    print(f"text_pack.py: {letters} letter and button textures, {len(entries) - letters} word picture textures, "
+          f"words for {len(pages)} page(s) in {final}")
 
 
 if __name__ == "__main__":

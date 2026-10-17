@@ -76,6 +76,7 @@ add_executable(AidynReChronicled
     src/main/settings.cpp
     src/main/register_overlays.cpp
     src/game/pak.cpp
+    src/game/page_words.cpp
     src/game/patches.cpp
     src/game/save_pictures.cpp
     src/game/stubs.cpp

@@ -392,11 +392,14 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
         fprintf(stderr, "Texture packs failed to load (see above)\n");
     }
 
-    // Save pictures in full resolution (src/game/save_pictures.cpp).
-    app->state->dynamicReplacementProvider = [](uint32_t address, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
-                                                RT64::TextureCache::DynamicReplacement& replacement) {
+    // Textures made while the game runs: save pictures in full resolution (src/game/save_pictures.cpp) and the
+    // inventory page with its words redrawn (src/game/page_words.cpp).
+    app->state->dynamicReplacementProvider = [](uint64_t hash, uint32_t address, uint16_t width, uint16_t height,
+                                                uint8_t fmt, uint8_t siz, RT64::TextureCache::DynamicReplacement& replacement) {
         return aidyn::save_picture_for_texture(address, width, height, fmt, siz, replacement.rgba, replacement.width,
-                                               replacement.height);
+                                               replacement.height)
+            || aidyn::page_words_for_texture(hash, address, width, height, fmt, siz, replacement.rgba, replacement.width,
+                                             replacement.height);
     };
     capture_app = app.get();
 

@@ -299,11 +299,17 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   and "Release to use" with the button held, under the menu's box (the union of its frame pieces: the menu widget
   itself is placed at 0 by 0). The list is kept as `Combat_menu_C_Up` / `combat_menu_C_down` store it in
   `gCombatCVertMenu`; their "No potions..." / "No spells..." messages get none. `AIDYN_HINT_LOG=1` prints the box.
-- **Menu lettering.** With the HD UI pack the brown words of the inventory and shop pages are in the text font too: the
-  titles Treasure, Inventory, Buy, Sell, Skills, Spells, Stats and Train redrawn whole (`labels.json` "text" with "fit":
-  the font's own proportions; the ones never drawn while the UI was collected are redrawn from the ROM), and HitPoints,
-  Level, Gold and DETAILS painted into the inventory page filled in from the parchment and written again
-  (`labels.json` "words"). The glowing purple titles (Menu, Options, Pause...) keep their own lettering.
+- **Menu lettering.** The brown words of the inventory and shop pages are in the text font too, whatever HD UI pack
+  is installed (or none): the titles Treasure, Inventory, Buy, Sell, Skills, Spells, Stats and Train, the map's town
+  names, CAMP, JOURNAL and PRESS START are word pictures redrawn whole (`labels.json` "text"; "fit": the font's own
+  proportions), shipped in `rechronicled-text` for every way the game loads them. HitPoints, Level, Gold and DETAILS
+  (and the C-down button beside it) are painted into the inventory page, whose parchment can't ship: `rechronicled-text`
+  holds only the new words at 4x and the boxes to erase (`page-words.json`), and `src/game/page_words.cpp` makes the
+  page's strips as RT64 loads them: hd-ui's picture for the strip (or the game's own, upscaled), the boxes filled in
+  from the parchment around them in the game's own picture, the words over them (a replacement made at run time, as
+  save pictures are). An hd-ui pack built from the same `labels.json` has them already (`aidyn-labels.txt`) and is left
+  alone. `AIDYN_PAGE_WORDS_LOG=1` prints each step. The glowing purple titles (Menu, Options, Pause...) keep their own
+  lettering.
 - **Save pictures in full resolution.** The game keeps a 64x32 picture in each save (the middle half of the frame
   when the pause menu opens) and stretches it into the Load and Save screens' box. As it takes that picture, RT64
   copies the same area out of the frame it rendered (square pixels around the same centre, averaged down to at most

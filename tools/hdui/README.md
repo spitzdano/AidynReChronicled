@@ -115,6 +115,9 @@ which a release can ship and which wins over `hd-ui` and `hd-world`. Button icon
 `buttons.py` picks them up for every prompt.
 
 `text_pack.py` builds `rechronicled-text`: only the letters redrawn with the text font and the Xbox button icons of
-the font sheets, in every whole and clipped form the game loads (about 9,200 textures, half a minute), with the
-widths id. `build_pack.py` makes the same letters for `hd-ui` through it. A release ships it and it loads after
-`hd-ui`, so the text always matches the game's letter widths, whatever `hd-ui` is installed.
+the font sheets, in every whole and clipped form the game loads (about 9,200 textures), with the widths id; the word
+pictures of `labels.json` "text" (titles, town names) in every load (about 2,000); and, for the words painted into
+the inventory page, `page-words.json` and the words at 4x (`page-PauseBGStats.png`), which the game lays over the
+page itself (`src/game/page_words.cpp`). Under a minute. `build_pack.py` makes the same letters for `hd-ui` through it
+and writes the same labels id (`aidyn-labels.txt`). A release ships it and it loads after `hd-ui`, so the text always
+matches the game's letter widths and lettering, whatever `hd-ui` is installed.

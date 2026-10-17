@@ -1,10 +1,11 @@
-Aidyn ReChronicled: save pictures in full resolution (src/game/save_pictures.cpp). Adds TextureCache::addDynamicReplacement
-(a picture handed over at run time for one texture hash), State::dynamicReplacementProvider (asked for each new texture
-hash with the RDRAM address its data came from) and SharedQueueResources::framebufferCaptures (part of a framebuffer's
-high resolution picture copied before the next workload draws).
+Aidyn ReChronicled: textures made while the game runs (save pictures in full resolution, src/game/save_pictures.cpp;
+the inventory page's words, src/game/page_words.cpp). Adds TextureCache::addDynamicReplacement (a picture handed over
+at run time for one texture hash, winning over the packs'), State::dynamicReplacementProvider (asked for each new
+texture hash with the hash and the RDRAM address its data came from) and SharedQueueResources::framebufferCaptures
+(part of a framebuffer's high resolution picture copied before the next workload draws).
 
 diff --git i/src/hle/rt64_rdp_tmem.cpp w/src/hle/rt64_rdp_tmem.cpp
-index 6051f4e..c5bb069 100644
+index 6051f4e..8f0a7c0 100644
 --- i/src/hle/rt64_rdp_tmem.cpp
 +++ w/src/hle/rt64_rdp_tmem.cpp
 @@ -49,11 +49,34 @@ namespace RT64 {
@@ -34,7 +35,7 @@ index 6051f4e..c5bb069 100644
              hashSet.insert(hash);
 +            if (state->dynamicReplacementProvider) {
 +                TextureCache::DynamicReplacement replacement;
-+                if (state->dynamicReplacementProvider(loadedRdramAddress(state, loadTile), width, height, loadTile.fmt, loadTile.siz, replacement)) {
++                if (state->dynamicReplacementProvider(hash, loadedRdramAddress(state, loadTile), width, height, loadTile.fmt, loadTile.siz, replacement)) {
 +                    textureCache->addDynamicReplacement(hash, std::move(replacement));
 +                }
 +            }
@@ -81,7 +82,7 @@ index 8858dac..f46bc42 100644
              std::scoped_lock<std::mutex> configurationLock(configurationMutex);
              if ((swapChainWidth != width) || (swapChainHeight != height)) {
 diff --git i/src/hle/rt64_state.h w/src/hle/rt64_state.h
-index 7a8c13b..8a0db6e 100644
+index 7a8c13b..9a7bdf3 100644
 --- i/src/hle/rt64_state.h
 +++ w/src/hle/rt64_state.h
 @@ -4,6 +4,8 @@
@@ -99,9 +100,9 @@ index 7a8c13b..8a0db6e 100644
          std::filesystem::path dumpingTexturesDirectory;
 +
 +        // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch): asked once for each new texture hash, with the
-+        // RDRAM address its loaded data starts at and the tile's size and format; filling in the replacement picture
-+        // and returning true hands it to the texture cache for that hash.
-+        std::function<bool(uint32_t rdramAddress, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
++        // hash, the RDRAM address its loaded data starts at and the tile's size and format; filling in the replacement
++        // picture and returning true hands it to the texture cache for that hash (it wins over the packs').
++        std::function<bool(uint64_t hash, uint32_t rdramAddress, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
 +            TextureCache::DynamicReplacement &replacement)> dynamicReplacementProvider;
          bool configurationSaveQueued = false;
          uint64_t workloadId = 0;

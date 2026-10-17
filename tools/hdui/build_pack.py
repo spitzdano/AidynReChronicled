@@ -451,6 +451,8 @@ def main():
     (out / "rt64.json").write_text(json.dumps(db, indent=1) + "\n")
     if new_widths:  # the letters are drawn for these widths: the game may give them to the font sheets
         (out / fontsheet.PACK_MARKER).write_text(fontsheet.widths_id(new_widths) + "\n")
+        # The words painted into pages are redrawn here too: the game leaves those pages alone (page_words.cpp).
+        (out / text_pack.LABELS_MARKER).write_text(text_pack.labels_id(args.font) + "\n")
     old = final.with_name(final.name + ".old")
     if old.exists():
         shutil.rmtree(old)

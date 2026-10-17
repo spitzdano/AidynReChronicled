@@ -116,11 +116,13 @@ void normalize_big_draw(uint8_t* rdram, recomp_context* ctx);  // below, "Big pi
 void note_page_arrow(uint8_t* rdram, recomp_context* ctx);  // "Button prompts", below
 
 void aidyn_save_picture_drawn(uint8_t* rdram, gpr img);  // src/game/save_pictures.cpp
+void aidyn_page_words_drawn(uint8_t* rdram, gpr img);    // src/game/page_words.cpp
 
 extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
     note_page_arrow(rdram, ctx);
     if (ctx->r5 != 0) {
         aidyn_save_picture_drawn(rdram, ctx->r5);
+        aidyn_page_words_drawn(rdram, ctx->r5);
     }
     static const bool page_log = std::getenv("AIDYN_PAGE_LOG") != nullptr;
     if (page_log) {
