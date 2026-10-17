@@ -277,6 +277,15 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   lines and the prompts are pictures from `tools/branding/make_branding.py` with full-resolution versions in the
   `rechronicled` pack; both are drawn at the end of the frame with their own render state. `AIDYN_MODE_LOG=1` prints
   the game state (`gGlobals.gameStateA`: 1 walking, 2 combat, 8 pause, 12 dialogue).
+  The treasure screen (a chest, sack or pile) shows a row of hints under "Found: ... gold", like the inventory page's own
+  DETAILS: A "Take" on the treasure list or "Put back" on the party's inventory, B "Leave", the D-pad "Switch". The screen
+  is known by its title picture being drawn (the hints follow its place and fade); the list A acts on comes from the
+  barter widget, kept from its constructor (`func_8003CB68`).
+- **Menu lettering.** With the HD UI pack the brown words of the inventory and shop pages are in the text font too: the
+  titles Treasure, Inventory, Buy, Sell, Skills, Spells, Stats and Train redrawn whole (`labels.json` "text" with "fit":
+  the font's own proportions; the ones never drawn while the UI was collected are redrawn from the ROM), and HitPoints,
+  Level, Gold and DETAILS painted into the inventory page filled in from the parchment and written again
+  (`labels.json` "words"). The glowing purple titles (Menu, Options, Pause...) keep their own lettering.
 - **Start-up screens** skipped (`skip_intro`). The intro music starts with them and plays on into the title screen,
   so it is moved on to where it was when the title screen used to appear (12,947 ticks of the music player, about
   13 s): the game's command stream is read ahead without playing it, checked against the real player

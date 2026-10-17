@@ -4,6 +4,8 @@ clean(): finds the dark number pixels inside a region, groups them into numbers 
 and fills them in from the surrounding parchment, so the picture can be upscaled without them.
 draw(): after the upscale, draws each number with the text font, centred where the original was, same height and
 colour. Rendering is done by ImageMagick at 16 pixels per texel and box-filtered down.
+erase() / word_colour() / draw_word(): a word painted into a picture (the inventory page's HitPoints, Level, Gold,
+Details) filled in from the parchment before the upscale and written again with the text font after it.
 """
 import subprocess
 import tempfile
@@ -222,6 +224,43 @@ def draw_mark(W, H, rgba, box, text, colour, font, scale):
     src = np.frombuffer(bytes(m), np.uint8).reshape(mh, mw, 4).astype(np.float32)
     region = dst[y0 * scale:y0 * scale + mh, x0 * scale:x0 * scale + mw]
     a_s, a_d = src[..., 3:] / 255.0, region[..., 3:] / 255.0  # straight alpha, mark over picture
+    a_o = a_s + a_d * (1 - a_s)
+    region[..., :3] = (src[..., :3] * a_s + region[..., :3] * a_d * (1 - a_s)) / np.maximum(a_o, 1e-6)
+    region[..., 3:] = 255.0 * a_o
+    return bytearray(np.clip(dst + 0.5, 0, 255).astype(np.uint8).tobytes())
+
+
+def word_colour(img, box, dark=125):
+    """Median colour of the dark texels in a box of the original picture (a painted word's ink)."""
+    x0, y0, bw, bh = box
+    w, rgba = img["w"], img["rgba"]
+    ink = sorted(tuple(rgba[(y * w + x) * 4:(y * w + x) * 4 + 3]) for y in range(y0, y0 + bh) for x in range(x0, x0 + bw)
+                 if _lum(rgba, (y * w + x) * 4) < dark)
+    return ink[len(ink) // 2] if ink else (0x94, 0x5A, 0x4A)
+
+
+def draw_word(W, H, rgba, box, text, colour, font, scale, align="right"):
+    """Draws `text` with the text font into an upscaled picture where a painted word was erased before the upscale:
+    its tallest letters as tall as the word's box, sitting on its bottom, ending at its right edge (align "right") or
+    starting at its left; in the word's ink, with the stroke weight labels.py gives redrawn words."""
+    import numpy as np
+    x0, y0, bw, bh = box
+    hexc = "#%02x%02x%02x" % tuple(colour)
+    with tempfile.TemporaryDirectory() as t:
+        out = Path(t) / "w.png"
+        subprocess.run(["magick", "-background", "none", "-fill", hexc, "-stroke", hexc, "-strokewidth", "12",
+                        "-font", str(font), "-pointsize", "400", f"label:{text}", "-trim", "+repage",
+                        "-resize", f"x{bh * scale}", f"PNG32:{out}"], check=True, stdout=subprocess.DEVNULL)
+        mw, mh, m = read_png(out)
+    x = (x0 + bw) * scale - mw if align == "right" else x0 * scale
+    y = (y0 + bh) * scale - mh
+    dst = np.frombuffer(bytes(rgba), np.uint8).reshape(H, W, 4).astype(np.float32).copy()
+    src = np.frombuffer(bytes(m), np.uint8).reshape(mh, mw, 4).astype(np.float32)
+    sx0, sy0 = max(0, -x), max(0, -y)
+    x, y = max(0, x), max(0, y)
+    src = src[sy0:sy0 + H - y, sx0:sx0 + W - x]
+    region = dst[y:y + src.shape[0], x:x + src.shape[1]]
+    a_s, a_d = src[..., 3:] / 255.0, region[..., 3:] / 255.0  # straight alpha, word over picture
     a_o = a_s + a_d * (1 - a_s)
     region[..., :3] = (src[..., :3] * a_s + region[..., :3] * a_d * (1 - a_s)) / np.maximum(a_o, 1e-6)
     region[..., 3:] = 255.0 * a_o

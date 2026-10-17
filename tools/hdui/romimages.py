@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 import hudart
+import labels as wordlabels
 import portraits
 import redone
 import romassets
@@ -57,14 +58,18 @@ def tmem_rect(fmt, w, pixels, palette, x0, tw, y0, th):
     return tmem, line
 
 
-def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, art=None, only_art=False, log=print):
+def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, art=None, only_art=False, log=print,
+          labels=None, font=None):
     """Writes replacements for every one-load 8-bit image except portraits and `skip_keys` (image keys handled
     elsewhere, key_of(fmt, w, h, pixels, palette) -> key). Returns rt64.json texture entries.
-    art: {name: path} of redrawn pictures (redone.collect()), used instead of the upscale; only_art: only those."""
+    art: {name: path} of redrawn pictures (redone.collect()), used instead of the upscale; only_art: only those.
+    labels: {key: labels.json entry} of word pictures redrawn with `font` (labels.py) instead of the upscale: the ones
+    the game never drew while the UI was collected (build_pack.py redraws the collected ones)."""
     rom = romassets.Rom(rom_path)
     names = romassets.borg8_names(decomp)
     art = art or {}
-    images = {}
+    labels = labels or {}
+    images, label_of = {}, {}
     for index in range(rom.count):
         if rom.entry(index)[0] != romassets.IMAGE or names.get(index, "").startswith("Portrait"):
             continue
@@ -74,14 +79,16 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         if w * h <= 4 or not fits(fmt, w, h) or key_of(*img) in skip_keys:
             continue
         images[index] = img
+        if key_of(*img) in labels:
+            label_of[index] = labels[key_of(*img)]
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"
         src.mkdir()
         big.mkdir()
         for index, (fmt, w, h, pixels, palette) in images.items():
-            if names.get(index) in hudart.NAMES or names.get(index) in art:
-                continue  # redrawn (hudart.py, art/), not upscaled
+            if names.get(index) in hudart.NAMES or names.get(index) in art or index in label_of:
+                continue  # redrawn (hudart.py, art/, labels.py), not upscaled
             rgba = decode_borg8(fmt, w, h, pixels, palette)
             if fmt in (4, 7):
                 w, h, rgba = upscale_bicubic(w, h, rgba, 2)
@@ -102,7 +109,11 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         hs = portraits.hashes(tool, jobs)
         ups = {}
         for index, (fmt, w, h, pixels, palette) in images.items():
-            if names.get(index) in art:
+            if index in label_of:
+                entry = label_of[index]
+                W, H, up = wordlabels.render_label({"w": w, "h": h, "rgba": decode_borg8(fmt, w, h, pixels, palette)},
+                                                   entry["text"], font, scale, entry.get("dot"), entry.get("fit", False))
+            elif names.get(index) in art:
                 W, H, up = redone.load(art[names[index]], w, h)
             elif names.get(index) in hudart.NAMES:
                 W, H, up = hudart.redraw(names[index], w, h, decode_borg8(fmt, w, h, pixels, palette))

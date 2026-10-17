@@ -1,5 +1,5 @@
 {
- "_": "Small pre-drawn word images, keyed by build_pack.py's image key (format, size, pixels, palette). \"text\": redrawn with the pack's text font in the original colour and place (\"dot\": which side the town dot is on; it is redrawn as a ring); \"upscale\": an image that build_pack.py would otherwise skip as a tiny label, upscaled like any other. \"numbers\": [x0, y0, x1, y1] region of a picture whose painted numbers (the journal calendar) are removed before the upscale and redrawn with the text font after it. \"buttons\": [[x0, y0, w, h, n64 button]] controller-button icons painted into a picture (the inventory page's \"Details\" C-down), erased before the upscale and redrawn as the Xbox button after it (buttons.py). \"marks\": [[x0, y0, w, h, text]] small text painted into a picture over nothing (the title card's TM), made transparent before the upscale and redrawn with the text font after it, in its colour, capitals one texel short of the box. \"arrows\": [[x0, y0, w, h, \"L\"|\"R\"|\"LR\"]] page arrows painted into a picture (the map page's, like SliderArrowL), erased before the upscale and redrawn after it as hudart.py draws the arrows, in their darkest colour.",
+ "_": "Small pre-drawn word images, keyed by build_pack.py's image key (format, size, pixels, palette). \"text\": redrawn with the pack's text font in the original colour and place (\"fit\": in the font's own proportions, as tall as the original letters, instead of stretched to their width) (\"dot\": which side the town dot is on; it is redrawn as a ring); \"upscale\": an image that build_pack.py would otherwise skip as a tiny label, upscaled like any other. \"numbers\": [x0, y0, x1, y1] region of a picture whose painted numbers (the journal calendar) are removed before the upscale and redrawn with the text font after it. \"buttons\": [[x0, y0, w, h, n64 button]] controller-button icons painted into a picture (the inventory page's \"Details\" C-down), erased before the upscale and redrawn as the Xbox button after it (buttons.py). \"marks\": [[x0, y0, w, h, text]] small text painted into a picture over nothing (the title card's TM), made transparent before the upscale and redrawn with the text font after it, in its colour, capitals one texel short of the box. \"arrows\": [[x0, y0, w, h, \"L\"|\"R\"|\"LR\"]] page arrows painted into a picture (the map page's, like SliderArrowL), erased before the upscale and redrawn after it as hudart.py draws the arrows, in their darkest colour. \"words\": [[x0, y0, w, h, text]] words painted into a picture over parchment (the inventory page's HitPoints, Level, Gold, Details): filled in from the parchment before the upscale and written again with the text font after it, as tall as the box and ending at its right edge, in the word's ink (repaint.py draw_word).",
  "278678fb2c7c5d80": {
   "text": "UGARIT",
   "dot": "below"
@@ -62,6 +62,36 @@
     11,
     "CD"
    ]
+  ],
+  "words": [
+   [
+    163,
+    33,
+    53,
+    9,
+    "HitPoints"
+   ],
+   [
+    186,
+    54,
+    30,
+    9,
+    "Level"
+   ],
+   [
+    187,
+    68,
+    29,
+    9,
+    "Gold"
+   ],
+   [
+    242,
+    211,
+    33,
+    7,
+    "DETAILS"
+   ]
   ]
  },
  "23acc7ae6c912fc7": {
@@ -74,5 +104,37 @@
     "TM"
    ]
   ]
+ },
+ "6f9a6a6091600f46": {
+  "text": "Treasure",
+  "fit": true
+ },
+ "2c7010b504ad76ea": {
+  "text": "Inventory",
+  "fit": true
+ },
+ "14a4a32e5fadcf8e": {
+  "text": "Buy",
+  "fit": true
+ },
+ "0c12ab58e6beee87": {
+  "text": "Sell",
+  "fit": true
+ },
+ "61a44e4584dd33e4": {
+  "text": "Skills",
+  "fit": true
+ },
+ "1caf045e6c0b9509": {
+  "text": "Spells",
+  "fit": true
+ },
+ "1cc7ecba8a042c8f": {
+  "text": "Stats",
+  "fit": true
+ },
+ "a4cdb63641d895b1": {
+  "text": "Train",
+  "fit": true
  }
 }

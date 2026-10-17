@@ -247,6 +247,13 @@ func = "RenderVoxelScenes"
 before_vram = 0x8000C820
 text = "extern void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx); aidyn_prop_distance(rdram, ctx);"
 
+# WidgetBarter's constructor (the treasure and shop screens), once s2 = this: src/game/patches.cpp "Treasure hints"
+# keeps the newest one, to tell which list A acts on.
+[[patches.hook]]
+func = "func_8003CB68"
+before_vram = 0x8003CB90
+text = "extern void aidyn_barter_made(gpr widget); aidyn_barter_made(ctx->r18);"
+
 # Characters farther away (src/game/patches.cpp, "Monsters, people and items farther away"): the field's draw and
 # move distances raised each frame at ProcessPlayers' entry; PlayerShadowAlpha replaced (a wider fade).
 [[patches.hook]]

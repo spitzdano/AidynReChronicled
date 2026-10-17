@@ -211,6 +211,10 @@ def main():
             rgba, painted[key] = repaint.clean(img, LABELS[key]["numbers"])
         if "marks" in LABELS.get(key, {}) and args.font != "none":
             rgba = repaint.clear(dict(img, rgba=rgba), [tuple(m[:4]) for m in LABELS[key]["marks"]])
+        if "words" in LABELS.get(key, {}) and args.font != "none":
+            # A texel wider all round: the letters' anti-aliased rims are paler than their ink and would bleed back.
+            rgba = repaint.erase(dict(img, rgba=rgba), [(x - 1, y - 1, w + 2, h + 2)
+                                                        for x, y, w, h, _ in LABELS[key]["words"]])
         if "arrows" in LABELS.get(key, {}):
             rgba = repaint.erase(dict(img, rgba=rgba), [(x - 2, y - 2, w + 4, h + 4)
                                                         for x, y, w, h, _ in LABELS[key]["arrows"]])
@@ -346,7 +350,8 @@ def main():
     for key in whole:
         entry = LABELS.get(key, {})
         if "text" in entry and args.font != "none":
-            upscaled[key] = wordlabels.render_label(images[key], entry["text"], args.font, SCALE, entry.get("dot"))
+            upscaled[key] = wordlabels.render_label(images[key], entry["text"], args.font, SCALE, entry.get("dot"),
+                                                    entry.get("fit", False))
             scale_of[key] = SCALE
             redrawn += 1
     # Small full-colour pictures (item and slot icons): the upscaler shifts their colours (the short sword's dark blue
@@ -392,6 +397,13 @@ def main():
             for x0, y0, bw, bh, text in LABELS[key]["marks"]:
                 colour = repaint.mark_colour(images[key], (x0, y0, bw, bh))
                 rgba = repaint.draw_mark(W, H, rgba, (x0, y0, bw, bh), text, colour, args.font, scale_of[key])
+            upscaled[key] = (W, H, rgba)
+    for key in whole:  # words painted into a picture (the inventory page's labels), redrawn with the text font
+        if "words" in LABELS.get(key, {}) and args.font != "none":
+            W, H, rgba = upscaled[key]
+            for x0, y0, bw, bh, text in LABELS[key]["words"]:
+                colour = repaint.word_colour(images[key], (x0, y0, bw, bh))
+                rgba = repaint.draw_word(W, H, rgba, (x0, y0, bw, bh), text, colour, args.font, scale_of[key])
             upscaled[key] = (W, H, rgba)
     for key, numbers in painted.items():
         W, H, rgba = upscaled[key]
@@ -445,11 +457,13 @@ def main():
     rom_entries = big_entries + romportraits.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
                                      SCALE * 2, SCALE, art=art)
     # Every other small image in the ROM (romimages.py): item, skill and spell icons, minimap pictures. Words that
-    # labels.json redraws are left to the captured path.
+    # labels.json redraws of collected pictures are left to the captured path; word pictures the game never drew
+    # while collecting (the shops' and trainers' titles) are redrawn here from the ROM.
     key_of = image_key
-    redrawn_keys = {k for k, v in LABELS.items() if "text" in v or "numbers" in v}
+    redrawn_keys = {k for k, v in LABELS.items() if ("text" in v or "numbers" in v) and k in images}
+    rom_labels = {k: v for k, v in LABELS.items() if "text" in v and k not in images} if args.font != "none" else {}
     rom_entries += romimages.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
-                                   SCALE, redrawn_keys, key_of, art=art)
+                                   SCALE, redrawn_keys, key_of, art=art, labels=rom_labels, font=args.font)
     # Every letter of both font sheets, whole and clipped (Font::PrintMain trims a letter's box at a text box's
     # edges: any left/right part at full height, any top/bottom part at full width). Checked against capture: 321 of 321.
     glyph_jobs, glyph_rects = [], []

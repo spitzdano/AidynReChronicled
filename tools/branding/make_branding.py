@@ -8,7 +8,8 @@
                            stripes, white rim, magenta glow)
   "[View] Original · Aidyn Patch"  bottom left, one picture for each running version (bright) and the other (dimmed);
                            View switches on the title screen
-  the fast-forward marker, the controls cards' lines ([button] what it does) and the LB / RB page prompts
+  the fast-forward marker, the controls cards' lines ([button] what it does), the LB / RB page prompts and the
+  treasure screen's button hints (word [button])
 
 Each is rendered at 8 pixels per N64 texel. Outputs:
   src/game/branding_images.h       the N64-size RGBA16 copies the game draws (src/game/patches.cpp, "Title screen").
@@ -284,6 +285,29 @@ def page_prompt(button):
     return draw
 
 
+def menu_hint(label, button):
+    """A button hint on a menu's parchment, like the inventory page's "DETAILS [X]": the word in the pages' brown ink
+    (capitals 7 texels tall, as DETAILS), then the button icon (11 texels, as its X). Left-aligned; the game measures
+    the ink to space a row of them (src/game/patches.cpp, "Treasure hints")."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        size = 78  # Marcellus SC capitals about 7 texels tall
+        baseline = int(H - 2 * SS)
+        m = dilate(text_mask(label, MARCELLUS, size, W, H, SS // 2, baseline), 2)
+        over(img, rgb("#945a4a"), m)
+        x = SS // 2 + ink_width(label, MARCELLUS, size) + 2 * SS
+        bw, px = icon(button, h)
+        if x + bw * SS > W:
+            sys.exit(f"make_branding.py: the {label!r} hint is wider than {w} texels")
+        over(img[:, x:x + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
+        return img
+    return draw
+
+
+HINTS = [("hint_take", "Take", "A"), ("hint_putback", "Put back", "A"), ("hint_leave", "Leave", "B"),
+         ("hint_switch", "Switch", "DPAD")]
+
 CONTROLS = [
     ("ctl_walk", (("LS",), "Walk")),
     ("ctl_camera", (("RS",), "Camera"), (("R3",), "Behind the party")),
@@ -316,6 +340,7 @@ IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
           ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")),
           ("art_off", 64, 8, art_off)]
 IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
+IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in HINTS]
 
 
 def to_rgba8(img):

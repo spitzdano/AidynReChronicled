@@ -39,8 +39,10 @@ def _box(points):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def render_label(img, text, font, scale, dot=None):
+def render_label(img, text, font, scale, dot=None, fit=False):
     """img: build_pack image dict; dot: "below", "above", "right" or "left" (where the town dot is) or None.
+    fit: keep the font's own proportions (as tall as the letters' box, centred on it, narrowed only if the picture
+    is too narrow) instead of stretching the word over the box: for titles in a wider original lettering.
     Returns (W, H, rgba) at `scale` pixels per texel."""
     w, h, rgba = img["w"], img["h"], img["rgba"]
     comps = _components(w, h, rgba)
@@ -60,13 +62,21 @@ def render_label(img, text, font, scale, dot=None):
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
         word = tmp / "word.png"
-        # The word, trimmed to its ink, then stretched over the letters' box.
+        # The word, trimmed to its ink, then stretched over the letters' box (fit: as tall as it, own width).
         # Rendered at 400 pt, then shrunk to a few texels: the stroke adds the weight a book font lacks at that size.
+        bw, bh = (lx1 - lx0 + 1) * SS, (ly1 - ly0 + 1) * SS
+        size = f"{bw}x{bh}!" if not fit else f"x{bh}"
         subprocess.run(["magick", "-background", "none", "-fill", hexcol, "-stroke", hexcol, "-strokewidth", "12",
                         "-font", str(font), "-pointsize", "400",
-                        f"label:{text}", "-trim", "+repage", "-resize",
-                        f"{(lx1 - lx0 + 1) * SS}x{(ly1 - ly0 + 1) * SS}!", f"PNG32:{word}"],
+                        f"label:{text}", "-trim", "+repage", "-resize", size, f"PNG32:{word}"],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if fit:
+            ww = int(subprocess.run(["magick", "identify", "-format", "%w", str(word)], capture_output=True,
+                                    text=True, check=True).stdout)
+            if ww > (w - 1) * SS:  # wider than the picture: narrower, still as tall
+                subprocess.run(["magick", str(word), "-resize", f"{(w - 1) * SS}x{bh}!", f"PNG32:{word}"], check=True)
+                ww = (w - 1) * SS
+            lx0 = max(0, min(w * SS - ww, (lx0 * SS + lx1 * SS + SS - ww) // 2)) / SS
         draw = []
         for comp in dots:
             x0, y0, x1, y1 = _box(comp)
@@ -76,7 +86,7 @@ def render_label(img, text, font, scale, dot=None):
                      "-draw", f"circle {cx:.1f},{cy:.1f} {cx + r:.1f},{cy:.1f}"]
         out = tmp / "label.png"
         subprocess.run(["magick", "-size", f"{w * SS}x{h * SS}", "xc:none", str(word), "-geometry",
-                        f"+{lx0 * SS}+{ly0 * SS}", "-composite", *draw, "-filter", "box", "-resize",
+                        f"+{round(lx0 * SS)}+{ly0 * SS}", "-composite", *draw, "-filter", "box", "-resize",
                         f"{w * scale}x{h * scale}!", f"PNG32:{out}"],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         return read_png(out)

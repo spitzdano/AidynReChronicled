@@ -1936,6 +1936,20 @@ namespace {
     };
     std::vector<PageArrow> page_arrows;  // drawn this frame (game thread)
 
+    // Treasure hints: the treasure screen (a chest, sack or pile: WidgetBarter with invType 1) shows what A and B do
+    // and how to switch lists, under its "Found: ... gold" line, like the inventory page's own "DETAILS [X]". The
+    // screen is up while its title (BORG8_TitleTreasure) is drawn; the hints follow the title's place, scale and fade.
+    // A takes the item from the treasure list and puts one back from the party's inventory: which list is active is
+    // the barter widget's description pointer (+0x88) being its item list (+0x80); the widget is the one most
+    // recently made (constructor func_8003CB68, aidyn.us.toml hook).
+    struct TitleSeen {
+        bool seen = false;
+        float x = 0, y = 0, sx = 0, sy = 0;  // screen pixels; pixels per texel
+        uint8_t alpha = 0;
+    };
+    TitleSeen treasure_title;  // this frame (game thread)
+    gpr barter_widget = 0;
+
     struct Card {
         const char* rows[8];
         bool bottom;
@@ -2037,8 +2051,41 @@ static void note_map_page_arrow(uint8_t* rdram, recomp_context* ctx, gpr img) {
     }
 }
 
+void note_treasure_title(uint8_t* rdram, recomp_context* ctx, gpr img) {
+    const gpr pixels = MEM_W(0x14, img);
+    uint64_t hash = 0xCBF29CE484222325ULL;
+    for (uint32_t i = 0; i < 84 * 17; i++) {
+        hash = (hash ^ MEM_BU(i, pixels)) * 0x100000001B3ULL;
+    }
+    if (hash != 0xB8766FCFAC94A81BULL) {  // BORG8_TitleTreasure (CI8, 84x17)
+        return;
+    }
+    const gpr sp = ctx->r29;
+    const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+    float x, y;
+    uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&x, &bits, 4);
+    bits = (uint32_t)ctx->r7;
+    std::memcpy(&y, &bits, 4);
+    treasure_title.seen = true;
+    treasure_title.x = x * hs;
+    treasure_title.y = y * vs;
+    treasure_title.sx = read_f32(rdram, sp + 0x20) * hs;
+    treasure_title.sy = read_f32(rdram, sp + 0x24) * vs;
+    treasure_title.alpha = MEM_BU(0x37, sp);
+}
+
+// WidgetBarter's constructor (func_8003CB68; s2 = this): the treasure or shop screen just made.
+extern "C" void aidyn_barter_made(gpr widget) {
+    barter_widget = widget;
+}
+
 void note_page_arrow(uint8_t* rdram, recomp_context* ctx) {
     const gpr img = ctx->r5;
+    if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 84 && MEM_HU(0x0C, img) == 17) {
+        note_treasure_title(rdram, ctx, img);
+        return;
+    }
     if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 320 && MEM_HU(0x0C, img) == 240) {
         note_map_page_arrow(rdram, ctx, img);
         return;
@@ -2103,7 +2150,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     }
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
-    if (mode == 0 && page_arrows.empty()) {
+    if (mode == 0 && page_arrows.empty() && !treasure_title.seen) {
         return g;
     }
     copy_branding(rdram);
@@ -2127,5 +2174,27 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         }
     }
     page_arrows.clear();
+    if (treasure_title.seen && treasure_title.alpha != 0) {
+        // Under "Found: ... gold" (y 169): the row centred on the treasure panel (x 80; its title sits at 48, 68),
+        // 6 texels between hints.
+        const bool loot_list = barter_widget == 0 || MEM_W(0x88, barter_widget) == MEM_W(0x80, barter_widget);
+        const int row[] = { branding_index(loot_list ? "hint_take" : "hint_putback"), branding_index("hint_leave"),
+                            branding_index("hint_switch") };
+        float width = 0.0f;
+        for (int i : row) {
+            width += i < 0 ? 0.0f : ink_width(i) + 6.0f;
+        }
+        const TitleSeen& t = treasure_title;
+        float x = t.x + (80.0f - 48.0f - (width - 6.0f) / 2.0f) * t.sx;
+        const float y = t.y + (192.0f - 68.0f) * t.sy;
+        g = prompt_state(rdram, g, t.alpha);
+        for (int i : row) {
+            if (i >= 0) {
+                g = draw_rgba16(rdram, g, i, x, y, t.sx, t.sy);
+                x += (ink_width(i) + 6.0f) * t.sx;
+            }
+        }
+    }
+    treasure_title.seen = false;
     return g;
 }
