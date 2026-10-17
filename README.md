@@ -246,9 +246,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   units where props have about 40. With `draw_distance` above 1 they reach twice as far as props: at least their
   original times `draw_distance`, 80 times it from 2 up (160 units), so one in view doesn't vanish as you back away;
   characters move within 10 units more and fade over the last tenth. Past the game's own 3x3 map cells there are none
-  to show. Their footsteps still fade out at 15 units ("Sound falloff"). Items are picked by model (25: the ones loot
-  containers show, the chests and bags once opened, the glowing lights you follow through the first forest, and the
-  teleporters), so a crate or barrel standing as decoration reaches as far as one with loot in it. `AIDYN_ACTOR_LOG=1` prints characters and items drawn each 2 s.
+  to show. Their footsteps still fade out at 15 units ("Sound falloff"). Items are picked by model (24: the ones loot
+  containers show, the chests and bags once opened, and the teleporters; not the glowing lights you follow through
+  the first forest, which drawn farther vanished before you reached them), so a crate or barrel standing as
+  decoration reaches as far as one with loot in it. `AIDYN_ACTOR_LOG=1` prints characters and items drawn each 2 s.
 - **HD text widths and older packs.** The letters and the widths have to match: letters drawn for other widths come
   out squeezed or spread out. So the letters (and the Xbox button icons in the font) also come on their own in
   `rechronicled-text` (`tools/hdui/text_pack.py`, drawn from the fonts, about 9,200 textures), which every release

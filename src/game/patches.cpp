@@ -612,13 +612,13 @@ namespace {
     // Scene link -> its Borg5 models): LootChestClosed, LootBagClosed, LootCloverPatch, LootPepperPlant, LootGemVein,
     // LootKendallsHat, crates and barrels and the odd one-off; the chest and bag once opened or blown open
     // (LootChestOpened 0x909, LootChestExploded 0x905, LootBagOpened 0xBAC, LootBagExploded 0xBA8: the game swaps the
-    // model); the glowing lights you follow through the first forest back to the castle (0x1910, unnamed in the
-    // decomp; cut off at 24, found by hiding models); and the teleporters (BORG5_Teleporter 0xC54). Where the same
-    // model stands as plain decoration it reaches as far too, so seeing one from afar doesn't tell it holds loot.
+    // model); and the teleporters (BORG5_Teleporter 0xC54). Not the glowing lights you follow through the first forest
+    // (0x1910, unnamed in the decomp): drawn farther they vanished before you reached them, so they stay props. Where
+    // the same model stands as plain decoration it reaches as far too, so seeing one from afar doesn't tell it holds
+    // loot.
     bool item_model(uint32_t model) {
         static constexpr uint32_t kItems[] = { 1969, 2032, 2072, 2218, 2246, 2309, 2311, 2313, 2339, 2508, 2546, 2598,
-                                               2947, 2952, 2984, 2986, 2988, 3007, 3033, 3156, 3219, 3221, 3223, 6416,
-                                               14342 };
+                                               2947, 2952, 2984, 2986, 2988, 3007, 3033, 3156, 3219, 3221, 3223, 14342 };
         return std::find(std::begin(kItems), std::end(kItems), model) != std::end(kItems);
     }
 
@@ -649,9 +649,8 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
     const uint16_t models = MEM_HU(0x68, prop);
     if ((MEM_HU(0x6A, prop) & 2) == 0 && models >= 1 && models <= 3 && item_model((uint32_t)MEM_W(0x2C, prop))) {
         // An item: its cut-off (the nearer of size and its farthest level of detail) moves out to reach(). Within its
-        // own cut-off the game gets the real distance, so its levels of detail switch where they always did (the
-        // first forest's guide lights vanish once you reach them through theirs: with the distance scaled down they
-        // vanished 30 units off, for good); beyond it, out to reach(), a distance inside its farthest level of detail.
+        // own cut-off the game gets the real distance, so its levels of detail switch where they always did; beyond
+        // it, out to reach(), a distance inside its farthest level of detail.
         const float own = std::min(size, read_f32(rdram, prop + 0x28 + 12 * (models - 1)));
         const float nearer = models >= 2 ? read_f32(rdram, prop + 0x28 + 12 * (models - 2)) : 0.0f;
         items_seen++;
