@@ -281,6 +281,11 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   DETAILS: A "Take" on the treasure list or "Put back" on the party's inventory, B "Leave", the D-pad "Switch". The screen
   is known by its title picture being drawn (the hints follow its place and fade); the list A acts on comes from the
   barter widget, kept from its constructor (`func_8003CB68`).
+  A shop (its Buy title) gets "Buy" or "Sell" on A, "Appraise" on Y on its own list, and "Switch". The inventory page
+  gets what A does to the highlighted item at its bottom left (Equip, Unequip or Use, read from the inventory list: the
+  lists widget is kept from its setup, `func_80030C50`), "Lists" (the D-pad: Inventory, Spells, Skills, Stats)
+  between the RB prompt and DETAILS, and View / RT beside the portraits when there is more than one in the party.
+  After a battle the page trains with experience: "Train" and "Lists" inside the Train panel.
 - **Menu lettering.** With the HD UI pack the brown words of the inventory and shop pages are in the text font too: the
   titles Treasure, Inventory, Buy, Sell, Skills, Spells, Stats and Train redrawn whole (`labels.json` "text" with "fit":
   the font's own proportions; the ones never drawn while the UI was collected are redrawn from the ROM), and HitPoints,

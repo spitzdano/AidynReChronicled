@@ -20,10 +20,11 @@ case $1 in
          hyprctl dispatch 'hl.dsp.window.move({ workspace = "1", follow = false, window = "class:AidynReChronicled" })' >/dev/null ;;
   tap)   shift; for b in "$@"; do echo "$(bit "$b") 0 0" >"$F"; sleep 0.2; echo "0 0 0" >"$F"; sleep "${TAPGAP:-0.5}"; done ;;
   hold)  echo "$(bit "$3") ${4:-0} ${5:-0} ${6:-0} ${7:-0}" >"$F"; sleep "$2"; echo "0 0 0" >"$F" ;;
-  shot)  g=$(hyprctl clients -j | python3 -c 'import json,sys
+  shot)  # the window itself (grim -T, its foreign-toplevel id), so another window on top doesn't end up in the picture
+         id=$(hyprctl clients -j | python3 -c 'import json,sys
 for c in json.load(sys.stdin):
-    if c["class"]=="AidynReChronicled": print("%d,%d %dx%d"%(c["at"][0],c["at"][1],c["size"][0],c["size"][1]))')
-         grim -g "$g" "$D/$2.png" ;;
+    if c["class"]=="AidynReChronicled": print(c.get("stableId", ""))')
+         grim -T "$id" "$D/$2.png" ;;
   alive) pgrep -f "build/cmake/AidynReChronicled" >/dev/null && echo ALIVE || echo DEAD ;;
   *)     sed -n '2,9p' "$0"; exit 2 ;;
 esac

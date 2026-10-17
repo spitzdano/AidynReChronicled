@@ -1958,11 +1958,64 @@ namespace {
     // recently made (constructor func_8003CB68, aidyn.us.toml hook).
     struct TitleSeen {
         bool seen = false;
+        bool shop = false;  // the barter title: a shop's (Buy) rather than treasure
         float x = 0, y = 0, sx = 0, sy = 0;  // screen pixels; pixels per texel
         uint8_t alpha = 0;
     };
     TitleSeen treasure_title;  // this frame (game thread)
     gpr barter_widget = 0;
+
+    // Inventory page hints: the pause menu's inventory page (its background, PauseBGInventory, told by the texels of its
+    // painted DETAILS) gets a row at its bottom left: what A does to the highlighted item (Equip, Unequip or Use, read
+    // from the inventory list) and the D-pad switching the right-hand list (Inventory, Spells, Skills, Stats); and,
+    // with more than one in the party, View and RT beside the portraits (previous / next member). After a battle the
+    // page trains with experience instead: "Train [A]" and the lists inside the Train panel. The lists widget
+    // (DollMenuLists) is the one most recently set up (func_80030C50, aidyn.us.toml hook): menus[4] +0x7C, menuIndex
+    // +0x90, menuCount +0x92, invMenu +0x94, expCost +0xA8 (only after a battle). An inventory list's highlighted row:
+    // scrollMenu +0x80 -> substruct +0x40 -> items +0x18, highlight +0x1E, numChoices +0x20; a row (SMIItem): item ID
+    // +0x5E, the portrait of whoever has it equipped +0x84; the item's type is the ID's upper byte (itemIDList.h).
+    TitleSeen inventory_page;  // the page's texel (0, 0) on screen, this frame
+    gpr doll_lists = 0;
+
+    bool heap_pointer(gpr p) {
+        const uint32_t u = (uint32_t)p;
+        return u >= 0x80000400u && u < 0x80E6A000u && (u & 3) == 0;
+    }
+
+    // The A hint for the inventory list's highlighted item, or -1 (nothing A does to it: misc and key items).
+    int inventory_a_hint(uint8_t* rdram, gpr list) {
+        const gpr menu = MEM_W(0x80, list);
+        if (!heap_pointer(menu)) return -1;
+        const gpr sub = MEM_W(0x40, menu);
+        if (!heap_pointer(sub)) return -1;
+        const gpr items = MEM_W(0x18, sub);
+        const uint32_t highlight = MEM_HU(0x1E, sub), count = MEM_HU(0x20, sub);
+        if (!heap_pointer(items) || highlight >= count) return -1;
+        const gpr row = MEM_W(4 * highlight, items);
+        if (!heap_pointer(row)) return -1;
+        if (MEM_W(0x84, row) != 0) return branding_index("hint_unequip");
+        switch (MEM_HU(0x5E, row) >> 8) {
+            case 16: return branding_index("hint_use");  // DB_POTION
+            case 5: case 6: case 7: case 9: case 10: case 11: case 12: case 13: case 14: case 15: case 17: case 19:
+                return branding_index("hint_equip");      // armour, shield, weapon, gear, scroll, amulet
+            default: return -1;
+        }
+    }
+
+    // Draws a row of hint pictures from page texel (x, y), 6 texels apart; returns the screen x after it.
+    gpr draw_hint_row(uint8_t* rdram, gpr g, const TitleSeen& origin, const int* row, int n, float x, float y,
+                      bool centred) {
+        float width = 0.0f;
+        for (int k = 0; k < n; k++) width += row[k] < 0 ? 0.0f : ink_width(row[k]) + 6.0f;
+        if (centred) x -= (width - 6.0f) / 2.0f;
+        g = prompt_state(rdram, g, origin.alpha);
+        for (int k = 0; k < n; k++) {
+            if (row[k] < 0) continue;
+            g = draw_rgba16(rdram, g, row[k], origin.x + x * origin.sx, origin.y + y * origin.sy, origin.sx, origin.sy);
+            x += ink_width(row[k]) + 6.0f;
+        }
+        return g;
+    }
 
     struct Card {
         const char* rows[8];
@@ -2074,6 +2127,7 @@ void note_treasure_title(uint8_t* rdram, recomp_context* ctx, gpr img) {
     if (hash != 0xB8766FCFAC94A81BULL) {  // BORG8_TitleTreasure (CI8, 84x17)
         return;
     }
+    treasure_title.shop = false;
     const gpr sp = ctx->r29;
     const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
     float x, y;
@@ -2089,9 +2143,76 @@ void note_treasure_title(uint8_t* rdram, recomp_context* ctx, gpr img) {
     treasure_title.alpha = MEM_BU(0x37, sp);
 }
 
+// PauseBGInventory being drawn (CI8 320x240, told by its painted DETAILS, texels 242..274 x 211..217): the page's
+// texel (0, 0) on screen, its scale and fade.
+void note_inventory_page(uint8_t* rdram, recomp_context* ctx, gpr img) {
+    constexpr uint32_t kX = 242, kY = 211, kW = 33, kH = 7;
+    const gpr sp = ctx->r29;
+    const uint32_t xoff = MEM_HU(0x12, sp), yoff = MEM_HU(0x16, sp), h = MEM_HU(0x1A, sp), v = MEM_HU(0x1E, sp);
+    if (xoff > kX || h < kX + kW || yoff > kY || v < kY + kH) {
+        return;  // only the part of the picture with the word in it identifies it
+    }
+    const gpr pixels = MEM_W(0x14, img);
+    uint64_t hash = 0xCBF29CE484222325ULL;
+    for (uint32_t y = kY; y < kY + kH; y++) {
+        for (uint32_t x = kX; x < kX + kW; x++) {
+            hash = (hash ^ MEM_BU(y * 320 + x, pixels)) * 0x100000001B3ULL;
+        }
+    }
+    if (hash != 0x2E5ED04143174A58ULL) {
+        return;
+    }
+    const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+    float x, y;
+    uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&x, &bits, 4);
+    bits = (uint32_t)ctx->r7;
+    std::memcpy(&y, &bits, 4);
+    const float xs = read_f32(rdram, sp + 0x20), ys = read_f32(rdram, sp + 0x24);
+    inventory_page.seen = true;
+    inventory_page.x = (x - (float)(int)xoff * xs) * hs;
+    inventory_page.y = (y - (float)(int)yoff * ys) * vs;
+    inventory_page.sx = xs * hs;
+    inventory_page.sy = ys * vs;
+    inventory_page.alpha = MEM_BU(0x37, sp);
+}
+
+// DollMenuLists::InitMenu (func_80030C50; a0 = this): the inventory page's lists, just set up.
+extern "C" void aidyn_doll_lists(gpr lists) {
+    doll_lists = lists;
+}
+
 // WidgetBarter's constructor (func_8003CB68; s2 = this): the treasure or shop screen just made.
 extern "C" void aidyn_barter_made(gpr widget) {
     barter_widget = widget;
+}
+
+// A shop's title (BORG8_TitleBuy, CI8 33x17) over the same panel: the barter hints as a shop's. Placed like the
+// treasure title (centred on x 90, its bottom at y 85), so the row is laid out from the treasure title's place.
+void note_shop_title(uint8_t* rdram, recomp_context* ctx, gpr img) {
+    const gpr pixels = MEM_W(0x14, img);
+    uint64_t hash = 0xCBF29CE484222325ULL;
+    for (uint32_t i = 0; i < 33 * 17; i++) {
+        hash = (hash ^ MEM_BU(i, pixels)) * 0x100000001B3ULL;
+    }
+    if (hash != 0x79F2EBA0EF7D2C2AULL) {
+        return;
+    }
+    const gpr sp = ctx->r29;
+    const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+    float x, y;
+    uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&x, &bits, 4);
+    bits = (uint32_t)ctx->r7;
+    std::memcpy(&y, &bits, 4);
+    const float sx = read_f32(rdram, sp + 0x20) * hs;
+    treasure_title.seen = true;
+    treasure_title.shop = true;
+    treasure_title.x = x * hs - (84.0f - 33.0f) / 2.0f * sx;  // where an 84-wide treasure title would start
+    treasure_title.y = y * vs;
+    treasure_title.sx = sx;
+    treasure_title.sy = read_f32(rdram, sp + 0x24) * vs;
+    treasure_title.alpha = MEM_BU(0x37, sp);
 }
 
 void note_page_arrow(uint8_t* rdram, recomp_context* ctx) {
@@ -2100,8 +2221,13 @@ void note_page_arrow(uint8_t* rdram, recomp_context* ctx) {
         note_treasure_title(rdram, ctx, img);
         return;
     }
+    if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 33 && MEM_HU(0x0C, img) == 17) {
+        note_shop_title(rdram, ctx, img);
+        return;
+    }
     if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 320 && MEM_HU(0x0C, img) == 240) {
         note_map_page_arrow(rdram, ctx, img);
+        note_inventory_page(rdram, ctx, img);
         return;
     }
     if (img == 0 || MEM_HU(0x08, img) != 5 || MEM_HU(0x0C, img) != 8) {
@@ -2164,7 +2290,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     }
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
-    if (mode == 0 && page_arrows.empty() && !treasure_title.seen) {
+    if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen) {
         return g;
     }
     copy_branding(rdram);
@@ -2191,9 +2317,14 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     if (treasure_title.seen && treasure_title.alpha != 0) {
         // Under "Found: ... gold" (y 169): the row centred on the treasure panel (x 80; its title sits at 48, 68),
         // 6 texels between hints.
+        // A shop: A buys from its list and sells from the party's; Y appraises (the shop's list only). Its row leaves
+        // B out (four don't fit the panel, and how a shop is left isn't in the barter widget).
         const bool loot_list = barter_widget == 0 || MEM_W(0x88, barter_widget) == MEM_W(0x80, barter_widget);
-        const int row[] = { branding_index(loot_list ? "hint_take" : "hint_putback"), branding_index("hint_leave"),
-                            branding_index("hint_switch") };
+        const bool shop = treasure_title.shop;
+        const int row[] = { branding_index(shop ? (loot_list ? "hint_buy" : "hint_sell")
+                                                : (loot_list ? "hint_take" : "hint_putback")),
+                            shop && loot_list ? branding_index("hint_appraise") : -1,
+                            shop ? -1 : branding_index("hint_leave"), branding_index("hint_switch") };
         float width = 0.0f;
         for (int i : row) {
             width += i < 0 ? 0.0f : ink_width(i) + 6.0f;
@@ -2209,6 +2340,35 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             }
         }
     }
+    if (inventory_page.seen && inventory_page.alpha != 0 && !treasure_title.seen && heap_pointer(doll_lists)) {
+        const gpr lists = doll_lists;
+        const uint32_t index = MEM_BU(0x90, lists), count = MEM_BU(0x92, lists);
+        const gpr shown = index < 4 ? MEM_W(0x7C + 4 * index, lists) : 0, inventory = MEM_W(0x94, lists);
+        const int lists_hint = count > 1 ? branding_index("hint_lists") : -1;
+        if (MEM_W(0xA8, lists) != 0) {
+            // After a battle: inside the Train panel (x 0..160), above its experience lines (y 187 on).
+            const int row[] = { branding_index("hint_train"), lists_hint };
+            g = draw_hint_row(rdram, g, inventory_page, row, 2, 80.0f, 174.0f, true);
+        }
+        else {
+            // On the row of the page arrow (y 207): A at the bottom left, under the paper doll and clear of the LB
+            // prompt (x 114 on); the lists between the RB prompt (to x 185) and DETAILS (x 242 on).
+            const int a = shown != 0 && shown == inventory && heap_pointer(inventory) ? inventory_a_hint(rdram, inventory) : -1;
+            g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 208.0f, false);
+            g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 208.0f, false);
+        }
+        // The party switch beside the portraits (their frames span x 21..150, y 25..66).
+        const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party
+        if (heap_pointer(party) && MEM_BU(0x24, party) > 1) {     // PartySize
+            const int prev = branding_index("party_prev"), next = branding_index("party_next");
+            const TitleSeen& o = inventory_page;
+            if (prev >= 0 && next >= 0) {
+                g = draw_rgba16(rdram, g, prev, o.x + 8.0f * o.sx, o.y + 40.0f * o.sy, o.sx, o.sy);
+                g = draw_rgba16(rdram, g, next, o.x + 153.0f * o.sx, o.y + 40.0f * o.sy, o.sx, o.sy);
+            }
+        }
+    }
     treasure_title.seen = false;
+    inventory_page.seen = false;
     return g;
 }

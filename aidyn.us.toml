@@ -254,6 +254,13 @@ func = "func_8004EB90"
 before_vram = 0x8004EBBC
 text = "extern void aidyn_sound_falloff(uint8_t* rdram, recomp_context* ctx); aidyn_sound_falloff(rdram, ctx);"
 
+# DollMenuLists::InitMenu (the inventory page's lists), a0 = this: src/game/patches.cpp "Inventory page hints" keeps the
+# newest, to read the highlighted item and the list shown.
+[[patches.hook]]
+func = "func_80030C50"
+before_vram = 0x80030C94
+text = "extern void aidyn_doll_lists(gpr lists); aidyn_doll_lists(ctx->r19);"
+
 # WidgetBarter's constructor (the treasure and shop screens), once s2 = this: src/game/patches.cpp "Treasure hints"
 # keeps the newest one, to tell which list A acts on.
 [[patches.hook]]

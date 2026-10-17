@@ -306,7 +306,9 @@ def menu_hint(label, button):
 
 
 HINTS = [("hint_take", "Take", "A"), ("hint_putback", "Put back", "A"), ("hint_leave", "Leave", "B"),
-         ("hint_switch", "Switch", "DPAD")]
+         ("hint_switch", "Switch", "DPAD"), ("hint_equip", "Equip", "A"), ("hint_unequip", "Unequip", "A"),
+         ("hint_use", "Use", "A"), ("hint_lists", "Lists", "DPAD"), ("hint_train", "Train", "A"),
+         ("hint_buy", "Buy", "A"), ("hint_sell", "Sell", "A"), ("hint_appraise", "Appraise", "CU")]
 
 CONTROLS = [
     ("ctl_walk", (("LS",), "Walk")),
@@ -341,6 +343,8 @@ IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
           ("art_off", 64, 8, art_off)]
 IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
 IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in HINTS]
+# The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
+IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
 
 
 def to_rgba8(img):
