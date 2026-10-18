@@ -37,7 +37,7 @@ namespace {
     std::atomic_bool right_click{ false };
     std::atomic_bool ff_toggled{ false }, ff_held{ false };
     bool l3_was_down = false;
-    std::atomic_bool c_left{ false };
+    std::atomic_bool c_down{ false }, c_up{ false };
     std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
     std::atomic_bool start{ false };
     std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
@@ -203,7 +203,8 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     }
     l3_was_down = l3;
     ff_held.store(keys[SDL_SCANCODE_TAB] != 0, std::memory_order_relaxed);
-    c_left.store((b & CL) != 0, std::memory_order_relaxed);
+    c_down.store((b & CD) != 0, std::memory_order_relaxed);
+    c_up.store((b & CU) != 0, std::memory_order_relaxed);
     start.store((b & START) != 0, std::memory_order_relaxed);
     // In the field and in combat View shows or hides the controls card (src/game/patches.cpp, "Button prompts") and
     // doesn't reach the game.
@@ -242,8 +243,12 @@ void aidyn::input::right_stick(float* x, float* y) {
     *y = right_y.load(std::memory_order_relaxed);
 }
 
-bool aidyn::input::c_left_held() {
-    return c_left.load(std::memory_order_relaxed);
+bool aidyn::input::c_down_held() {
+    return c_down.load(std::memory_order_relaxed);
+}
+
+bool aidyn::input::c_up_held() {
+    return c_up.load(std::memory_order_relaxed);
 }
 
 bool aidyn::input::fast_forward() {

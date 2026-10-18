@@ -1,7 +1,8 @@
 # Aidyn ReChronicled
 
 *Aidyn Chronicles: The First Mage* (Nintendo 64, 2001) as a native Linux game, enhanced: high resolution, widescreen,
-up to 120 fps, a free camera, further draw distance, and the community Aidyn Patch one button away.
+up to 120 fps, a free camera, further draw distance, and the community rebalances Aidyn Patch and Aidyn Plus a button
+away.
 
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
 `47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Nothing from the game is in this download.
@@ -11,8 +12,8 @@ up to 120 fps, a free camera, further draw distance, and the community Aidyn Pat
 Unpack the download, then either:
 
 - **Install** (recommended): `bash install.sh`. It puts the game in `~/Games/AidynReChronicled`, adds "Aidyn
-  ReChronicled" and "Aidyn ReChronicled (Aidyn Patch)" to the app menu and, if you want, to Steam (as a non-Steam
-  game; Steam closes for a moment).
+  ReChronicled", "Aidyn ReChronicled (Aidyn Patch)" and "Aidyn ReChronicled (Aidyn Plus)" to the app menu and, if you
+  want, to Steam (as a non-Steam game; Steam closes for a moment).
 - **Or run it in place**: `game/aidyn-rechronicled.sh`.
 
 The first start asks for your ROM in a file dialog (or start it with `--rom /path/to/game.z64`). It is checked, kept
@@ -21,11 +22,18 @@ in `~/.local/share/AidynReChronicled`, and never asked for again. A zipped ROM h
 Needs: Linux on x86_64 with glibc 2.38 or newer (any current distribution: Bazzite, Fedora, Ubuntu 24.04, Arch…), a
 Vulkan graphics driver, and libdbus (every desktop has it). Everything else is in `game/lib`.
 
-## Aidyn Patch
+## Aidyn Patch and Aidyn Plus
 
-The community Aidyn Patch (u/halibabica) rebalances the game. Apply it to your own 1.0 dump, then start "Aidyn
-ReChronicled (Aidyn Patch)" (or `--patch`) and choose the patched file when asked. Once both are stored, the View
-button (keyboard J) on the title screen switches between them.
+Two community rebalances can be played instead of the original: Aidyn Patch (u/halibabica) and the bigger Aidyn Plus
+(read its FAQ). Neither is in this download: get the patch yourself and apply it to your own 1.0 dump (Aidyn Plus is
+a `.bps` patch: apply it with Flips or another BPS patcher), then start "Aidyn ReChronicled (Aidyn Patch)" or "(Aidyn
+Plus)" (or `--patch` / `--plus`) and choose the patched file when asked, or start with `--rom /path/to/it.z64`. It is
+checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e`, Aidyn Plus
+`d57f9459a77c66490ff09b3d9d97545c7a65fad2`) and kept. You can have none, one or both.
+
+On the title screen the bottom left lists Original, Aidyn Patch and Aidyn Plus, the one you're playing lit; X and Y
+(keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*. Each
+version keeps its own saves.
 
 ## Controls
 
@@ -36,8 +44,8 @@ An Xbox-style controller, or the keyboard:
 | Left stick, D-pad | Arrows, keypad 8 4 5 6 | Walk, move in combat, menus |
 | Right stick (click: recentre) | | Camera |
 | A / B | Z / X | Confirm, talk, attack / back, cancel |
-| X / Y | K / I | Details, spells / items |
-| View | J | Show / hide the controls card (walking, combat); previous party member (pause menu); switch versions (title screen) |
+| X / Y | K / I | Details, spells / items; switch versions (title screen) |
+| View | J | Show / hide the controls card (walking, combat); previous party member (pause menu) |
 | RT | L | Next party member (pause menu) |
 | LT / LB / RB | C / Q / E | Sneak, end turn, previous / next page |
 | Menu | Enter | Pause menu |

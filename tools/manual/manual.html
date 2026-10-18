@@ -298,7 +298,8 @@ resolution, in widescreen and at high frame rates, with redrawn menus and textur
 <ul>
   <li>Your own dump of the North American 1.0 cartridge (<code>.z64</code>). The port contains no game data, and it checks
   the dump before it will run it.</li>
-  <li>Optionally, the same dump with the community <a href="#aidyn-patch">Aidyn Patch</a> applied.</li>
+  <li>Optionally, the same dump with the community <a href="#aidyn-patch">Aidyn Patch</a> or Aidyn Plus applied (each
+  player applies them to their own dump; the port checks the result).</li>
   <li>A graphics card with Vulkan, and an Xbox-style controller (the keyboard works too).</li>
 </ul>
 
@@ -373,8 +374,8 @@ have, turns the camera.</p>
 the item there.</p>
 
 <div class="port">
-  <p>On the title screen, <kbd class="pad">View</kbd> (<kbd>J</kbd>) switches between the original game and Aidyn
-  Patch when both are installed. In menus the D-pad works as on the N64; on the keyboard it is keypad
+  <p>On the title screen, <kbd class="pad">X</kbd> and <kbd class="pad">Y</kbd> (<kbd>K</kbd>, <kbd>I</kbd>) switch
+  between the original game, Aidyn Patch and Aidyn Plus, as marked beside them. In menus the D-pad works as on the N64; on the keyboard it is keypad
   <kbd>8</kbd> <kbd>4</kbd> <kbd>5</kbd> <kbd>6</kbd>. The buttons shown in the game's own text are drawn as Xbox
   buttons.</p>
 </div>
@@ -687,15 +688,17 @@ recipes and prices, how fast skills and weapons gain experience, and much of the
 data only, not the game's code, so the PC version runs it as it is.</p>
 <h3>Installing and switching</h3>
 <ul>
-  <li>Apply the patch to your own 1.0 dump and start the game once with <code>--rom</code> and the patched file. Both
-  dumps are then kept.</li>
-  <li>On the title screen the bottom left reads <em>Original · Aidyn Patch</em>, with the one you are playing lit.
-  <kbd class="pad">View</kbd> (<kbd>J</kbd>) switches: the game restarts in the other version and remembers the
-  choice.</li>
-  <li><code>--patch</code> or <code>--original</code> on the command line picks a version for one run. The launchers
-  "Aidyn ReChronicled" and "Aidyn ReChronicled (Aidyn Patch)" do the same.</li>
-  <li>Each version has its own Controller Pak (<code>aidyn.mpk</code>, <code>aidyn-patch.mpk</code>). Copy one over
-  the other to carry a save across.</li>
+  <li>Apply the patch to your own 1.0 dump and start the game once with <code>--rom</code> and the patched file. It is
+  checked and kept beside the original. The same goes for Aidyn Plus, a bigger rebalance (new weapon skills and items,
+  every spell learnable, elements reworked; its own FAQ explains it).</li>
+  <li>On the title screen the bottom left lists <em>Original</em>, <em>Aidyn Patch</em> and <em>Aidyn Plus</em>, the
+  one you are playing lit. <kbd class="pad">X</kbd> and <kbd class="pad">Y</kbd> (<kbd>K</kbd>, <kbd>I</kbd>) switch to
+  the other two, as marked: the game restarts in that version and remembers the choice. One you haven't added is grey
+  and marked <em>not found</em>.</li>
+  <li><code>--original</code>, <code>--patch</code> or <code>--plus</code> on the command line picks a version for one
+  run. The launchers "Aidyn ReChronicled", "(Aidyn Patch)" and "(Aidyn Plus)" do the same.</li>
+  <li>Each version has its own Controller Pak (<code>aidyn.mpk</code>, <code>aidyn-patch.mpk</code>,
+  <code>aidyn-plus.mpk</code>). Copy one over another to carry a save across.</li>
 </ul>
 {{PATCH}}
 </section>
@@ -722,7 +725,7 @@ data only, not the game's code, so the PC version runs it as it is.</p>
   <dt>Save backups</dt><dd>The last 20 states of your Controller Pak are kept (see
   <a href="#saving">Saving and Loading</a>).</dd>
   <dt>Straight to the title</dt><dd>The start-up logos are skipped.</dd>
-  <dt>Aidyn Patch on the title screen</dt><dd>See <a href="#aidyn-patch">Aidyn Patch</a>.</dd>
+  <dt>Aidyn Patch and Aidyn Plus on the title screen</dt><dd>See <a href="#aidyn-patch">Aidyn Patch</a>.</dd>
 </dl>
 
 <h3 id="settings">PC Settings</h3>
@@ -748,7 +751,7 @@ time the game runs; edit it while the game is closed.</p>
 <tr><td><code>overscan_borders</code></td><td><code>false</code></td><td>The black frame the N64 drew for old TVs</td></tr>
 <tr><td><code>texture_packs</code></td><td>HD packs</td><td>The HD menus, world textures and title art; remove one to see the original</td></tr>
 <tr><td><code>skip_intro</code></td><td><code>true</code></td><td><code>false</code> brings back the start-up logos</td></tr>
-<tr><td><code>rom_patch</code></td><td><code>"none"</code></td><td><code>"aidyn-patch"</code> plays Aidyn Patch (the title screen switch sets it)</td></tr>
+<tr><td><code>rom_patch</code></td><td><code>"none"</code></td><td><code>"aidyn-patch"</code> plays Aidyn Patch, <code>"aidyn-plus"</code> Aidyn Plus (the title screen sets it)</td></tr>
 </tbody></table></div>
 </section>
 

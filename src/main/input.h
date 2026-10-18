@@ -10,7 +10,8 @@ namespace aidyn::input {
     void right_stick(float* x, float* y); // -1..1 after the dead zone, as last polled; y up = positive
     bool right_stick_click();               // R3 held, as last polled (recentres the camera)
     bool fast_forward();                    // fast-forward on: toggled by L3, or Tab held (src/game/patches.cpp)
-    bool c_left_held();                     // N64 C-left held (View, keyboard J), as last polled (title screen: switch version)
+    bool c_down_held();                     // N64 C-down held (X, keyboard K), as last polled (title screen: switch version)
+    bool c_up_held();                       // N64 C-up held (Y, keyboard I), as last polled (title screen: switch version)
     void set_card_mode(int mode);           // 1 field, 2 combat, 0 elsewhere: there View shows / hides the controls card
     bool controls_card();                   // the controls card shown (settings.json graphics.controls_card)
     bool start_held();                      // N64 Start held (Menu, keyboard Enter), as last polled

@@ -28,7 +28,8 @@ checks it against this SHA-1:
 (`AidynReChronicled-<version>-linux-x86_64.tar.gz`: x86_64, glibc 2.38 or newer, a Vulkan driver). Unpack it and run
 `bash install.sh` (app menu entries and, if wanted, a Steam shortcut) or `game/aidyn-rechronicled.sh` in place. The
 first start asks for your ROM in a file dialog and keeps it; nothing else is needed. The README in the download covers
-controls, Aidyn Patch and settings. Releases carry no game data, and not yet the HD menu and world texture packs.
+controls, Aidyn Patch, Aidyn Plus and settings. Releases carry no game data (nor either patch), and not yet the HD menu
+and world texture packs.
 
 A release is made with `tools/release/make_release.sh <version> --publish`: it builds the portable executable
 (`tools/ally/build_portable.sh`), packages it with the installer, launcher, icon and title branding pack, tags the
@@ -98,18 +99,33 @@ F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to com
 ROMs, texture packs) lives in `~/.local/share/AidynReChronicled`; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
-**Aidyn Patch.** The community Aidyn Patch (u/halibabica) can be played instead of the original: apply it to your 1.0 ROM yourself, run
-once with `--rom /path/to/that.z64` (it is checked and stored next to the original ROM; XXH3-64 `aee228c7fb42f968`, SHA-1
-`1f95ad78824f491ea3d94e3ac5d36901cef09e4e`), and set `"rom_patch": "aidyn-patch"` under `"game"` in `settings.json`. It changes only
-game data (potion recipes and prices, skill and weapon XP rates, the item, spell and enemy database), no code, so it runs on the same
-recompiled code. Each game keeps its own Controller Pak: `aidyn-patch.mpk` for the patch; copy `aidyn.mpk` over it to carry a save across.
+**Aidyn Patch and Aidyn Plus.** Two community rebalances can be played instead of the original: Aidyn Patch
+(u/halibabica) and the bigger Aidyn Plus (new weapon skills and items, every spell learnable, elements and resistances
+reworked; read its FAQ). Neither comes with this project: get the patch yourself and apply it to your own 1.0 ROM (for
+Aidyn Plus, `AidynPlus.bps` with a BPS patcher such as Flips or Floating IPS), then run the game once with
+`--rom /path/to/that.z64`. Each is checked by its hash and only a match is stored, next to the original ROM:
 
-Switching versions, once both ROMs are stored:
-- **Title screen**: the bottom left shows *[View] Original · Aidyn Patch* with the running version lit. View (keyboard J) switches:
-  the choice is saved in `settings.json` and the program restarts in place into the other version, back at the title.
-- **Launch options**: `--patch` or `--original` picks the version for that run (otherwise `game.rom_patch`).
-- **App launcher**: `tools/install-launchers.sh` adds "Aidyn ReChronicled" (`--original`) and "Aidyn ReChronicled (Aidyn Patch)"
-  (`--patch`) to `~/.local/share/applications` (`--remove` takes them out).
+| Version | XXH3-64 | SHA-1 |
+|---|---|---|
+| Original (NTSC-U 1.0) | `79127d0e9caf38bc` | `47ae795a2b12783a13e2b8d03439ce9a39fc826c` |
+| Aidyn Patch | `aee228c7fb42f968` | `1f95ad78824f491ea3d94e3ac5d36901cef09e4e` |
+| Aidyn Plus | `a72109e848aff75e` | `d57f9459a77c66490ff09b3d9d97545c7a65fad2` |
+
+Both change only game data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell,
+item and chest databases; compared byte by byte with the 1.0 ROM), no code, so they run on the same recompiled code.
+You can have none, one or both. Each game keeps its own Controller Pak: `aidyn-patch.mpk`, `aidyn-plus.mpk`; copy
+`aidyn.mpk` over one to carry a save across. Aidyn Plus's own FAQ warns that some of its items and spells freeze the
+game when you look at their description; that is the romhack, not the port.
+
+Switching versions:
+- **Title screen**: the bottom left lists *Original*, *Aidyn Patch* and *Aidyn Plus*, the running one lit with a copper
+  marker. The other two show X (keyboard K) and Y (keyboard I), the upper one X: pressing it saves the choice in
+  `settings.json` and restarts the program in place into that version, back at the title. A version whose ROM isn't
+  stored is grey and marked *not found*.
+- **Launch options**: `--original`, `--patch` or `--plus` picks the version for that run (otherwise `game.rom_patch`).
+- **App launcher**: `tools/install-launchers.sh` adds "Aidyn ReChronicled" (`--original`), "Aidyn ReChronicled (Aidyn
+  Patch)" (`--patch`) and "Aidyn ReChronicled (Aidyn Plus)" (`--plus`) to `~/.local/share/applications` (`--remove` takes
+  them out).
 
 | N64 | Xbox controller | Keyboard | In the game |
 |---|---|---|---|
@@ -119,9 +135,9 @@ Switching versions, once both ROMs are stored:
 | (fast-forward) | Left stick click | hold Tab | fast-forward on / off: everything runs `fast_forward_speed` times faster (3); a marker shows at the top right |
 | A | A | Z | talk, open, confirm; in combat: attack, then act on the target |
 | B | B | X | back, cancel; walking: show the party's portraits |
-| C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one) |
-| C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one) |
-| C-left | View | J | walking and in combat: show / hide the controls card (not passed to the game there); pause menu: previous party member; title screen: switch Original / Aidyn Patch |
+| C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
+| C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one); title screen: switch to the version marked Y |
+| C-left | View | J | walking and in combat: show / hide the controls card (not passed to the game there); pause menu: previous party member |
 | C-right | RT | L | pause menu: next party member |
 | Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu: previous page |
 | L | LB | Q | combat: end the turn; pause menu: previous page |
@@ -178,7 +194,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 
 | Key | Values |
 |---|---|
-| `rom_patch` | `"none"` (the 1.0 ROM) or `"aidyn-patch"` (see Aidyn Patch above); the title screen's version switch writes it |
+| `rom_patch` | `"none"` (the 1.0 ROM), `"aidyn-patch"` or `"aidyn-plus"` (see Aidyn Patch and Aidyn Plus above); the title screen's version list writes it |
 | `skip_intro` | `false` puts back the start-up screens: Expansion Pak notice, copyright, Nintendo, THQ and H2O logos |
 | `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on |
 | `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own |
@@ -402,7 +418,8 @@ start), for checking sound changes without listening.
 - **[N64Recomp](https://github.com/N64Recomp/N64Recomp)** and **[N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime)**:
   the static recompiler and the runtime the game runs on.
 - **[RT64](https://github.com/rt64/rt64)**: the renderer (with this project's changes in `tools/patches/`).
-- **Aidyn Patch** by u/halibabica: the community rebalance the port can run instead of the original.
+- **Aidyn Patch** by u/halibabica and **Aidyn Plus**: the community rebalances the port can run instead of the original
+  (not included: each player applies them to their own ROM).
 - **Fonts** (SIL Open Font License 1.1, licences beside them): Marcellus SC, Kanit, Uncial Antiqua, Alegreya Sans.
 - **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)**: the upscaler behind the HD texture packs (a tool, not part
   of the game).

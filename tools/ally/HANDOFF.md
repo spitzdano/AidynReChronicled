@@ -113,9 +113,9 @@ The same as with an Xbox controller on the PC (the manual has every screen):
 | Left stick click (L3) | Fast-forward on / off (3x, chevrons at the top right); enemy turns in combat run 2x on their own |
 | A | Talk, open, confirm; in combat: attack |
 | B | Back, cancel; walking: show the party |
-| X | Details; in combat: spells (tap repeats the last, hold + stick picks one) |
-| Y | In combat: items and potions (tap repeats the last, hold + stick picks one) |
-| View (⧉) | Pause menu: previous party member. **Title screen: switch Original / Aidyn Patch** |
+| X | Details; in combat: spells (tap repeats the last, hold + stick picks one); title screen: switch to the version marked X |
+| Y | In combat: items and potions (tap repeats the last, hold + stick picks one); title screen: switch to the version marked Y |
+| View (⧉) | Pause menu: previous party member |
 | RT | Pause menu: next party member |
 | LT | Sneak (with the stick); combat: end turn; pause menu: previous page |
 | LB / RB | Combat: end turn (LB); pause menu: previous / next page; RB + stick: the game's own camera |

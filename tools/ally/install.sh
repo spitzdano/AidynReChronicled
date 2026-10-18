@@ -96,7 +96,9 @@ DESKTOP
 entry aidyn-rechronicled.desktop "Aidyn ReChronicled" --original "Aidyn Chronicles: The First Mage, enhanced"
 entry aidyn-rechronicled-patch.desktop "Aidyn ReChronicled (Aidyn Patch)" --patch \
     "Aidyn Chronicles: The First Mage, enhanced, with the community Aidyn Patch"
-echo "Aidyn ReChronicled, Aidyn ReChronicled (Aidyn Patch)"
+entry aidyn-rechronicled-plus.desktop "Aidyn ReChronicled (Aidyn Plus)" --plus \
+    "Aidyn Chronicles: The First Mage, enhanced, with the Aidyn Plus rebalance"
+echo "Aidyn ReChronicled, Aidyn ReChronicled (Aidyn Patch), Aidyn ReChronicled (Aidyn Plus)"
 
 if (( steam )); then
     if [[ ! -d $HOME/.local/share/Steam/userdata && ! -d $HOME/.steam/steam/userdata

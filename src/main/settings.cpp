@@ -13,7 +13,9 @@ namespace {
     aidyn::settings::Game g_game;
 
     const char* rom_patch_name(aidyn::settings::RomPatch p) {
-        return p == aidyn::settings::RomPatch::AidynPatch ? "aidyn-patch" : "none";
+        return p == aidyn::settings::RomPatch::AidynPatch ? "aidyn-patch"
+               : p == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus"
+                                                           : "none";
     }
     std::filesystem::path g_folder;
 
@@ -119,7 +121,8 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         const std::string patch = game.value("rom_patch", std::string(rom_patch_name(g_game.rom_patch)));
         if (patch == "none") g_game.rom_patch = RomPatch::None;
         else if (patch == "aidyn-patch") g_game.rom_patch = RomPatch::AidynPatch;
-        else bad(path, "game.rom_patch must be \"none\" or \"aidyn-patch\", not \"" + patch + "\"");
+        else if (patch == "aidyn-plus") g_game.rom_patch = RomPatch::AidynPlus;
+        else bad(path, "game.rom_patch must be \"none\", \"aidyn-patch\" or \"aidyn-plus\", not \"" + patch + "\"");
         g_game.skip_intro = game.value("skip_intro", g_game.skip_intro);
         g_game.fast_forward_speed = game.value("fast_forward_speed", g_game.fast_forward_speed);
         g_game.combat_enemy_speed = game.value("combat_enemy_speed", g_game.combat_enemy_speed);

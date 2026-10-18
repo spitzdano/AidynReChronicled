@@ -6,8 +6,8 @@
   "Enhanced by SPITZDANO"  bottom right: "Enhanced by" like the game's white text; SPITZDANO in the Neon Horizon chrome
                            type (Kanit Black Italic, sky-white > cyan > horizon line > magenta > pink, light scan
                            stripes, white rim, magenta glow)
-  "[View] Original · Aidyn Patch"  bottom left, one picture for each running version (bright) and the other (dimmed);
-                           View switches on the title screen
+  the version list           bottom left: Original, Aidyn Patch, Aidyn Plus (each a picture the game tints), "not
+                           found", the running one's marker and the X / Y icons for switching
   the fast-forward marker, the controls cards' lines ([button] what it does), the LB / RB page prompts and the
   treasure screen's button hints (word [button])
 
@@ -160,34 +160,51 @@ def credit(w, h):
     return img
 
 
-def version(active):
-    """The title screen's version switch, bottom left: the View button, then ORIGINAL · AIDYN PATCH with the running
-    one (`active` 0 or 1) bright and the other dimmed."""
+def version_label(text, size=64):
+    """The title screen's version list (bottom left, src/game/patches.cpp "Title screen"): a version's name, or the
+    "not found" note, in light letters with a dark edge, left-aligned. The game tints it: bright for the one running,
+    dimmer for one X or Y switches to, grey for one whose ROM isn't stored."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        baseline = int(H * 0.78)
+        if SS // 2 + ink_width(text, MARCELLUS, size) > W - SS // 2:
+            sys.exit(f"make_branding.py: the version label {text!r} is wider than {w} texels")
+        m = text_mask(text, MARCELLUS, size, W, H, SS // 2, baseline)
+        e = dilate(m, 4)
+        over(img, rgb("#000000"), 0.5 * blur(shift(e, 4, 5), 4))
+        over(img, rgb("#120c08"), e)
+        over(img, rgb("#f6e7c1"), m)
+        return img
+    return draw
+
+
+def version_mark(w, h):
+    """The running version's marker in that list: a copper chevron with a dark edge, like the fast-forward marker's."""
+    W, H = w * SS, h * SS
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32) + 0.5
+    pad, half = 2.0 * SS, (H - 5 * SS) / 2.0
+    tri = W - 2 * pad
+    m = ((xs >= pad) & (xs <= pad + tri) & (np.abs(ys - H / 2.0) <= half * (1 - (xs - pad) / tri))).astype(np.float32)
+    img = np.zeros((H, W, 4), np.float32)
+    edge = dilate(m, 5)
+    over(img, rgb("#000000"), 0.55 * blur(shift(edge, 4, 5), 5))
+    over(img, rgb("#1e0d06"), edge)
+    f = np.broadcast_to((ys - (H / 2.0 - half)) / max(2 * half, 1), (H, W))
+    over(img, gradient(COPPER, f), m)
+    return img
+
+
+def version_button(button):
+    """X or Y in that list, beside a version it switches to: the button icon, 10 texels, centred in the line."""
     def draw(w, h):
         import buttons
         W, H = w * SS, h * SS
         img = np.zeros((H, W, 4), np.float32)
-        icon_px = 10 * SS
-        icon = np.frombuffer(bytes(buttons.icon_for("CL", 10, 10, SS)), np.uint8).reshape(icon_px, icon_px, 4)
-        icon = icon.astype(np.float32) / 255.0
-        y0 = (H - icon_px) // 2
-        over(img[y0:y0 + icon_px, SS:SS + icon_px], icon[..., :3], icon[..., 3])
-        size, gap = 64, 3 * SS
-        words = ["Original", "·", "Aidyn Patch"]
-        widths = [ink_width(t, MARCELLUS, size) for t in words]
-        x = SS + icon_px + gap
-        while x + sum(widths) + 2 * gap > W - SS:
-            size -= 2
-            widths = [ink_width(t, MARCELLUS, size) for t in words]
-        baseline = int(H * 0.78)
-        for i, (text, tw) in enumerate(zip(words, widths)):
-            m = text_mask(text, MARCELLUS, size, W, H, x, baseline)
-            lit = (i == 0 and active == 0) or (i == 2 and active == 1)
-            e = dilate(m, 4)
-            over(img, rgb("#000000"), (0.5 if lit else 0.3) * blur(shift(e, 4, 5), 4))
-            over(img, rgb("#120c08"), e * (1.0 if lit else 0.6))
-            over(img, rgb("#f6e7c1" if lit else "#8d867a"), m)
-            x += tw + gap
+        px = 10 * SS
+        ic = np.frombuffer(bytes(buttons.icon_for(button, 10, 10, SS)), np.uint8).reshape(px, px, 4).astype(np.float32) / 255.0
+        y0 = (H - px) // 2
+        over(img[y0:y0 + px, 0:px], ic[..., :3], ic[..., 3])
         return img
     return draw
 
@@ -356,7 +373,7 @@ def art_off(w, h):
 
 
 IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
-          ("version_original", 104, 12, version(0)), ("version_patch", 104, 12, version(1)),
+          ("ver_original", 50, 12, version_label("Original")), ("ver_patch", 50, 12, version_label("Aidyn Patch")),
           ("fast_forward", 20, 12, fast_forward), ("ctl_panel", 4, 4, panel),
           ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")),
           ("art_off", 64, 8, art_off)]
@@ -370,6 +387,9 @@ IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPAD", True)),
 IMAGES += [("turn_round", 20, 7, turn_label("Round", 44))]
 IMAGES += [(f"turn_d{d}", 12, 12, turn_label(str(d), 100)) for d in range(10)]
 IMAGES += [("turn_plus", 10, 12, turn_label("+", 100))]
+# The title screen's version list (bottom left): Aidyn Plus's name, "not found", the running one's marker, X and Y.
+IMAGES += [("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34, 12, version_label("not found", 52)),
+           ("ver_mark", 10, 12, version_mark), ("ver_x", 10, 12, version_button("CD")), ("ver_y", 10, 12, version_button("CU"))]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
 

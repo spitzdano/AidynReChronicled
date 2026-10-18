@@ -441,7 +441,7 @@ void normalize_big_draw(uint8_t* rdram, recomp_context* ctx) {
     big_draw = d;
 }
 
-gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy);  // below, "Title screen"
+gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba);  // "Title screen"
 
 extern "C" void aidyn_image_draw_done(uint8_t* rdram, recomp_context* ctx) {
     if (!big_draw.active) {
@@ -483,7 +483,10 @@ extern "C" void aidyn_image_draw_done(uint8_t* rdram, recomp_context* ctx) {
         g += 16;
     }
     if (d.title_card) {
-        ctx->r2 = draw_title_branding(rdram, ctx->r2, d.ox, d.oy, d.sx, d.sy);
+        // The card's colour and fade: N64BorgImageDraw's r, g, b, a (stack words at +0x28..+0x34).
+        const uint32_t rgba = (uint32_t)MEM_BU(0x2B, d.sp) << 24 | (uint32_t)MEM_BU(0x2F, d.sp) << 16 |
+                              (uint32_t)MEM_BU(0x33, d.sp) << 8 | MEM_BU(0x37, d.sp);
+        ctx->r2 = draw_title_branding(rdram, ctx->r2, d.ox, d.oy, d.sx, d.sy, rgba);
     }
 }
 
@@ -1539,27 +1542,106 @@ namespace {
     }
 }
 
-// The version switch: the running version is aidyn::settings::game().rom_patch; View (N64 C-left) on the title screen
-// restarts into the other one (src/main/main.cpp aidyn::switch_version), if its ROM is stored.
+// The version list, bottom left of the title screen: Original, Aidyn Patch and Aidyn Plus, one a line. The running one
+// (aidyn::settings::game().rom_patch) has a copper marker and full brightness. Of the other two the upper one gets X
+// (N64 C-down; keyboard K) and the lower one Y (C-up; keyboard I): pressing it restarts into that version
+// (src/main/main.cpp aidyn::switch_version). One whose ROM isn't stored (each is the player's own, checked by its
+// hash) is grey with "not found" and no button. The pictures are make_branding.py's ver_*, tinted with the
+// primitive colour and faded with the card.
 #include "version.h"
 
 namespace {
+    uint32_t ink_width(int index);  // "Button prompts", below
+
+    using aidyn::settings::RomPatch;
+    constexpr RomPatch kVersions[3] = { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus };
+    constexpr const char* kVersionImages[3] = { "ver_original", "ver_patch", "ver_plus" };
+
+    int title_image(const char* name) {
+        for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
+            if (std::strcmp(aidyn::branding::kImages[i].name, name) == 0) {
+                return (int)i;
+            }
+        }
+        return -1;
+    }
+
+    // Stored ROMs don't change while the game runs: looked up once.
+    bool version_here(int i) {
+        static const std::array<bool, 3> here = { aidyn::version_available(kVersions[0]),
+                                                  aidyn::version_available(kVersions[1]),
+                                                  aidyn::version_available(kVersions[2]) };
+        return here[i];
+    }
+
+    // The two versions not running, top to bottom (X, Y), as indices into kVersions.
+    std::array<int, 2> other_versions() {
+        std::array<int, 2> o{};
+        int n = 0;
+        for (int i = 0; i < 3; i++) {
+            if (kVersions[i] != aidyn::settings::game().rom_patch) {
+                o[n++] = i;
+            }
+        }
+        return o;
+    }
+
     void title_version_switch() {
-        const bool patch = aidyn::settings::game().rom_patch == aidyn::settings::RomPatch::AidynPatch;
-        static bool first = true, was_held = false;
-        const bool held = aidyn::input::c_left_held();
+        static bool first = true, x_was = false, y_was = false;
+        const bool x = aidyn::input::c_down_held(), y = aidyn::input::c_up_held();
         if (first) {
-            first = false;
-            was_held = held;  // still held from the press that switched: wait for the next one
+            first = false;  // still held from the press that switched: wait for the next one
+            x_was = x;
+            y_was = y;
         }
-        if (held && !was_held && aidyn::version_available(!patch)) {
-            aidyn::switch_version(!patch);
+        const std::array<int, 2> o = other_versions();
+        if (x && !x_was && version_here(o[0])) {
+            aidyn::switch_version(kVersions[o[0]]);
         }
-        was_held = held;
+        if (y && !y_was && version_here(o[1])) {
+            aidyn::switch_version(kVersions[o[1]]);
+        }
+        x_was = x;
+        y_was = y;
+    }
+
+    // The three lines from (10, 194), 12 texels apart; hs, vs pixels a texel; card_rgba the card's colour (its alpha
+    // fades them in with it).
+    gpr version_list(uint8_t* rdram, gpr g, float hs, float vs, uint32_t card_rgba) {
+        const float fade = (card_rgba & 0xFF) / 255.0f;
+        auto tint = [&](uint32_t rgb, float alpha) {
+            put(rdram, g, 0xFA000000, rgb << 8 | (uint32_t)std::lround(255.0f * alpha * fade));  // gDPSetPrimColor
+        };
+        const std::array<int, 2> o = other_versions();
+        const int note = title_image("ver_missing");
+        for (int i = 0; i < 3; i++) {
+            const float y = 194.0f + 12.0f * i;
+            const bool running = kVersions[i] == aidyn::settings::game().rom_patch, here = version_here(i);
+            const int label = title_image(kVersionImages[i]);
+            const int icon = running ? title_image("ver_mark") : here ? title_image(i == o[0] ? "ver_x" : "ver_y") : -1;
+            if (running) {
+                tint(0xFFFFFF, 1.0f);
+            } else if (here) {
+                tint(0xD2CDC3, 0.95f);
+            } else {
+                tint(0x7D7870, 0.8f);
+            }
+            if (icon >= 0) {
+                g = draw_rgba16(rdram, g, icon, 10.0f * hs, y * vs, hs, vs);
+            }
+            if (label >= 0) {
+                g = draw_rgba16(rdram, g, label, 22.0f * hs, y * vs, hs, vs);
+                if (!here && note >= 0) {
+                    g = draw_rgba16(rdram, g, note, (22.0f + ink_width(label) + 4.0f) * hs, y * vs, hs, vs);
+                }
+            }
+        }
+        put(rdram, g, 0xFA000000, card_rgba);  // the card's own again
+        return g;
     }
 }
 
-gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy) {
+gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba) {
     copy_branding(rdram);
     title_version_switch();
     // "Rechronicled": centred under THE FIRST MAGE (card texels 26..172, rows 120..138) on the card's lower parchment.
@@ -1571,11 +1653,7 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     // The game's scissor ends at the 4:3 edge, so it is widened to the whole window meanwhile (as for the clouds).
     if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Original) {
         g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
-        if (aidyn::version_available(aidyn::settings::game().rom_patch != aidyn::settings::RomPatch::AidynPatch)) {
-            g = draw_rgba16(rdram, g, aidyn::settings::game().rom_patch == aidyn::settings::RomPatch::AidynPatch ? 3 : 2,
-                            10 * hs, (230 - 12) * vs, hs, vs);
-        }
-        return g;
+        return version_list(rdram, g, hs, vs, rgba);
     }
     GfxCommand c[5];  // gEXEnable: 1 command; gEXSetScissor, gEXSetRectAlign: 2 each
     gEXEnable(&c[0]);
@@ -1583,14 +1661,10 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     gEXSetRectAlign(&c[3], G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT, -320 * 4, 0, -320 * 4, 0);
     g = put_cmds(rdram, g, c, 5);
     g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
-    // "[View] Original · Aidyn Patch", the running one bright: bottom left, from the left edge of the whole picture.
-    const bool patch = aidyn::settings::game().rom_patch == aidyn::settings::RomPatch::AidynPatch;
-    const bool both = aidyn::version_available(!patch);
-    if (both) {
-        gEXSetRectAlign(&c[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, 0, 0, 0, 0);
-        g = put_cmds(rdram, g, c, 2);
-        g = draw_rgba16(rdram, g, patch ? 3 : 2, 10 * hs, (230 - 12) * vs, hs, vs);
-    }
+    // The version list: bottom left, from the left edge of the whole picture.
+    gEXSetRectAlign(&c[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, 0, 0, 0, 0);
+    g = put_cmds(rdram, g, c, 2);
+    g = version_list(rdram, g, hs, vs, rgba);
     const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager), v = MEM_HU(kVres1, (gpr)gGfxManager);
     gEXSetRectAlign(&c[0], G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, 0, 0, 0);
     c[2].values.word0 = 0xED000000;                                   // gDPSetScissor(G_SC_NON_INTERLACE, 0, 0, h, v)
