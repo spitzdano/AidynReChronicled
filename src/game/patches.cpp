@@ -863,6 +863,37 @@ extern "C" void aidyn_far_cells_free_all(uint8_t* rdram, recomp_context* ctx) {
     far_radius_now = 1;
 }
 
+#define F3DEX_GBI_2
+#include "rt64_extended_gbi.h"
+
+// Crossing a map cell. The field's coordinates are relative to the centre cell, so when the party walks into the next
+// cell the game moves everything (camera, cells, characters) by 100 units in one frame. RT64 blends each transform
+// between game frames to show 100 Hz from the game's 60, and blending across that jump draws one in-between frame
+// slightly out of place: a one-frame flicker each time a boundary is crossed (Dan). So on the frame the centre cell
+// changes, the display list tells RT64 not to interpolate into it (gEXSkipInterpolation, tools/patches/
+// rt64-save-pictures.patch): that frame is shown as it is. AIDYN_RECENTRE_LOG=1 prints each one.
+namespace {
+    gpr put_cmds(uint8_t* rdram, gpr g, const GfxCommand* cmds, int n);  // "Widescreen clouds", below
+
+    gpr skip_interpolation_on_recentre(uint8_t* rdram, gpr g, int sx, int sy) {
+        static int last_x = INT32_MIN, last_y = INT32_MIN;
+        const bool moved = (last_x != INT32_MIN) && (sx != last_x || sy != last_y);
+        last_x = sx;
+        last_y = sy;
+        if (!moved) {
+            return g;
+        }
+        static const bool log = std::getenv("AIDYN_RECENTRE_LOG") != nullptr;
+        if (log) {
+            fprintf(stderr, "recentre: cell %d,%d, no interpolation into this frame\n", sx, sy);
+        }
+        GfxCommand c[2];
+        gEXEnable(&c[0]);
+        gEXSkipInterpolation(&c[1]);
+        return put_cmds(rdram, g, c, 2);
+    }
+}
+
 extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
     const int radius = outdoors(rdram) ? wanted_radius() : 1;
     const int sx = MEM_H(0, (gpr)(int32_t)0x800D83FA), sy = MEM_H(0, (gpr)(int32_t)0x800D83FC);  // mapShort1/2
@@ -949,6 +980,7 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
     // Draw the ones in view, after the game's own cells (display list pointer at sp+0x64 in RenderZones).
     const gpr sp = ctx->r29;
     uint32_t g = (uint32_t)MEM_W(0x64, sp);
+    g = (uint32_t)skip_interpolation_on_recentre(rdram, (gpr)(int32_t)g, sx, sy);
     for (int k = 0; k < kSide * kSide; k++) {
         if (!far_cells[k].used || MEM_W(0, far_slot(k)) == 0) {
             continue;
@@ -970,9 +1002,7 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
 // commands into the display list (scissor to the full window; every rectangle moved left by kCloudShift);
 // before each cloud's Borg8_DrawSimple, aidyn_cloud_x moves the cloud right by kCloudShift (so its left edge is never
 // below 0 and nothing gets clamped); on exit, aidyn_clouds_end restores the scissor and the rectangle offset.
-#define F3DEX_GBI_2
-#include "rt64_extended_gbi.h"
-
+// (F3DEX_GBI_2 and rt64_extended_gbi.h are included above, at "Crossing a map cell".)
 namespace {
     // Texels. At 21:9 a cloud (up to 173 wide) can start ~293 left of the 4:3 edge; rectangle x stays under 1024 (12-bit
     // 10.2 coordinates), which leaves room up to 639 on the right (4:3 ends at 320).

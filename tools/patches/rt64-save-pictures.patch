@@ -4,7 +4,8 @@ at run time for one texture hash, winning over the packs'), State::dynamicReplac
 texture hash with the hash and the RDRAM address its data came from) and SharedQueueResources::framebufferCaptures
 (part of a framebuffer's high resolution picture copied before the next workload draws); and a gap filler
 (shaders/GapFillCS.hlsl, RenderTarget::fillGaps, run after each framebuffer pass that wrote depth) for the hairline cracks
-between separately drawn meshes.
+between separately drawn meshes; and gEXSkipInterpolation (G_EX_SKIPINTERPOLATION_V1): no frames interpolated into the
+frame whose display list holds it.
 
 diff --git i/CMakeLists.txt w/CMakeLists.txt
 index 79dfc38..41c11ee 100644
@@ -19,6 +20,56 @@ index 79dfc38..41c11ee 100644
  build_compute_shader(rt64 "src/shaders/BicubicScalingCS.hlsl")
  build_compute_shader(rt64 "src/shaders/HistogramAverageCS.hlsl")
  build_compute_shader(rt64 "src/shaders/HistogramClearCS.hlsl")
+diff --git i/include/rt64_extended_gbi.h w/include/rt64_extended_gbi.h
+index d387090..d535b96 100644
+--- i/include/rt64_extended_gbi.h
++++ w/include/rt64_extended_gbi.h
+@@ -80,7 +80,8 @@
+ #define G_EX_SETVERTEXSEGMENT_V1        0x000031
+ #define G_EX_SETTEXCOORDWRAPPOINT_V1    0x000032
+ #define G_EX_SETRECTASPECT_V1           0x000033
+-#define G_EX_MAX                        0x000034
++#define G_EX_SKIPINTERPOLATION_V1       0x000034 // Aidyn ReChronicled (tools/patches/rt64-save-pictures.patch)
++#define G_EX_MAX                        0x000035
+ 
+ #define G_EX_ORIGIN_NONE            0x800
+ #define G_EX_ORIGIN_LEFT            0x0
+@@ -579,4 +580,12 @@ typedef union {
+         PARAM(aspect, 2, 0) \
+     )
+ 
++// Aidyn ReChronicled: no frames interpolated between the previous game frame and this one (the game re-based its
++// world coordinates, so blending its transforms would draw an in-between frame out of place).
++#define gEXSkipInterpolation(cmd) \
++    G_EX_COMMAND1(cmd, \
++        PARAM(RT64_EXTENDED_OPCODE, 8, 24) | PARAM(G_EX_SKIPINTERPOLATION_V1, 24, 0), \
++        0 \
++    )
++
+ #endif // RT64_EXTENDED_GBI
+diff --git i/src/gbi/rt64_gbi_extended.cpp w/src/gbi/rt64_gbi_extended.cpp
+index 20c0d4d..4ca7879 100644
+--- i/src/gbi/rt64_gbi_extended.cpp
++++ w/src/gbi/rt64_gbi_extended.cpp
+@@ -331,6 +331,10 @@ namespace RT64 {
+             state->rdp->setRectAspect(aspect);
+         }
+ 
++        void skipInterpolationV1(State *state, DisplayList **dl) {
++            state->extended.skipInterpolation = true;
++        }
++
+         void noOpHook(State *state, DisplayList **dl) {
+             uint32_t magicNumber = (*dl)->p0(0, 24);
+             if (magicNumber == RT64_HOOK_MAGIC_NUMBER) {
+@@ -439,6 +443,7 @@ namespace RT64 {
+             Map[G_EX_SETVERTEXSEGMENT_V1] = &setVertexSegmentV1;
+             Map[G_EX_SETTEXCOORDWRAPPOINT_V1] = &setTexcoordWrapPointV1;
+             Map[G_EX_SETRECTASPECT_V1] = &setRectAspectV1;
++            Map[G_EX_SKIPINTERPOLATION_V1] = &skipInterpolationV1;
+             MapInitialized = true;
+         }
+     }
 diff --git i/src/hle/rt64_rdp_tmem.cpp w/src/hle/rt64_rdp_tmem.cpp
 index 6051f4e..8f0a7c0 100644
 --- i/src/hle/rt64_rdp_tmem.cpp
@@ -101,8 +152,21 @@ index 8858dac..691daff 100644
          void setSwapChainSize(uint32_t width, uint32_t height) {
              std::scoped_lock<std::mutex> configurationLock(configurationMutex);
              if ((swapChainWidth != width) || (swapChainHeight != height)) {
+diff --git i/src/hle/rt64_state.cpp w/src/hle/rt64_state.cpp
+index 2970e71..46168bc 100644
+--- i/src/hle/rt64_state.cpp
++++ w/src/hle/rt64_state.cpp
+@@ -2660,6 +2660,8 @@ namespace RT64 {
+         workload.debuggerCamera = debuggerInspector.camera;
+         workload.debuggerRenderer = debuggerInspector.renderer;
+         workload.paused = paused;
++        workload.skipInterpolation = extended.skipInterpolation;
++        extended.skipInterpolation = false;
+     }
+ 
+     void State::advancePresent(Present &present, bool paused) {
 diff --git i/src/hle/rt64_state.h w/src/hle/rt64_state.h
-index 7a8c13b..9a7bdf3 100644
+index 7a8c13b..08d6532 100644
 --- i/src/hle/rt64_state.h
 +++ w/src/hle/rt64_state.h
 @@ -4,6 +4,8 @@
@@ -127,8 +191,28 @@ index 7a8c13b..9a7bdf3 100644
          bool configurationSaveQueued = false;
          uint64_t workloadId = 0;
          uint64_t presentId = 0;
+@@ -129,6 +137,7 @@ namespace RT64 {
+             bool vertexTestZActive = false;
+             float ditherNoiseStrength = 1.0f;
+             bool extendRDRAM = false;
++            bool skipInterpolation = false;  // Aidyn ReChronicled: gEXSkipInterpolation
+         };
+ 
+         Extended extended;
+diff --git i/src/hle/rt64_workload.h w/src/hle/rt64_workload.h
+index 8ea27d5..613cf53 100644
+--- i/src/hle/rt64_workload.h
++++ w/src/hle/rt64_workload.h
+@@ -234,6 +234,7 @@ namespace RT64 {
+         uint64_t workloadId = 0;
+         uint64_t presentId = 0;
+         bool paused = false;
++        bool skipInterpolation = false;  // Aidyn ReChronicled: gEXSkipInterpolation in this frame's display list
+ 
+         struct {
+             uint32_t testZIndexCount = 0;
 diff --git i/src/hle/rt64_workload_queue.cpp w/src/hle/rt64_workload_queue.cpp
-index 5a331aa..90cb183 100644
+index 5a331aa..9d0b47c 100644
 --- i/src/hle/rt64_workload_queue.cpp
 +++ w/src/hle/rt64_workload_queue.cpp
 @@ -4,6 +4,9 @@
@@ -285,6 +369,15 @@ index 5a331aa..90cb183 100644
  
                  // FIXME: This is a very hacky way to find out if we need to advance the frame if the workload was paused for the first time.
                  if (!workload.paused || (!gameFrames[curFrameIndex].workloads.empty() && (gameFrames[curFrameIndex].workloads[0] != (uint32_t)processCursor))) {
+@@ -986,7 +1099,7 @@ namespace RT64 {
+                     matchingProfiler.log();
+ 
+                     const bool displayRateAboveOriginal = (workload.viOriginalRate > 0) && (workloadConfig.targetRate > workload.viOriginalRate);
+-                    generateInterpolatedFrames = !workload.paused && displayRateAboveOriginal && !interpolationTargetKey.isEmpty();
++                    generateInterpolatedFrames = !workload.paused && displayRateAboveOriginal && !interpolationTargetKey.isEmpty() && !workload.skipInterpolation;
+ 
+                     const bool resetTicks = !generateInterpolatedFrames || (originalRateForTicks != workload.viOriginalRate) || (displayRateForTicks != workloadConfig.targetRate) || !displayRateAboveOriginal;
+                     if (resetTicks) {
 diff --git i/src/hle/rt64_workload_queue.h w/src/hle/rt64_workload_queue.h
 index bde2f03..0b6a269 100644
 --- i/src/hle/rt64_workload_queue.h

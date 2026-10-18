@@ -241,6 +241,13 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   degrees); it is widened for the picture's real width, so nothing is cut at the sides of a 16:9 or 21:9 picture. A
   32-entry table of fading props the game never bounds-checks is guarded. `AIDYN_FAR_LOG=1` prints the far clip, the
   loaded edge, free heap and prop counts each second.
+- **Crossing a map cell.** The field's coordinates are relative to the centre map cell, so when the party walks into
+  the next one the game moves everything (camera, cells, characters) by 100 units in one frame. Shown at a higher
+  refresh rate than the game's 60, RT64 blends each transform between game frames, and blending across that jump drew
+  one in-between frame slightly out of place: a one-frame flicker at every cell boundary (measured with a 100 fps
+  recording: one outlier frame per crossing, also in v0.3.1). On the frame the centre cell changes, the field's display
+  list now carries `gEXSkipInterpolation` (a command added by `tools/patches/rt64-save-pictures.patch`), so that frame
+  is shown as it is: a 10 ms hold instead of a wrong frame. `AIDYN_RECENTRE_LOG=1` prints each one.
 - **Seams between meshes.** Where separately drawn meshes meet (map cells, a wall and the ground), the N64 left
   sub-pixel cracks its anti-aliasing hid at 320x240; at high resolution the sky showed through as thin bright lines.
   Welding the cells' vertices doesn't help (measured: with their shared edges made identical the line still showed),
