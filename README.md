@@ -275,8 +275,12 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   row or a column within three quarters of an N64 pixel, takes the colours of the nearest fully drawn pixels there
   (replaced whole: a partly covered pixel's colour, or an edge pixel's, holds some sky and left a faint line). It runs
   after the 3D pass, after a later pass into the same picture (the HUD), and every time a multisampled picture is
-  resolved (a shown game frame is resolved again at display time, after the 3D pass), with the last 3D pass's depth. Wider background (sky, gaps between leaves) and frames that drew no 3D are untouched.
-  `AIDYN_GAP_FILL=0` turns it off.
+  resolved (a shown game frame is resolved again at display time, after the 3D pass), with the last 3D pass's depth.
+  Below the horizon (the row the game's sky ends at, handed to RT64 each frame; 3 rows of margin) the ground is
+  everywhere, so any background there is a hole: gaps up to four N64 pixels are filled, their width counted over the
+  background only (a crack's anti-aliased edges no longer push it over the limit), which also covers holes in the level
+  such as a wall not reaching the ground. Wider background (sky, gaps between leaves above the horizon), indoors (no
+  sky: three quarters of a pixel everywhere) and frames that drew no 3D are as before. `AIDYN_GAP_FILL=0` turns it off.
 - **Below the horizon.** Outdoors the game paints the sky as a gradient down to the horizon and fills everything below
   it with the horizon's colour, meant to meet the fogged distant ground. Where pieces of ground, or a cliff and the
   ground, don't quite meet, that fill shows through: hairline gaps the N64's own anti-aliasing blended away at 320x240

@@ -48,6 +48,10 @@ namespace aidyn {
     // ... and asks, for each new texture, whether a save picture replaces it (defined in save_pictures.cpp).
     bool save_picture_for_texture(uint32_t address, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
                                   std::vector<uint8_t>& rgba, uint32_t& out_width, uint32_t& out_height);
+    // The gap filler's horizon (src/game/patches.cpp "Below the horizon"): the row of the 240-line picture where
+    // this frame's sky meets the ground, or -1 (no sky: indoors). Below it the ground is everywhere, so any background
+    // there is a hole, and wider ones are filled.
+    void set_gap_fill_horizon(int row);
     // ... or a strip of a page whose painted words are redrawn (defined in page_words.cpp).
     bool page_words_for_texture(uint64_t hash, uint32_t address, uint16_t width, uint16_t height, uint8_t fmt, uint8_t siz,
                                 std::vector<uint8_t>& rgba, uint32_t& out_width, uint32_t& out_height);

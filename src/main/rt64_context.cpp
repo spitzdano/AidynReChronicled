@@ -404,7 +404,8 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
     capture_app = app.get();
 
     // Hairline gaps between separately drawn geometry (map cells meeting, a wall and the ground) filled by RT64 after
-    // each 3D pass (tools/patches/rt64-save-pictures.patch, RenderTarget::fillGaps). AIDYN_GAP_FILL=0 turns it off.
+    // each 3D pass (tools/patches/rt64-save-pictures.patch, RenderTarget::fillGaps); wider ones below the horizon
+    // (aidyn::set_gap_fill_horizon, from each frame's sky). AIDYN_GAP_FILL=0 turns it off.
     if (const char* v = std::getenv("AIDYN_GAP_FILL"); v != nullptr && std::strcmp(v, "0") == 0) {
         app->sharedQueueResources->gapFill = false;
     }
@@ -516,7 +517,14 @@ static void log_framebuffers(RT64::State* state) {
     }
 }
 
+static std::atomic_int gap_fill_horizon{ -1 };
+
+void aidyn::set_gap_fill_horizon(int row) {
+    gap_fill_horizon.store(row, std::memory_order_relaxed);
+}
+
 void aidyn::RT64Context::send_dl(const OSTask* task) {
+    app->sharedQueueResources->gapFillHorizon = gap_fill_horizon.load(std::memory_order_relaxed);
     if (redrawn_art_reload.exchange(false)) {  // F2: the packs again, with or without the redrawn art
         app->textureCache->loadReplacementDirectories(texture_packs(redrawn_art_on, false));
         fprintf(stdout, "Redrawn art: %s\n", redrawn_art_on ? "on" : "off");

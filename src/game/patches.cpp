@@ -32,7 +32,14 @@ namespace {
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 
+namespace aidyn {
+    void set_gap_fill_horizon(int row);  // src/main/rt64_context.cpp
+}
+extern int aidyn_sky_horizon;  // "Below the horizon", below: this frame's horizon row, or -1
+
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
+    aidyn::set_gap_fill_horizon(aidyn_sky_horizon);
+    aidyn_sky_horizon = -1;
     gpr g = ctx->r4;
     g = aidyn_ff_marker(rdram, g);
     g = aidyn_prompts(rdram, g);
@@ -1954,10 +1961,14 @@ bool sfx_log() {
 // gaps the N64's own anti-aliasing blended away at 320x240 show as light blue lines at high resolution, and a hole
 // near the camera as a blue triangle. So the fill keeps the horizon colour only in a band just below the horizon
 // (where the distant ground meets it) and fades over 12 rows to a quarter of it: gaps nearer the camera read as dark
-// creases. AIDYN_SKY_FILL=rrggbb (testing) fills it all with one colour instead (magenta shows every gap), =off
-// keeps the game's own;
+// creases. The horizon row also goes to RT64's gap filler (Graphics__EndList, aidyn::set_gap_fill_horizon): below it
+// any background showing is a hole, so wider ones are filled there (tools/patches/rt64-save-pictures.patch,
+// GapFillCS.hlsl). AIDYN_SKY_FILL=rrggbb (testing) fills it all with one colour instead (magenta shows every gap),
+// =off keeps the game's own;
 // AIDYN_SKY_LOG=1 prints the horizon row and colour.
 extern "C" void DrawRectangle(uint8_t* rdram, recomp_context* ctx);
+
+int aidyn_sky_horizon = -1;
 
 extern "C" void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx) {
     static const char* fill = std::getenv("AIDYN_SKY_FILL");
@@ -1969,6 +1980,7 @@ extern "C" void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx) {
         return;  // the black full-screen fill (indoors, or no sky), not the horizon's (which starts at row 0 too when
                  // the camera looks down past it)
     }
+    aidyn_sky_horizon = (int)ctx->r6;  // for the gap filler (Graphics__EndList hands it to RT64)
     if (log) {
         static int frames = 0;
         if (++frames % 60 == 0) {
