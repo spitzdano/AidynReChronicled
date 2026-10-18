@@ -185,16 +185,16 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "msaa": 4,
         "supersampling": 2,
         "fps_limit": 120,
-        "draw_distance": 2.0,
+        "draw_distance": 3.0,
         "fullscreen": false,
         "menus_4_3": true,
         "right_stick_camera": true,
         "camera_invert_x": false,
-        "camera_invert_y": false,
+        "camera_invert_y": true,
         "overscan_borders": false,
         "smooth_animation_loops": true,
         "textures": true,
-        "vsync": true,
+        "vsync": false,
         "texture_packs": ["hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled"]
     }
 }
@@ -222,7 +222,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
 | `textures` | `false`: every custom texture off, as the N64 drew it: the texture packs (HD menus, letters, buttons, portraits, world, title art), the HD save pictures and the redrawn page words; the letters go back to the game's own widths. The packs stay listed in `texture_packs` |
-| `vsync` | `true`: each frame waits for the display's refresh (no tearing); `false`: shown as soon as it's drawn (tearing possible, a little less lag) |
+| `vsync` | `false`: each frame is shown as soon as it's drawn, for a G-Sync or FreeSync display (on a fixed-rate one it can tear); `true`: each frame waits for the display's refresh (no tearing, a little more lag) |
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
 

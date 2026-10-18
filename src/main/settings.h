@@ -32,21 +32,21 @@ namespace aidyn::settings {
         std::string aspect_text = "16:9"; // as written in settings.json
         double aspect_ratio = 16.0 / 9.0; // width / height, for Aspect::Ratio
         int msaa = 4;                // 0, 2, 4 or 8 (capped to what the GPU supports)
-        float draw_distance = 2.0f; // field view: multiplies the far clip (and the fog with it); 1 = original, up to 3
+        float draw_distance = 3.0f; // field view: multiplies the far clip (and the fog with it); 1 = original, up to 3
         int supersampling = 2;       // 1 (off), 2, 3 or 4: render that many times render_height and scale down (smoother edges)
         int fps_limit = 120;         // frames shown a second (RT64 interpolates between the game's 60); 0 = the display's rate
         bool fullscreen = false;
         bool menus_4_3 = true;       // with 16:9/window: show the pause menu, inventory and shops in 4:3 (their layouts break widened)
         bool right_stick_camera = true; // walking: right stick turns the camera (x) and raises/lowers it (y)
         bool camera_invert_x = false; // right stick left/right turns the camera the other way
-        bool camera_invert_y = false; // right stick up/down tilts the camera the other way (up: look down)
+        bool camera_invert_y = true;  // right stick up/down tilts the camera the other way (up: look down)
         bool overscan_borders = false; // the black frame the game draws for CRT overscan (Graphics::EndList)
         bool hud_at_edges = true;    // widescreen: the time-of-day dial at the left edge, the compass at the right (portraits stay centred)
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops
         bool controls_card = true;   // the card of button prompts in the field and in combat (View shows / hides it)
         bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's
         bool textures = true;        // every custom texture: the packs below, HD save pictures, redrawn page words, the HD letters' spacing (false: as the N64)
-        bool vsync = true;           // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn
+        bool vsync = false;          // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn (G-Sync / FreeSync)
         std::vector<std::string> texture_packs{ "hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled" }; // RT64 packs in <data>/texture-packs (folders or .rtz), later ones win
     };
 
