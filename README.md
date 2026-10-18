@@ -306,9 +306,14 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   `texture_packs`) says they were drawn for them (`aidyn-text-widths.txt`); otherwise the game keeps its own.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
-  neighbours, and drawn after its cells (ground only: no props, people or collision), at most two loads a frame and
-  only while the heap's largest free block is over 512 KB. A ring cell behind a neighbour the game leaves out (the
-  centre cell's map hides some on purpose) is skipped. To make room the game is told it has 15 MB of RAM instead of
+  neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while
+  more than 12 are missing, as an area loads) and only while the heap's largest free block is over 512 KB. The 3x3's
+  own neighbours get a copy too, drawn whenever the game has none there: the centre cell's map hides some neighbours on
+  purpose (a cheap cut for the N64's short view) and the game loads a new one over a few frames, so before, a cell
+  vanished as the centre moved (the castle across the bay in the title flyover) and nothing past a hidden neighbour
+  showed. Hidden neighbours still have no props (trees can pop in when the centre moves next to them). A cell is in
+  view when part of it is within the picture's angle (widened for a tilted camera, whose corners reach wider) and the
+  far clip. To make room the game is told it has 15 MB of RAM instead of
   8 (`MemoryCheck`): its heap grows from 6.2 to 13 MB and its framebuffers move up; nothing in the game assumes 8 MB.
   Leaving the field frees the rings through the game's free queue.
 - **Field HUD.** With `hud_at_edges` the dial is drawn aligned to the picture's left edge and the compass to its right

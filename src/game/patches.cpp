@@ -724,13 +724,19 @@ extern "C" int aidyn_prop_table_full(uint8_t* rdram) {
 // (their ground only: no props, people or collision), out to radius R (5x5 at R = 2 ... 9x9 at R = 4, so the far
 // clip, which follows the loaded edge, can reach 180 x draw_distance):
 // - Each frame (aidyn.us.toml hook in RenderZones after the game's own cells, display list at sp+0x64): cells that left
-//   the rings or became part of the 3x3 are freed through the game's free queue; missing ring cells are loaded, two a
-//   frame, nearest first, with the game's BorgAnimLoadScene, while its heap's largest free block stays over 512 KB;
+//   the radius are freed through the game's free queue; missing cells are loaded, nearest first (two a frame, six
+//   while more than 12 are missing: an area just loaded), with the game's BorgAnimLoadScene, while its heap's largest
+//   free block stays over 512 KB;
 //   each is placed as the game places its neighbours (ZoneMoveSceneDat: flags 0x10, fog, 0x8, 0x4, identity matrices,
 //   matrixA at (dx, 0, dz) cells from the centre cell's origin) and drawn, when in view, with SetSceneColors +
 //   BorgAnimDrawScene, as the game draws a cell.
-// - A ring cell is skipped when the 3x3 neighbour between it and the player isn't loaded: the game leaves some
-//   neighbours out on purpose (the centre cell's map hides them), and what lies past them wasn't meant to be seen.
+// - The 3x3's own neighbours get a copy too, drawn whenever the game has none there. The centre cell's map hides some
+//   neighbours on purpose (its Borg9 byte 0x1a, a bit each, cleared by loadGameBorgScenes: the N64's short view mostly
+//   couldn't see them), and the game loads a new neighbour over a few frames. Without the copies a cell vanished when
+//   the centre moved (the castle across the bay in the title flyover) and nothing past a hidden neighbour showed.
+//   Hidden neighbours still have no props or people (the game doesn't load their map).
+// - In view (far_cell_visible): a corner or edge midpoint within the picture's half-angle plus 15 degrees, widened for
+//   a tilted camera, whose corners reach wider (the flyover's cliffs popped in at the picture's edge), and the far clip.
 // - The game is told it has 15 MB of RAM, not 8 (aidyn.us.toml hook in MemoryCheck): its heap grows from 6.2 to 13 MB
 //   and its framebuffers move up to just under 15 MB. Nothing in the game assumes 8 MB; RT64 sees 16 MB of addresses.
 // - FreeZoneEngine and FreeZoneEngineMemory (leaving the field) free every ring cell.
@@ -834,7 +840,17 @@ namespace {
         fx /= len;
         fz /= len;
         const float cx = read_f32(rdram, (gpr)(int32_t)0x800D8404), cz = read_f32(rdram, (gpr)(int32_t)0x800D8408);
-        const float cosv = std::cos((half_view_degrees() + 15.0f) * kPi / 180.0f);
+        // The picture's corners reach wider than its horizontal half-angle when the camera is tilted (up or down): a
+        // corner ray (tan h, tan v, 1) pitched by p has horizontal angle atan(tan h / (cos p - sin |p| tan v)); past
+        // straight down (the denominator 0) it covers every direction. The field's vertical half-angle is 22.5.
+        const float dy = read_f32(rdram, g + 0x224) - read_f32(rdram, g + 0x218);
+        const float pitch = std::atan2(std::fabs(dy), len);
+        const float denom = std::cos(pitch) - std::sin(pitch) * std::tan(22.5f * kPi / 180.0f);
+        if (denom <= 0.05f) {
+            return true;
+        }
+        const float half = std::atan2(std::tan(half_view_degrees() * kPi / 180.0f), denom);
+        const float cosv = std::cos(std::min(half + 15.0f * kPi / 180.0f, kPi));
         for (int i = 0; i <= 2; i++) {
             for (int j = 0; j <= 2; j++) {  // corners and edge midpoints
                 const float x = (dx + i * 0.5f) * cx - px, z = (dz + j * 0.5f) * cz - pz;
@@ -904,13 +920,13 @@ namespace {
 extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
     const int radius = outdoors(rdram) ? wanted_radius() : 1;
     const int sx = MEM_H(0, (gpr)(int32_t)0x800D83FA), sy = MEM_H(0, (gpr)(int32_t)0x800D83FC);  // mapShort1/2
-    // Free cells no longer in the rings (or now in the game's 3x3).
+    // Free cells no longer within the radius (and the centre cell: the game always has its own).
     for (int k = 0; k < kSide * kSide; k++) {
         if (!far_cells[k].used) {
             continue;
         }
         const int dx = far_cells[k].gx - sx, dz = far_cells[k].gy - sy;
-        if (std::abs(dx) > radius || std::abs(dz) > radius || (std::abs(dx) <= 1 && std::abs(dz) <= 1)) {
+        if (std::abs(dx) > radius || std::abs(dz) > radius || (dx == 0 && dz == 0) || radius <= 1) {
             free_far_cell(rdram, ctx, k);
         }
     }
@@ -928,17 +944,12 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
     bool complete = true;
     for (int dz = -radius; dz <= radius; dz++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            if (std::abs(dx) <= 1 && std::abs(dz) <= 1) {
+            if (dx == 0 && dz == 0) {
                 continue;
             }
             const int gx = sx + dx, gy = sy + dz;
             const uint16_t borg5 = map_index(rdram, gx, gy, 0);
             if (borg5 == 0) {
-                continue;
-            }
-            // The 3x3 neighbour toward it must be loaded (the game hides some on purpose).
-            const int ni = std::clamp(dx, -1, 1) + 1, nj = std::clamp(dz, -1, 1) + 1;
-            if (MEM_W(4, (gpr)(kZoneDatMtx + ni * 0x60 + nj * 0x20)) == 0) {
                 continue;
             }
             int found = -1;
@@ -963,7 +974,9 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
         return std::max(std::abs(a.dx), std::abs(a.dz)) * 100 + std::abs(a.dx) + std::abs(a.dz) <
                std::max(std::abs(b.dx), std::abs(b.dz)) * 100 + std::abs(b.dx) + std::abs(b.dz);
     });
-    for (int i = 0, loads = 0; i < n_missing && loads < 2; i++) {
+    // Two a frame; more when many are missing (an area just loaded, its first frames fading in).
+    const int max_loads = n_missing > 12 ? 6 : 2;
+    for (int i = 0, loads = 0; i < n_missing && loads < max_loads; i++) {
         if (call_game(rdram, ctx, get_memFree_2) < 0x80000) {
             break;  // keep room for the game's own loads
         }
@@ -993,6 +1006,9 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
             continue;
         }
         const int dx = far_cells[k].gx - sx, dz = far_cells[k].gy - sy;
+        if (std::abs(dx) <= 1 && std::abs(dz) <= 1 && MEM_W(4, (gpr)(kZoneDatMtx + (dx + 1) * 0x60 + (dz + 1) * 0x20)) != 0) {
+            continue;  // in the 3x3 and the game has it: drawn by the game
+        }
         if (!far_cell_visible(rdram, dx, dz, far_clip_now)) {
             continue;
         }
