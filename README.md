@@ -99,9 +99,11 @@ F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to com
 ROMs, texture packs) lives in `~/.local/share/AidynReChronicled`; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
-**Aidyn Patch and Aidyn Plus.** Two community rebalances can be played instead of the original: Aidyn Patch
-(u/halibabica) and the bigger Aidyn Plus (new weapon skills and items, every spell learnable, elements and resistances
-reworked; read its FAQ). Neither comes with this project: get the patch yourself and apply it to your own 1.0 ROM (for
+**Aidyn Patch and Aidyn Plus.** Two community rebalances by halibabica (u/halibabica) can be played instead of the
+original: Aidyn Patch and the bigger Aidyn Plus (2023: a massive overhaul that corrects many issues and makes the game
+more challenging; new weapon skills and items, every spell learnable, elements and resistances reworked; read its FAQ).
+Aidyn Plus first came out as a ROM download on a site that is gone; it now exists as a patch for the 1.0 ROM (SHA-1
+`47ae795a...`, CRC32 `b1f18186`). Neither comes with this project: get the patch yourself and apply it to your own 1.0 ROM (for
 Aidyn Plus, `AidynPlus.bps` with a BPS patcher such as Flips or Floating IPS), then run the game once with
 `--rom /path/to/that.z64`. Each is checked by its hash and only a match is stored, next to the original ROM:
 
@@ -418,8 +420,8 @@ start), for checking sound changes without listening.
 - **[N64Recomp](https://github.com/N64Recomp/N64Recomp)** and **[N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime)**:
   the static recompiler and the runtime the game runs on.
 - **[RT64](https://github.com/rt64/rt64)**: the renderer (with this project's changes in `tools/patches/`).
-- **Aidyn Patch** by u/halibabica and **Aidyn Plus**: the community rebalances the port can run instead of the original
-  (not included: each player applies them to their own ROM).
+- **Aidyn Patch** and **Aidyn Plus** by halibabica (u/halibabica): the community rebalances the port can run instead of
+  the original (not included: each player applies them to their own ROM).
 - **Fonts** (SIL Open Font License 1.1, licences beside them): Marcellus SC, Kanit, Uncial Antiqua, Alegreya Sans.
 - **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)**: the upscaler behind the HD texture packs (a tool, not part
   of the game).

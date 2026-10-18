@@ -15,7 +15,7 @@ namespace aidyn::settings {
     enum class RomPatch {
         None,        // "none": the NTSC-U 1.0 ROM as released
         AidynPatch,  // "aidyn-patch": the community Aidyn Patch (u/halibabica), applied to a 1.0 ROM by the player
-        AidynPlus,   // "aidyn-plus": the Aidyn Plus romhack (a bigger rebalance), applied to a 1.0 ROM by the player
+        AidynPlus,   // "aidyn-plus": Aidyn Plus (u/halibabica, a bigger rebalance), applied to a 1.0 ROM by the player
     };
 
     struct Game {

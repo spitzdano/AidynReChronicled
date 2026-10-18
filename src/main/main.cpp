@@ -185,8 +185,8 @@ static std::filesystem::path data_folder() {
 void aidyn_pak_set_path(const std::filesystem::path& path); // src/game/pak.cpp
 void aidyn_save_pictures_set_dir(const std::filesystem::path& dir); // src/game/save_pictures.cpp
 
-// The three ROMs the port runs, each the player's own: the 1.0 release, or it with the community Aidyn Patch
-// (u/halibabica) or the Aidyn Plus romhack applied by the player. Nothing of either is in this project: a ROM given with
+// The three ROMs the port runs, each the player's own: the 1.0 release, or it with halibabica's (u/halibabica) community
+// Aidyn Patch or Aidyn Plus applied by the player. Nothing of either is in this project: a ROM given with
 // --rom (or chosen at the first start) is checked by its XXH3-64 against the three below and stored. Both patches change
 // only data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell, item and chest
 // databases; measured byte by byte against the 1.0 ROM), no code, so the same recompiled code runs all three.

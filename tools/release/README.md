@@ -24,8 +24,8 @@ Vulkan graphics driver, and libdbus (every desktop has it). Everything else is i
 
 ## Aidyn Patch and Aidyn Plus
 
-Two community rebalances can be played instead of the original: Aidyn Patch (u/halibabica) and the bigger Aidyn Plus
-(read its FAQ). Neither is in this download: get the patch yourself and apply it to your own 1.0 dump (Aidyn Plus is
+Two community rebalances by halibabica (u/halibabica) can be played instead of the original: Aidyn Patch and the bigger
+Aidyn Plus (read its FAQ). Neither is in this download: get the patch yourself and apply it to your own 1.0 dump (Aidyn Plus is
 a `.bps` patch: apply it with Flips or another BPS patcher), then start "Aidyn ReChronicled (Aidyn Patch)" or "(Aidyn
 Plus)" (or `--patch` / `--plus`) and choose the patched file when asked, or start with `--rom /path/to/it.z64`. It is
 checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e`, Aidyn Plus
