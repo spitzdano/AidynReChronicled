@@ -32,8 +32,8 @@ checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e
 `d57f9459a77c66490ff09b3d9d97545c7a65fad2`) and kept. You can have none, one or both.
 
 On the title screen the bottom left lists Original, Aidyn Patch and Aidyn Plus, the one you're playing lit; X and Y
-(keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*. Each
-version keeps its own saves.
+(keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*. From the
+menu (New Game, Load Game, Options), B goes back to the title. Each version keeps its own saves.
 
 ## Controls
 

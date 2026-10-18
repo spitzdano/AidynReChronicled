@@ -1641,6 +1641,32 @@ namespace {
     }
 }
 
+// Back to the title card. The title screen's menu (New Game, Load Game, Options) had no way back: its B handler
+// (IntroMenu_BFunc, func_800440D8) only plays the back sound there, and the version list is on the card. So B in that
+// menu goes back to the card, as Start came from it: aidyn.us.toml hooks the handler after the sound (0x80044134, before
+// its switch on the menu's state: s0 the IntroMenu's substruct, s2 the IntroMenu), and in that state calls the game's
+// IntroMenu::InitTitleCard (func_800432B4; made for the first showing, it reuses the card and its Press Start). It
+// leaves the menu's dark backing panel both as the one fading out (+0x80) and as the current one (+0x84), and frees the
+// first once faded: the current one is cleared. Then the menu fades out over the card fading in (alpha1 +0x7F 255, the
+// menu's alpha 255), as the game's other menu changes do. The handler then returns as from its switch.
+extern "C" void func_800432B4(uint8_t* rdram, recomp_context* ctx);  // IntroMenu::InitTitleCard
+extern "C" void Utilities__SetAlpha(uint8_t* rdram, recomp_context* ctx);
+
+extern "C" int aidyn_title_back(uint8_t* rdram, recomp_context* ctx) {
+    const gpr sub = ctx->r16, menu = ctx->r18;
+    if (MEM_BU(0x24, sub) != 1) {  // IntroM_processIntoMenu: the New Game / Load Game / Options menu
+        return 0;
+    }
+    call_game(rdram, ctx, func_800432B4, (uint32_t)menu);
+    MEM_W(0x84, menu) = 0;
+    MEM_B(0x7F, menu) = (int8_t)0xFF;
+    const gpr leaving = MEM_W(0x20, sub);
+    if (leaving != 0) {
+        call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)leaving, 0xFF);
+    }
+    return 1;
+}
+
 gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba) {
     copy_branding(rdram);
     title_version_switch();

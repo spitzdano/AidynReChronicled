@@ -422,6 +422,13 @@ func = "func_80084BA0"
 before_vram = 0x80084BA0
 text = "extern void aidyn_ranged_dpad(uint8_t* rdram, gpr cont); aidyn_ranged_dpad(rdram, ctx->r4);"
 
+# Back to the title card (src/game/patches.cpp, "Back to the title card"): IntroMenu_BFunc (func_800440D8) after its
+# back sound, before its switch on the menu's state (s0 the substruct, s2 the IntroMenu); its exit is L_800441B0.
+[[patches.hook]]
+func = "func_800440D8"
+before_vram = 0x80044134
+text = "extern int aidyn_title_back(uint8_t* rdram, recomp_context* ctx); if (aidyn_title_back(rdram, ctx)) { ctx->r2 = ctx->r18; goto L_800441B0; }"
+
 # Turn order (src/game/patches.cpp, "Turn order"): the two calls of CombatTurn::Init (func_8006A16C), the battle's
 # first round (Combat_InitEncounter) and each next (func_8006A62C, CombatTurn::FUN_8007381c; and right after it, the
 # new round's list), and the combat HUD (func_800863E4) right after its CombatDrawHealthbar call (g in v0).

@@ -123,7 +123,8 @@ Switching versions:
 - **Title screen**: the bottom left lists *Original*, *Aidyn Patch* and *Aidyn Plus*, the running one lit with a copper
   marker. The other two show X (keyboard K) and Y (keyboard I), the upper one X: pressing it saves the choice in
   `settings.json` and restarts the program in place into that version, back at the title. A version whose ROM isn't
-  stored is grey and marked *not found*.
+  stored is grey and marked *not found*. The list is on the title card: from the menu Start opens (New Game, Load Game,
+  Options), B goes back to it (the game had no way back; `aidyn_title_back` calls its own `IntroMenu::InitTitleCard`).
 - **Launch options**: `--original`, `--patch` or `--plus` picks the version for that run (otherwise `game.rom_patch`).
 - **App launcher**: `tools/install-launchers.sh` adds "Aidyn ReChronicled" (`--original`), "Aidyn ReChronicled (Aidyn
   Patch)" (`--patch`) and "Aidyn ReChronicled (Aidyn Plus)" (`--plus`) to `~/.local/share/applications` (`--remove` takes
@@ -136,7 +137,7 @@ Switching versions:
 | (camera) | Right stick click | | camera back behind the party at its resting height (the original follow camera) |
 | (fast-forward) | Left stick click | hold Tab | fast-forward on / off: everything runs `fast_forward_speed` times faster (3); a marker shows at the top right |
 | A | A | Z | talk, open, confirm; in combat: attack, then act on the target |
-| B | B | X | back, cancel; walking: show the party's portraits |
+| B | B | X | back, cancel; walking: show the party's portraits; title menu: back to the title card |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
 | C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one); title screen: switch to the version marked Y |
 | C-left | View | J | walking and in combat: show / hide the controls card (not passed to the game there); pause menu: previous party member |
