@@ -38,6 +38,9 @@ namespace {
     std::atomic_bool ff_toggled{ false }, ff_held{ false };
     bool l3_was_down = false;
     std::atomic_bool c_down{ false }, c_up{ false };
+    std::atomic_bool capture{ false };
+    std::atomic_uint32_t captured_buttons{ 0 };
+    std::atomic<float> captured_x{ 0.0f }, captured_y{ 0.0f };
     std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
     std::atomic_bool start{ false };
     std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
@@ -220,6 +223,13 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     }
     view_was_down = view;
 
+    captured_buttons.store(b, std::memory_order_relaxed);
+    captured_x.store(sx, std::memory_order_relaxed);
+    captured_y.store(sy, std::memory_order_relaxed);
+    if (capture.load(std::memory_order_relaxed)) {
+        b = 0;
+        sx = sy = 0.0f;
+    }
     *buttons = b;
     *x = sx;
     *y = sy;
@@ -241,6 +251,21 @@ bool aidyn::input::controls_card() {
 void aidyn::input::right_stick(float* x, float* y) {
     *x = right_x.load(std::memory_order_relaxed);
     *y = right_y.load(std::memory_order_relaxed);
+}
+
+void aidyn::input::set_controls_card(bool shown) {
+    card_state.store(shown ? 1 : 0, std::memory_order_relaxed);
+    aidyn::settings::save_controls_card(shown);
+}
+
+void aidyn::input::set_capture(bool on) {
+    capture.store(on, std::memory_order_relaxed);
+}
+
+void aidyn::input::captured(uint32_t* buttons, float* x, float* y) {
+    *buttons = captured_buttons.load(std::memory_order_relaxed);
+    *x = captured_x.load(std::memory_order_relaxed);
+    *y = captured_y.load(std::memory_order_relaxed);
 }
 
 bool aidyn::input::c_down_held() {

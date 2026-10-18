@@ -362,6 +362,50 @@ def turn_label(text, size):
     return draw
 
 
+def page_word(text, size):
+    """A word for the pause menu's ReChronicled page (src/game/patches.cpp, "ReChronicled page"), written on the page's
+    parchment like the game's menu list: white letters as heavy as its HD letters (capitals 7 texels tall, as DETAILS),
+    left-aligned, tinted by the game with the list's own colours (red-brown; the highlight pulsing brown to purple)."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        baseline = int(H - 2 * SS)
+        if SS // 2 + ink_width(text, MARCELLUS, size) + 2 > W:
+            sys.exit(f"make_branding.py: the page word {text!r} is wider than {w} texels")
+        m = dilate(text_mask(text, MARCELLUS, size, W, H, SS // 2, baseline), 2)
+        over(img, rgb("#ffffff"), m)
+        return img
+    return draw
+
+
+def page_word_image(name, text, size=78, h=11):
+    """(name, w, h, draw) with w fitted to the word."""
+    return (name, int(ink_width(text, MARCELLUS, size) / SS) + 2, h, page_word(text, size))
+
+
+PAGE_TITLE = [(0.0, "#fde2ae"), (0.3, "#f3a95a"), (0.7, "#c8702e"), (1.0, "#6a3014")]
+
+
+def page_title(text, size):
+    """The ReChronicled page's title, like the pause pages' own (MENU, INVENTORY): copper letters lit from above, a dark
+    edge and a soft purple glow. Centred; drawn untinted."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        baseline = int(H - 5 * SS)
+        width = ink_width(text, MARCELLUS, size)
+        if width + 8 * SS > W:
+            sys.exit(f"make_branding.py: the page title {text!r} is wider than {w} texels")
+        m = text_mask(text, MARCELLUS, size, W, H, (W - width) // 2, baseline)
+        top, base = cap_rows(MARCELLUS, size, baseline, H)
+        over(img, rgb("#7d55e8"), 0.9 * blur(dilate(m, 9), 7))
+        over(img, rgb("#3a1a10"), dilate(m, 3))
+        f = (np.arange(H, dtype=np.float32)[:, None] - top) / max(base - top, 1)
+        over(img, gradient(PAGE_TITLE, np.broadcast_to(f, (H, W))), m)
+        return img
+    return draw
+
+
 def art_off(w, h):
     """Top right while F2 has the redrawn art pack off: what is showing, and the key."""
     img = np.zeros((h * SS, w * SS, 4), np.float32)
@@ -395,6 +439,28 @@ IMAGES += [("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34
 IMAGES += [("verno_v", 6, 9, version_label("v", 44)), ("verno_dot", 4, 9, version_label(".", 44)),
            ("verno_dev", 14, 9, version_label("dev", 44))]
 IMAGES += [(f"verno_{d}", 6, 9, version_label(str(d), 44)) for d in range(10)]
+# The pause menu's ReChronicled page: its title, each row's name and the values (tinted by the game), and the hints.
+RC_WORDS = [("rc_textures", "Textures"), ("rc_vsync", "VSync"), ("rc_turn_order", "Turn order"),
+            ("rc_controls_card", "Controls card"), ("rc_hud_edges", "HUD at the screen edges"),
+            ("rc_draw_distance", "Draw distance"), ("rc_smooth_loops", "Smooth walk cycles"),
+            ("rc_stick_camera", "Right-stick camera"), ("rc_invert_x", "Invert camera turning"),
+            ("rc_invert_y", "Invert camera tilt"),
+            ("rc_on", "On"), ("rc_off", "Off"), ("rc_dd_1", "Original"), ("rc_dd_15", "1.5x"), ("rc_dd_2", "2x"),
+            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x")]
+# The title is wider than one load of TMEM (4 KB) allows: two halves, drawn side by side.
+RC_TITLE_W = (int(ink_width("ReChronicled", MARCELLUS, 160) / SS) + 11) // 2 * 2
+
+
+def half(draw, w, h, right):
+    def part(pw, ph):
+        return draw(w, h)[:, (w // 2) * SS:] if right else draw(w, h)[:, :(w // 2) * SS]
+    return part
+
+
+IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", 160), RC_TITLE_W, 25, False)),
+           ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", 160), RC_TITLE_W, 25, True))]
+IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
+IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back", 60, 11, menu_hint("Back", "B"))]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
 
@@ -421,6 +487,8 @@ def main():
              "#pragma once", "#include <cstdint>", "", "namespace aidyn::branding {"]
     table = []
     for name, w, h, draw in IMAGES:
+        if (w * 2 + 7) // 8 * 8 * h > 4096:
+            sys.exit(f"make_branding.py: {name} ({w}x{h}) is more than one load of TMEM (4 KB): split it")
         img = draw(w, h)
         write_png(OUT / f"{name}@8x.png", w * SS, h * SS, to_rgba8(img).tobytes())
         words = to_rgba16(img, w, h).flatten()

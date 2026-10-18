@@ -540,6 +540,11 @@ to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the in
   <dt>Save Game</dt><dd>Save your progress at any time.</dd>
   <dt>Options</dt><dd>Sound, graphics and renaming Alaron (see <a href="#options">Options</a>).</dd>
   <dt>Theater</dt><dd>Watch the story scenes you have already seen.</dd>
+  <dt>ReChronicled</dt><dd>This edition's own switches, changed while you play (see <a href="#settings">PC
+  Settings</a>): all the new textures on or off (off: as the N64 drew it), vsync, the turn order, the controls card,
+  the HUD at the screen edges, the draw distance and the right-stick camera. <kbd class="pad">A</kbd> or left / right
+  changes the highlighted one, <kbd class="pad b">B</kbd> goes back. In a battle it is at the end of the list.
+  Turning the textures back on takes a few seconds.</dd>
   <dt>Credits</dt><dd>The people who made the game.</dd>
   <dt>Help</dt><dd>Hints and tips.</dd>
 </dl>
@@ -731,26 +736,30 @@ data only, not the game's code, so the PC version runs it as it is.</p>
 
 <h3 id="settings">PC Settings</h3>
 <p><code>settings.json</code> in the data folder holds the PC's own settings. It is written with the defaults the first
-time the game runs; edit it while the game is closed.</p>
+time the game runs; edit it while the game is closed. The switches marked * can also be changed in the game, from the
+pause menu's <em>ReChronicled</em> page, which saves them here.</p>
 <div class="scroll"><table><thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead><tbody>
 <tr><td><code>aspect</code></td><td><code>"16:9"</code></td><td><code>"4:3"</code> as on a TV; any width such as <code>"16:9"</code> or <code>"21:9"</code>; <code>"window"</code> to fill the window</td></tr>
 <tr><td><code>render_height</code></td><td>1080</td><td>Drawing resolution in lines; 0 picks the largest that fits the window</td></tr>
 <tr><td><code>supersampling</code></td><td>2</td><td>1 to 4: draw that many times larger and scale down, for smoother edges</td></tr>
 <tr><td><code>msaa</code></td><td>4</td><td>Anti-aliasing: 0, 2, 4 or 8</td></tr>
 <tr><td><code>fps_limit</code></td><td>120</td><td>Frames shown a second (30 to 1000); 0 follows the display</td></tr>
-<tr><td><code>draw_distance</code></td><td>2.0</td><td>1 (the original) to 3</td></tr>
+<tr><td><code>draw_distance</code> *</td><td>2.0</td><td>1 (the original) to 3</td></tr>
 <tr><td><code>fullscreen</code></td><td><code>false</code></td><td>Start in fullscreen (<kbd>F11</kbd> switches at any time)</td></tr>
-<tr><td><code>controls_card</code></td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">View</kbd> sets it)</td></tr>
-<tr><td><code>hud_at_edges</code></td><td><code>true</code></td><td>Widescreen: sun dial, compass and the combat columns at the screen edges</td></tr>
+<tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">View</kbd> sets it)</td></tr>
+<tr><td><code>hud_at_edges</code> *</td><td><code>true</code></td><td>Widescreen: sun dial, compass and the combat columns at the screen edges</td></tr>
+<tr><td><code>turn_order</code> *</td><td><code>true</code></td><td>The turn order across the top of the screen in combat</td></tr>
+<tr><td><code>textures</code> *</td><td><code>true</code></td><td>All the new textures: HD menus, letters, portraits, world and title art; <code>false</code> shows the game as the N64 drew it</td></tr>
+<tr><td><code>vsync</code> *</td><td><code>true</code></td><td>Wait for the display's refresh: no tearing</td></tr>
 <tr><td><code>menus_4_3</code></td><td><code>true</code></td><td>Widescreen: show the pause menu and shops at 4:3</td></tr>
-<tr><td><code>right_stick_camera</code></td><td><code>true</code></td><td>The right-stick camera</td></tr>
-<tr><td><code>camera_invert_x</code>, <code>camera_invert_y</code></td><td><code>false</code></td><td>Turn or tilt the camera the other way (inverted look)</td></tr>
+<tr><td><code>right_stick_camera</code> *</td><td><code>true</code></td><td>The right-stick camera</td></tr>
+<tr><td><code>camera_invert_x</code>, <code>camera_invert_y</code> *</td><td><code>false</code></td><td>Turn or tilt the camera the other way (inverted look)</td></tr>
 <tr><td><code>fast_forward_speed</code></td><td>3</td><td>How much faster fast-forward runs, 2 to 6</td></tr>
 <tr><td><code>combat_enemy_speed</code></td><td>2</td><td>Enemy turns run this much faster, 1 (off) to 6</td></tr>
 <tr><td><code>save_backups</code></td><td>20</td><td>Copies of your saves to keep; 0 for none</td></tr>
-<tr><td><code>smooth_animation_loops</code></td><td><code>true</code></td><td>No pause in the walk and run cycles</td></tr>
+<tr><td><code>smooth_animation_loops</code> *</td><td><code>true</code></td><td>No pause in the walk and run cycles</td></tr>
 <tr><td><code>overscan_borders</code></td><td><code>false</code></td><td>The black frame the N64 drew for old TVs</td></tr>
-<tr><td><code>texture_packs</code></td><td>HD packs</td><td>The HD menus, world textures and title art; remove one to see the original</td></tr>
+<tr><td><code>texture_packs</code></td><td>HD packs</td><td>The HD menus, world textures and title art; remove one to see the original (<code>textures</code> turns them all off)</td></tr>
 <tr><td><code>skip_intro</code></td><td><code>true</code></td><td><code>false</code> brings back the start-up logos</td></tr>
 <tr><td><code>rom_patch</code></td><td><code>"none"</code></td><td><code>"aidyn-patch"</code> plays Aidyn Patch, <code>"aidyn-plus"</code> Aidyn Plus (the title screen sets it)</td></tr>
 </tbody></table></div>

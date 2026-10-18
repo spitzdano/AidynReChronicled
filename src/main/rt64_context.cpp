@@ -216,6 +216,9 @@ ultramodern::renderer::GraphicsApi map_graphics_api(RT64::UserConfiguration::Gra
 // art pack (rechronicled-art) is left out: F2 switches it to compare (aidyn::toggle_redrawn_art).
 static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool report) {
     std::vector<RT64::ReplacementDirectory> packs;
+    if (!aidyn::settings::graphics().textures) {
+        return packs;  // textures off (the pause menu's ReChronicled page): the game's own, as on the N64
+    }
     std::error_code ec;
     const std::filesystem::path beside = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
     for (const std::string& name : aidyn::settings::graphics().texture_packs) {
@@ -394,8 +397,12 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
 
     // Textures made while the game runs: save pictures in full resolution (src/game/save_pictures.cpp) and the
     // inventory page with its words redrawn (src/game/page_words.cpp).
+    // (Not while textures are off: then the game's own pictures, as on the N64.)
     app->state->dynamicReplacementProvider = [](uint64_t hash, uint32_t address, uint16_t width, uint16_t height,
                                                 uint8_t fmt, uint8_t siz, RT64::TextureCache::DynamicReplacement& replacement) {
+        if (!aidyn::settings::graphics().textures) {
+            return false;
+        }
         return aidyn::save_picture_for_texture(address, width, height, fmt, siz, replacement.rgba, replacement.width,
                                                replacement.height)
             || aidyn::page_words_for_texture(hash, address, width, height, fmt, siz, replacement.rgba, replacement.width,
@@ -523,11 +530,30 @@ void aidyn::set_gap_fill_horizon(int row) {
     gap_fill_horizon.store(row, std::memory_order_relaxed);
 }
 
+// The pause menu's ReChronicled page: textures on / off (the packs again, or none) and vsync, applied on the next frame.
+static std::atomic_bool vsync_dirty{ true };
+
+void aidyn::refresh_textures() {
+    redrawn_art_reload = true;
+}
+
+void aidyn::refresh_vsync() {
+    vsync_dirty = true;
+}
+
 void aidyn::RT64Context::send_dl(const OSTask* task) {
+    if (vsync_dirty.exchange(false) && app->swapChain != nullptr) {
+        // FIFO (vsync) or immediate; plume rebuilds the swap chain with it on the next present.
+        app->swapChain->setVsyncEnabled(aidyn::settings::graphics().vsync);
+    }
     app->sharedQueueResources->gapFillHorizon = gap_fill_horizon.load(std::memory_order_relaxed);
-    if (redrawn_art_reload.exchange(false)) {  // F2: the packs again, with or without the redrawn art
+    if (redrawn_art_reload.exchange(false)) {  // F2 or the textures switch: the packs again (a few seconds), or none
         app->textureCache->loadReplacementDirectories(texture_packs(redrawn_art_on, false));
-        fprintf(stdout, "Redrawn art: %s\n", redrawn_art_on ? "on" : "off");
+        if (aidyn::settings::graphics().textures) {
+            fprintf(stdout, "Textures: on, redrawn art %s\n", redrawn_art_on ? "on" : "off");
+        } else {
+            fprintf(stdout, "Textures: off (the game's own, as on the N64)\n");
+        }
     }
     count_game_frame(app.get(), task);
     log_framebuffers(app->state.get());

@@ -16,4 +16,9 @@ namespace aidyn::input {
     bool controls_card();                   // the controls card shown (settings.json graphics.controls_card)
     bool start_held();                      // N64 Start held (Menu, keyboard Enter), as last polled
     void set_rumble(int controller_num, bool rumble);
+    void set_controls_card(bool shown);     // the pause menu's ReChronicled page: show / hide it (and remember it)
+    // The pause menu's ReChronicled page: while capturing, the game gets no buttons and a centred stick, and the page
+    // reads them here instead (N64 button bits, sticks -1..1).
+    void set_capture(bool on);
+    void captured(uint32_t* buttons, float* x, float* y);
 }

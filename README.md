@@ -193,6 +193,8 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "camera_invert_y": false,
         "overscan_borders": false,
         "smooth_animation_loops": true,
+        "textures": true,
+        "vsync": true,
         "texture_packs": ["hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled"]
     }
 }
@@ -219,8 +221,17 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `right_stick_camera` | `false` turns the right-stick camera off |
 | `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
+| `textures` | `false`: every custom texture off, as the N64 drew it: the texture packs (HD menus, letters, buttons, portraits, world, title art), the HD save pictures and the redrawn page words; the letters go back to the game's own widths. The packs stay listed in `texture_packs` |
+| `vsync` | `true`: each frame waits for the display's refresh (no tearing); `false`: shown as soon as it's drawn (tearing possible, a little less lag) |
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
+
+**In the game.** The pause menu's Menu page has a **ReChronicled** entry below Theater (in a battle, last): a page of
+the switches above that can change while playing (`textures`, `vsync`, `turn_order`, `controls_card`, `hud_at_edges`,
+`draw_distance` from 1 to 3 in halves, `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`).
+Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
+`settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
+packs load, as F2 does.
 
 The game's own Options › Graphics "High Resolution" mode (a 512x240 framebuffer for the Expansion Pak) should stay on
 "Normal Resolution": RT64 already renders at `render_height`, and the wider framebuffer stretches the HUD and menus off
@@ -234,6 +245,16 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 ### Changes to the game's behaviour
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
+
+- **ReChronicled page.** The pause menu's list (`WidgetOptionsMenu::MakeScrollList`) gets one more entry, made the
+  game's way (a `WidgetClipText` with its own id, appended to the scroll menu) after Theater, or at the end of a
+  battle's shorter list. The scroll menu is made with room for exactly six entries and `Append` doesn't check, so its
+  size is patched to eight (a seventh entry overran the array and hung the game when the pause menu was freed). The select callback would stop the game on an id it doesn't know, so it's hooked where it reads
+  the id: ours opens the page instead. The page is drawn at the end of each frame over the parchment, with the list
+  faded out beneath it (`Utilities::SetAlpha`) and the game given no input while it's up, so no button can reach the
+  hidden list; it fades back when the page closes. Turning `textures` off reloads RT64's replacements with no packs
+  (and no dynamic ones: the HD save pictures and redrawn page words) and puts back the fonts' original letter widths;
+  `vsync` sets the swap chain's present mode, rebuilt at the next frame.
 
 - **Pause menu edges.** The menu's opening reveal ends a few pixels short of the screen edges (a clip of 17..303 when it
   opens on the equipment page), hidden on a TV by overscan and the game's black border. It now finishes at the full

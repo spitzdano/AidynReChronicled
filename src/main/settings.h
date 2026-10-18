@@ -45,6 +45,8 @@ namespace aidyn::settings {
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops
         bool controls_card = true;   // the card of button prompts in the field and in combat (View shows / hides it)
         bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's
+        bool textures = true;        // every custom texture: the packs below, HD save pictures, redrawn page words, the HD letters' spacing (false: as the N64)
+        bool vsync = true;           // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn
         std::vector<std::string> texture_packs{ "hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled" }; // RT64 packs in <data>/texture-packs (folders or .rtz), later ones win
     };
 
@@ -57,4 +59,10 @@ namespace aidyn::settings {
     void use_rom_patch(RomPatch patch);   // for this run only (--patch / --original)
     void save_rom_patch(RomPatch patch);  // into settings.json (the title screen's version switch), keeping the rest
     void save_controls_card(bool shown);  // View in the field or combat: remembered in settings.json
+    // The pause menu's ReChronicled page (src/game/patches.cpp) changes settings while the game runs: change the field
+    // through these, then save it (written into settings.json at once, keeping the rest of the file).
+    Graphics& graphics_rw();
+    Game& game_rw();
+    void save_bool(const char* section, const char* key, bool value);
+    void save_number(const char* section, const char* key, double value);
 }

@@ -104,6 +104,8 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
         j["graphics"]["controls_card"] = g_graphics.controls_card;
         j["graphics"]["turn_order"] = g_graphics.turn_order;
+        j["graphics"]["textures"] = g_graphics.textures;
+        j["graphics"]["vsync"] = g_graphics.vsync;
         j["graphics"]["texture_packs"] = g_graphics.texture_packs;
         std::ofstream out(path);
         out << j.dump(4) << "\n";
@@ -143,6 +145,8 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
         g_graphics.controls_card = gfx.value("controls_card", g_graphics.controls_card);
         g_graphics.turn_order = gfx.value("turn_order", g_graphics.turn_order);
+        g_graphics.textures = gfx.value("textures", g_graphics.textures);
+        g_graphics.vsync = gfx.value("vsync", g_graphics.vsync);
         g_graphics.texture_packs = gfx.value("texture_packs", g_graphics.texture_packs);
         // rechronicled-art (the redrawn portraits and icons) came after the first settings files were written: put it
         // in once, before "rechronicled" (later packs win).
@@ -235,6 +239,28 @@ void aidyn::settings::use_rom_patch(RomPatch patch) {
 void aidyn::settings::save_rom_patch(RomPatch patch) {
     g_game.rom_patch = patch;
     edit_file(g_folder / "settings.json", [patch](nlohmann::ordered_json& j) { j["game"]["rom_patch"] = rom_patch_name(patch); });
+}
+
+aidyn::settings::Graphics& aidyn::settings::graphics_rw() {
+    return g_graphics;
+}
+
+aidyn::settings::Game& aidyn::settings::game_rw() {
+    return g_game;
+}
+
+void aidyn::settings::save_bool(const char* section, const char* key, bool value) {
+    edit_file(g_folder / "settings.json", [=](nlohmann::ordered_json& j) { j[section][key] = value; });
+}
+
+void aidyn::settings::save_number(const char* section, const char* key, double value) {
+    edit_file(g_folder / "settings.json", [=](nlohmann::ordered_json& j) {
+        if (value == (double)(int64_t)value) {
+            j[section][key] = (int64_t)value;
+        } else {
+            j[section][key] = value;
+        }
+    });
 }
 
 void aidyn::settings::save_controls_card(bool shown) {

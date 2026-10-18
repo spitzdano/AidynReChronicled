@@ -31,6 +31,7 @@ namespace {
 // They are drawn only when settings.json has "overscan_borders": true; everything else is as the original.
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
+gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 
 namespace aidyn {
     void set_gap_fill_horizon(int row);  // src/main/rt64_context.cpp
@@ -43,6 +44,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     gpr g = ctx->r4;
     g = aidyn_ff_marker(rdram, g);
     g = aidyn_prompts(rdram, g);
+    g = aidyn_rc_page(rdram, ctx, g);
     if (aidyn::settings::graphics().overscan_borders) {
         const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager);
         const uint32_t v = MEM_HU(kVres1, (gpr)gGfxManager);
@@ -752,7 +754,7 @@ extern "C" void AllocFreeQueueItem(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
     constexpr uint32_t kGameMemory = 15u << 20;
-    constexpr int32_t kFarTable = 0x80F10000;     // RDRAM, above the branding pictures
+    constexpr int32_t kFarTable = 0x80F80000;     // RDRAM above the game's 15 MB, above the branding pictures
     constexpr int32_t kQueueA = 0x800D96B0;       // gGlobals.QueueA, the free queue
     constexpr int32_t kMapIndices = 0x800DCBD0;   // gLoadedMapIndecies[22][30][3]: borg5, borg9, borg5 ALT
     constexpr int32_t kZoneDatMtx = 0x800D8168;   // ZoneDat[3][3], 0x20 each, rows of 0x60
@@ -1499,6 +1501,7 @@ extern "C" void aidyn_dcm_tick(uint8_t* rdram, recomp_context* ctx) {
 
 namespace {
     constexpr uint32_t kBrandingBase = 0x80F00000;  // RDRAM the game never touches (it is told it has 15 MB, "Far map cells")
+    constexpr uint32_t kBrandingEnd = 0x80F80000;   // where the small fixed slots start (far cells, quiet sample, page entry)
     gpr branding_address[std::size(aidyn::branding::kImages)];
 
     void copy_branding(uint8_t* rdram) {
@@ -1510,6 +1513,10 @@ namespace {
         uint32_t address = kBrandingBase;
         for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
             const auto& img = aidyn::branding::kImages[i];
+            if (address + (uint32_t)img.w * img.h * 2 > kBrandingEnd) {
+                fprintf(stderr, "The branding pictures don't fit below the fixed slots (patches.cpp kBrandingEnd)\n");
+                std::abort();
+            }
             branding_address[i] = (gpr)(int32_t)address;
             for (uint32_t k = 0; k < (uint32_t)img.w * img.h; k++) {
                 MEM_H(k * 2, (gpr)(int32_t)address) = img.rgba16[k];
@@ -1795,7 +1802,7 @@ extern "C" void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx) {
 // combat_controls (the combat frame's sample loop) is hooked on entry and looks at gCombatP->current_Ent->aiP (set for
 // enemies and the AI-led Sholeh). While the player's fast-forward is on, a marker shows at the top right.
 namespace {
-    constexpr gpr kQuietSample = (gpr)(int32_t)0x80F20000;  // one ControllerFull (0x34 bytes), above the game's 15 MB
+    constexpr gpr kQuietSample = (gpr)(int32_t)0x80F81000;  // one ControllerFull (0x34 bytes), above the game's 15 MB
     constexpr int kControllerFull = 0x34;
     constexpr int kPressed = 0x8;                            // controller_aidyn.pressed
     constexpr gpr kCombatP = (gpr)(int32_t)0x800E0BF0;       // gCombatP
@@ -2086,14 +2093,37 @@ namespace {
     }
 }
 
+// The two faces are loaded once, when the game starts (App's init), and kept: their widths are remembered as loaded,
+// so textures off (the pause menu's ReChronicled page) can give the original letters their original widths back.
+namespace {
+    struct FaceWidths {
+        gpr sizes;
+        std::vector<uint16_t> original;  // per kWidths entry
+    };
+    std::vector<FaceWidths> font_faces;
+
+    void apply_font_widths(uint8_t* rdram) {
+        const bool hd = hd_text() && aidyn::settings::graphics().textures;
+        for (const FaceWidths& f : font_faces) {
+            size_t k = 0;
+            for (const auto& w : aidyn::font::kWidths) {
+                MEM_H(w.cell * 2, f.sizes) = hd ? w.width : f.original[k];
+                k++;
+            }
+        }
+    }
+}
+
 extern "C" void aidyn_font_widths(uint8_t* rdram, uint32_t borg, gpr face) {
     if ((borg != 28 && borg != 29) || !hd_text()) {
         return;
     }
-    const gpr sizes = (gpr)(int32_t)MEM_W(0x10, face);
+    FaceWidths f{ (gpr)(int32_t)MEM_W(0x10, face), {} };
     for (const auto& w : aidyn::font::kWidths) {
-        MEM_H(w.cell * 2, sizes) = w.width;
+        f.original.push_back(MEM_HU(w.cell * 2, f.sizes));
     }
+    font_faces.push_back(std::move(f));
+    apply_font_widths(rdram);
 }
 
 // ---- Sound log (AIDYN_SFX_LOG) ----
@@ -3292,6 +3322,270 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
     }
     if (wide) {
         g = hud_end(rdram, g);
+    }
+    return g;
+}
+
+// ---- ReChronicled page ----
+// The pause menu's Menu page (WidgetOptionsMenu::MakeScrollList, func_8003F8C4: Load Game, Save Game, Options, Theater,
+// Credits, Help; in a battle Options and Flee) gets one more entry, "ReChronicled", below Theater (in a battle at the
+// end): aidyn.us.toml hooks the list's making after Theater is appended (0x8003FB0C) and where every list ends
+// (0x8003FBC8, added there unless it already is; the list is made with room for eight instead of six), where it is
+// made the game's way (new, WidgetClipText(text, 400), its id at +0x5E, then
+// WidgetScrollMenu::Append; the list's colours are set after). A on it reaches PauseMenuSelectCallback
+// (func_800403AC), which would stop the game on an id it doesn't know: hooked where it reads the id (0x80040438), ours
+// opens the page and returns through the callback's own exit. The page is ours, drawn at the end of the frame on the
+// pause menu's parchment: the list stays the menu's page but fades out under it (Utilities::SetAlpha) and back in when
+// it closes, and the game gets no input meanwhile (aidyn::input::set_capture), so nothing it does with a button can
+// reach a list that isn't there. Up / down choose a row, A or left / right change it, B (or Start) goes back. Each
+// change is applied at once and written into settings.json: textures (every pack, HD save pictures, redrawn page
+// words, the HD letters' widths; off: as the N64), vsync, the turn order, the controls card, the HUD at the screen
+// edges, the draw distance, smooth walk cycles and the camera's right stick and its directions. The words are
+// make_branding.py's rc_* pictures, tinted with the list's own colours (red-brown; the highlight pulsing brown to
+// purple); the title is two halves (one picture would be more than a load of TMEM).
+extern "C" void new_(uint8_t* rdram, recomp_context* ctx);  // the game's operator new (0x8008EEDC)
+extern "C" void WidgetClipText__WidgetClipText(uint8_t* rdram, recomp_context* ctx);
+extern "C" void WidgetScrollMenu__Apppend(uint8_t* rdram, recomp_context* ctx);
+extern "C" void PlayAudioSound(uint8_t* rdram, recomp_context* ctx);
+
+namespace aidyn {
+    void refresh_textures();  // src/main/rt64_context.cpp
+    void refresh_vsync();
+}
+
+namespace {
+    constexpr uint16_t kRcId = 0x7A11;                          // our entry's id (the game's are 0xA0..0x17A and 9999)
+    constexpr gpr kRcText = (gpr)(int32_t)0x80F81100;           // the entry's text (above the game's 15 MB), copied by WidgetClipText
+    constexpr gpr kBigAssMenu = (gpr)(int32_t)0x800D9558;       // gGlobals.BigAssMenu (the pause menu)
+    constexpr gpr kSfx = (gpr)(int32_t)0x800D9380;              // gGlobals.SFXStruct
+    // The list's colours (MakeScrollList: SetColor(COLOR_RED1), SetScrollMenuColors(COLOR_BROWN2, COLOR_PURPLE1, 0x14)):
+    // red-brown, the highlighted entry pulsing from dark brown to purple and back over 20 frames each way.
+    constexpr uint32_t kMenuInk = 0x825050, kMenuHighlight0 = 0x442A22, kMenuHighlight1 = 0x978DBF;
+    constexpr float kRowsLeft = 76.0f, kRowsRight = 286.0f, kRowsTop = 50.0f, kRowStep = 14.0f;  // N64 pixels, 4:3
+
+    struct RcRow {
+        const char* label;
+        bool* flag;           // a switch; nullptr: the draw distance
+        const char* key;      // in settings.json's "graphics"
+        void (*applied)(uint8_t* rdram);
+    };
+
+    constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
+    constexpr const char* kDistanceWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_25", "rc_dd_3" };
+
+    std::vector<RcRow> rc_rows() {
+        auto& gfx = aidyn::settings::graphics_rw();
+        return {
+            { "rc_textures", &gfx.textures, "textures", [](uint8_t* rdram) { aidyn::refresh_textures(); apply_font_widths(rdram); } },
+            { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
+            { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
+            { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
+            { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
+            { "rc_draw_distance", nullptr, "draw_distance", nullptr },
+            { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
+            { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
+            { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
+            { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
+        };
+    }
+
+    int distance_index() {
+        const float dd = aidyn::settings::graphics().draw_distance;
+        int best = 0;
+        for (int i = 0; i < (int)std::size(kDistances); i++) {
+            if (std::fabs(kDistances[i] - dd) < std::fabs(kDistances[best] - dd)) best = i;
+        }
+        return best;
+    }
+
+    struct RcPage {
+        bool open = false, closing = false;
+        gpr menu = 0, sub = 0, list = 0;  // the WidgetOptionsMenu, its substruct and its list
+        int fade = 0;                     // 0..255, like the menu's own fades (60 a frame)
+        int row = 0;
+        uint32_t held = 0;                // last frame's buttons (N64 bits; the stick as D-pad bits)
+        int repeat = 0;                   // frames up / down / left / right have been held
+        int pulse = 0;                    // frames since opening: the highlight's colour
+    } rc;
+
+    uint32_t rc_highlight() {
+        const int k = rc.pulse % 40;
+        const float t = (k < 20 ? k : 40 - k) / 20.0f;
+        uint32_t out = 0;
+        for (int shift = 0; shift < 24; shift += 8) {
+            const float a = (float)((kMenuHighlight0 >> shift) & 0xFF), b = (float)((kMenuHighlight1 >> shift) & 0xFF);
+            out |= (uint32_t)(a + (b - a) * t + 0.5f) << shift;
+        }
+        return out;
+    }
+
+    void rc_sound(uint8_t* rdram, recomp_context* ctx, uint32_t id, uint32_t volume) {
+        call_game_stack(rdram, ctx, PlayAudioSound, (uint32_t)kSfx, id, 0, 0x3F800000u /* 1.0f */, { volume, 0 });
+    }
+
+    void rc_change(uint8_t* rdram, const RcRow& r, int step) {
+        auto& gfx = aidyn::settings::graphics_rw();
+        if (r.flag != nullptr) {
+            *r.flag = !*r.flag;
+            if (r.flag == &gfx.controls_card) {
+                aidyn::input::set_controls_card(*r.flag);  // its own state in input.cpp, and saved
+            } else {
+                aidyn::settings::save_bool("graphics", r.key, *r.flag);
+            }
+        } else {
+            const int n = (int)std::size(kDistances);
+            gfx.draw_distance = kDistances[(distance_index() + step + n) % n];
+            aidyn::settings::save_number("graphics", r.key, gfx.draw_distance);
+        }
+        if (r.applied != nullptr) {
+            r.applied(rdram);
+        }
+    }
+
+    // Still on the pause menu's Menu page, with the list we hid?
+    bool rc_still_there(uint8_t* rdram) {
+        const gpr big = MEM_W(0, kBigAssMenu);
+        const gpr pause = heap_pointer(big) ? MEM_W(0x40, big) : 0;
+        return heap_pointer(pause) && MEM_W(0, pause) == rc.menu && heap_pointer(rc.sub) && MEM_W(0x10, rc.sub) == rc.list;
+    }
+
+    void rc_end() {
+        const int row = rc.row;
+        rc = RcPage{};
+        rc.row = row;
+        aidyn::input::set_capture(false);
+    }
+}
+
+namespace {
+    bool rc_entry_added = false;  // this MakeScrollList has added ours (after Theater)
+}
+
+// MakeScrollList: after Theater is appended, and where the list ends (s1 the substruct, list at +0).
+extern "C" void aidyn_rc_entry(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = MEM_W(0, ctx->r17);
+    if (!heap_pointer(list)) {
+        return;
+    }
+    rc_entry_added = true;
+    const char text[] = "ReChronicled";
+    for (size_t i = 0; i < sizeof(text); i++) {
+        MEM_B(i, kRcText) = (int8_t)text[i];
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory, (uint32_t)kRcText, 400);
+    MEM_H(0x5E, entry) = (int16_t)kRcId;
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+}
+
+extern "C" void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx) {
+    if (!rc_entry_added) {
+        aidyn_rc_entry(rdram, ctx);  // a battle's list: Theater isn't in it
+    }
+    rc_entry_added = false;
+}
+
+// PauseMenuSelectCallback, the Menu page's entry chosen: v1 its id, s0 the substruct, s2 the WidgetOptionsMenu.
+extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
+    if ((ctx->r3 & 0xFFFF) != kRcId || rc.open) {
+        return 0;
+    }
+    rc.open = true;
+    rc.closing = false;
+    rc.menu = ctx->r18;
+    rc.sub = ctx->r16;
+    rc.list = MEM_W(0x10, rc.sub);
+    rc.fade = 0;
+    rc.held = 0xFFFFFFFF;  // the A that chose it is still down: wait for it to come up
+    aidyn::input::set_capture(true);
+    return 1;
+}
+
+// Graphics__EndList: the page, over everything.
+gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (!rc.open) {
+        return g;
+    }
+    if (!rc_still_there(rdram)) {
+        rc_end();
+        return g;
+    }
+    // Input (the game gets none while capturing).
+    uint32_t b = 0;
+    float sx = 0.0f, sy = 0.0f;
+    aidyn::input::captured(&b, &sx, &sy);
+    if (sy > 0.5f) b |= 0x0800;
+    if (sy < -0.5f) b |= 0x0400;
+    if (sx < -0.5f) b |= 0x0200;
+    if (sx > 0.5f) b |= 0x0100;
+    const uint32_t pressed = rc.held == 0xFFFFFFFF ? 0 : (b & ~rc.held);
+    rc.held = (rc.held == 0xFFFFFFFF && (b & 0x8000)) ? 0xFFFFFFFF : b;
+    const uint32_t dirs = b & 0x0F00;
+    rc.repeat = dirs != 0 ? rc.repeat + 1 : 0;
+    const uint32_t repeated = (rc.repeat > 24 && rc.repeat % 6 == 0) ? dirs : 0;
+    const uint32_t act = pressed | repeated;
+    const std::vector<RcRow> rows = rc_rows();
+    if (!rc.closing && rc.fade == 255) {
+        if (act & 0x0800) { rc.row = (rc.row + (int)rows.size() - 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0400) { rc.row = (rc.row + 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x8000) { rc_change(rdram, rows[rc.row], 1); rc_sound(rdram, ctx, 0x740, 60); }
+        else if (act & 0x0300) { rc_change(rdram, rows[rc.row], (act & 0x0200) ? -1 : 1); rc_sound(rdram, ctx, 0x740, 60); }
+        if (pressed & (0x4000 | 0x1000)) {  // B, Start: back to the list
+            rc.closing = true;
+            rc_sound(rdram, ctx, 0x741, 60);
+        }
+    }
+    // Fades: the page in over the list, or out.
+    rc.fade = std::clamp(rc.fade + (rc.closing ? -60 : 60), 0, 255);
+    call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)rc.list, (uint32_t)(255 - rc.fade));
+    if (rc.closing && rc.fade == 0) {
+        // The game gets input back once every button is up: the B still held would be a new press to it (and leave
+        // the pause menu).
+        if (b == 0) {
+            rc_end();
+        }
+        return g;
+    }
+    // Draw: the title, a row each (its name at the left, its value at the right), the hints.
+    copy_branding(rdram);
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto ink = [&](uint32_t rgb) {
+        g = prompt_state(rdram, g, (uint8_t)rc.fade);
+        put(rdram, g, 0xFA000000, rgb << 8 | (uint32_t)rc.fade);  // gDPSetPrimColor: the tint
+    };
+    auto word = [&](const char* name, float x, float y, bool right) {
+        const int i = branding_index(name);
+        if (i >= 0) {
+            g = draw_rgba16(rdram, g, i, (right ? x - ink_width(i) : x) * hs, y * vs, hs, vs);
+        }
+    };
+    // Centred on the parchment right of the scroll's roller (the rows), like the Menu page's title and list.
+    const float centre = (kRowsLeft + kRowsRight) / 2.0f;
+    rc.pulse++;
+    g = prompt_state(rdram, g, (uint8_t)rc.fade);
+    const int title_l = branding_index("rc_title_l"), title_r = branding_index("rc_title_r");  // halves: 4 KB of TMEM each
+    if (title_l >= 0 && title_r >= 0) {
+        const float w = aidyn::branding::kImages[title_l].w, x = centre - w;
+        word("rc_title_l", x, kRowsTop - 29.0f, false);
+        word("rc_title_r", x + w, kRowsTop - 29.0f, false);
+    }
+    for (int k = 0; k < (int)rows.size(); k++) {
+        const RcRow& r = rows[k];
+        const float y = kRowsTop + kRowStep * k;
+        ink(k == rc.row ? rc_highlight() : kMenuInk);
+        word(r.label, kRowsLeft, y, false);
+        word(r.flag != nullptr ? (*r.flag ? "rc_on" : "rc_off") : kDistanceWords[distance_index()], kRowsRight, y, true);
+    }
+    g = prompt_state(rdram, g, (uint8_t)rc.fade);
+    const int change = branding_index("rc_hint_change"), back = branding_index("rc_hint_back");
+    if (change >= 0 && back >= 0) {
+        const float gap = 24.0f, x = centre - (ink_width(change) + gap + ink_width(back)) / 2.0f;
+        const float y = kRowsTop + kRowStep * rows.size() + 6.0f;
+        word("rc_hint_change", x, y, false);
+        word("rc_hint_back", x + ink_width(change) + gap, y, false);
     }
     return g;
 }

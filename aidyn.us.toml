@@ -429,6 +429,32 @@ func = "func_800440D8"
 before_vram = 0x80044134
 text = "extern int aidyn_title_back(uint8_t* rdram, recomp_context* ctx); if (aidyn_title_back(rdram, ctx)) { ctx->r2 = ctx->r18; goto L_800441B0; }"
 
+# ReChronicled page (src/game/patches.cpp, "ReChronicled page"): the pause menu's list (MakeScrollList, func_8003F8C4)
+# after Theater is appended and where every list ends (0x8003FBC8: ours is added there if it isn't in yet, the battle's
+# list; s1 the substruct), and PauseMenuSelectCallback
+# (func_800403AC) where it reads the chosen entry's id (v1), which returns through its exit L_8004054C for ours.
+# The list is made with room for six entries (new WidgetScrollMenu(6)) and Append doesn't check: a seventh would be
+# written past its array, into the heap (the game hung freeing the pause menu). Room for eight.
+[[patches.instruction]]
+func = "func_8003F8C4"
+vram = 0x8003F92C
+value = 0x24050008   # addiu $a1, $zero, 8 (was 6)
+
+[[patches.hook]]
+func = "func_8003F8C4"
+before_vram = 0x8003FB0C
+text = "extern void aidyn_rc_entry(uint8_t* rdram, recomp_context* ctx); aidyn_rc_entry(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8003F8C4"
+before_vram = 0x8003FBC8
+text = "extern void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx); aidyn_rc_entry_end(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_800403AC"
+before_vram = 0x80040438
+text = "extern int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx); if (aidyn_rc_select(rdram, ctx)) { ctx->r2 = 0; goto L_8004054C; }"
+
 # Turn order (src/game/patches.cpp, "Turn order"): the two calls of CombatTurn::Init (func_8006A16C), the battle's
 # first round (Combat_InitEncounter) and each next (func_8006A62C, CombatTurn::FUN_8007381c; and right after it, the
 # new round's list), and the combat HUD (func_800863E4) right after its CombatDrawHealthbar call (g in v0).
