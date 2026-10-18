@@ -1641,6 +1641,46 @@ namespace {
     }
 }
 
+// The version number, bottom right above the credit: the build's (aidyn_version.h, written by tools/version.cmake:
+// "v0.4.0" for a release, "v0.4.0 dev" for a build after its tag, "dev" without either) put together from
+// make_branding.py's verno_* pictures (a character each, and the word "dev"), right-aligned at x 309 (320x240), dimmed
+// and faded with the card like the version list.
+#include "aidyn_version.h"
+
+namespace {
+    gpr version_number(uint8_t* rdram, gpr g, float hs, float vs, uint32_t card_rgba) {
+        std::vector<int> pieces;  // picture indices, -1 for a space
+        const std::string text = AIDYN_VERSION_TEXT;
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text.compare(i, 3, "dev") == 0) {
+                pieces.push_back(title_image("verno_dev"));
+                i += 2;
+            } else if (text[i] == ' ') {
+                pieces.push_back(-1);
+            } else {
+                const char name[] = { 'v', 'e', 'r', 'n', 'o', '_', text[i], '\0' };
+                pieces.push_back(text[i] == '.' ? title_image("verno_dot") : title_image(name));
+            }
+        }
+        // Each picture's ink includes its dark edge and shadow (about a texel past the letter): the next one overlaps it.
+        auto advance = [](int i) { return i < 0 ? 2.5f : ink_width(i) - 1.0f; };
+        float width = 0.0f;
+        for (int i : pieces) {
+            width += advance(i);
+        }
+        float x = 309.0f - width;
+        put(rdram, g, 0xFA000000, 0xD2CDC300u | (uint32_t)std::lround(0.85f * (card_rgba & 0xFF)));  // gDPSetPrimColor
+        for (int i : pieces) {
+            if (i >= 0) {
+                g = draw_rgba16(rdram, g, i, x * hs, 206.0f * vs, hs, vs);
+            }
+            x += advance(i);
+        }
+        put(rdram, g, 0xFA000000, card_rgba);  // the card's own again
+        return g;
+    }
+}
+
 // Back to the title card. The title screen's menu (New Game, Load Game, Options) had no way back: its B handler
 // (IntroMenu_BFunc, func_800440D8) only plays the back sound there, and the version list is on the card. So B in that
 // menu goes back to the card, as Start came from it: aidyn.us.toml hooks the handler after the sound (0x80044134, before
@@ -1679,6 +1719,7 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     // The game's scissor ends at the 4:3 edge, so it is widened to the whole window meanwhile (as for the clouds).
     if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Original) {
         g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
+        g = version_number(rdram, g, hs, vs, rgba);
         return version_list(rdram, g, hs, vs, rgba);
     }
     GfxCommand c[5];  // gEXEnable: 1 command; gEXSetScissor, gEXSetRectAlign: 2 each
@@ -1687,6 +1728,7 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     gEXSetRectAlign(&c[3], G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT, -320 * 4, 0, -320 * 4, 0);
     g = put_cmds(rdram, g, c, 5);
     g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
+    g = version_number(rdram, g, hs, vs, rgba);
     // The version list: bottom left, from the left edge of the whole picture.
     gEXSetRectAlign(&c[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, 0, 0, 0, 0);
     g = put_cmds(rdram, g, c, 2);

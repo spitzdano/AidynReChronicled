@@ -125,6 +125,9 @@ Switching versions:
   `settings.json` and restarts the program in place into that version, back at the title. A version whose ROM isn't
   stored is grey and marked *not found*. The list is on the title card: from the menu Start opens (New Game, Load Game,
   Options), B goes back to it (the game had no way back; `aidyn_title_back` calls its own `IntroMenu::InitTitleCard`).
+- **Version number**: the bottom right of the title screen shows the build's version above the credit: "v0.4.0" for a
+  release (`make_release.sh` passes it to the build as `AIDYN_VERSION`), "v0.4.0 dev" for a build after that tag (from
+  `git describe`, `tools/version.cmake`, on every build).
 - **Launch options**: `--original`, `--patch` or `--plus` picks the version for that run (otherwise `game.rom_patch`).
 - **App launcher**: `tools/install-launchers.sh` adds "Aidyn ReChronicled" (`--original`), "Aidyn ReChronicled (Aidyn
   Patch)" (`--patch`) and "Aidyn ReChronicled (Aidyn Plus)" (`--plus`) to `~/.local/share/applications` (`--remove` takes

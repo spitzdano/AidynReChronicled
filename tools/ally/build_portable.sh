@@ -21,10 +21,11 @@ if ! podman image exists "$IMAGE"; then
     podman build -t "$IMAGE" -f tools/ally/Containerfile tools/ally
 fi
 
-podman run --rm -v "$PWD:/src" -w /src "$IMAGE" bash -euo pipefail -c '
+# AIDYN_VERSION (make_release.sh: the release's version) is what the title screen shows; the container has no git.
+podman run --rm -e AIDYN_VERSION="${AIDYN_VERSION:-}" -v "$PWD:/src" -w /src "$IMAGE" bash -euo pipefail -c '
 B=build/portable
 cmake -S . -B $B -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-    -DNFD_PORTAL=ON -DCMAKE_EXE_LINKER_FLAGS= >/dev/null
+    -DNFD_PORTAL=ON -DCMAKE_EXE_LINKER_FLAGS= -DAIDYN_VERSION="$AIDYN_VERSION" >/dev/null
 cmake --build $B --target AidynReChronicled
 rm -rf $B/dist && mkdir -p $B/dist/lib
 cp $B/AidynReChronicled $B/dist/

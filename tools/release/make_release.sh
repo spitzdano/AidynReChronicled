@@ -33,7 +33,7 @@ if (( publish )); then
 fi
 
 echo "== portable build"
-tools/ally/build_portable.sh
+AIDYN_VERSION=$version tools/ally/build_portable.sh  # the title screen shows it
 if [[ ! -f $pack/rt64.json ]]; then
     echo "== title branding pack"
     python3 tools/branding/make_branding.py

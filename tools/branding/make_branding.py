@@ -390,6 +390,11 @@ IMAGES += [("turn_plus", 10, 12, turn_label("+", 100))]
 # The title screen's version list (bottom left): Aidyn Plus's name, "not found", the running one's marker, X and Y.
 IMAGES += [("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34, 12, version_label("not found", 52)),
            ("ver_mark", 10, 12, version_mark), ("ver_x", 10, 12, version_button("CD")), ("ver_y", 10, 12, version_button("CU"))]
+# The title screen's version number (bottom right, above the credit): one picture per character, put together by the
+# game from its build's version (aidyn_version.h: "v0.4.0", or "v0.4.0 dev" for a build after the tag).
+IMAGES += [("verno_v", 6, 9, version_label("v", 44)), ("verno_dot", 4, 9, version_label(".", 44)),
+           ("verno_dev", 14, 9, version_label("dev", 44))]
+IMAGES += [(f"verno_{d}", 6, 9, version_label(str(d), 44)) for d in range(10)]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
 

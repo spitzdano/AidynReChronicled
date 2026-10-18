@@ -83,7 +83,16 @@ add_executable(AidynReChronicled
     rsp/aspMain.cpp
 )
 target_compile_options(AidynReChronicled PRIVATE -march=nehalem -fno-strict-aliasing -fms-extensions)
+# The version the title screen shows (generated/aidyn_version.h, tools/version.cmake): AIDYN_VERSION when given
+# (make_release.sh: the release's), else from git on every build ("v0.4.0" on a release tag, "v0.4.0 dev" after it).
+set(AIDYN_VERSION "" CACHE STRING "The release version shown on the title screen; empty: from git")
+add_custom_target(aidyn_version
+    COMMAND ${CMAKE_COMMAND} -DOUT=${CMAKE_BINARY_DIR}/generated/aidyn_version.h -DSRC=${CMAKE_SOURCE_DIR}
+            -DFIXED=${AIDYN_VERSION} -P ${CMAKE_SOURCE_DIR}/tools/version.cmake
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/aidyn_version.h)
+add_dependencies(AidynReChronicled aidyn_version)
 target_include_directories(AidynReChronicled PRIVATE
+    ${CMAKE_BINARY_DIR}/generated
     ${CMAKE_SOURCE_DIR}/src/main
     ${CMAKE_SOURCE_DIR}/lib/rt64/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
