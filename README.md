@@ -239,10 +239,13 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   turn every other round; 1 to 17 one; 18 to 24 one, or two every other round; 25 to 29 two; 30 to 34 two, or three
   every other round; 35 and up three. The game rolls the order within each speed group when a round starts; here
   that order is rolled a round ahead so the next round shows exactly as it will be (the game's own random numbers are
-  untouched). Anyone dead or fled drops out. A crowded round gets smaller portraits, then ends with "+N" for the turns
+  untouched). Anyone dead or fled drops out. Whoever you're targeting (the fighters whose models the game pulses, also
+  each target of a spell) pulses on their portraits too, in their column and in the strip: a white frame and a light
+  flash. A crowded round gets smaller portraits, then ends with "+N" for the turns
   that don't fit. With `hud_at_edges` the strip can span the picture between the two portrait columns (about 25
   portraits at 21:9, 16 at 16:9), else the middle 4:3 (about 10). `turn_order` turns it off; `AIDYN_TURN_LOG=1`
-  prints each round's list and the next round shown, `AIDYN_TURN_TEST=n` repeats the shown turns up to n.
+  prints each round's list, the combat state, the targets and the next round shown, `AIDYN_TURN_TEST=n` repeats the
+  shown turns up to n.
 - **HD text spacing.** The HD letters keep Marcellus SC's own proportions: the game is given each
   letter's width (the font's advance plus 0.6 texels, `src/game/font_widths.h` from `tools/hdui/font.py --header`)
   in place of the widths it measures from the original, wide pixel font, which squeezed or spread the new letters.

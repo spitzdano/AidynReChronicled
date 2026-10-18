@@ -1717,6 +1717,11 @@ gpr aidyn_ff_marker(uint8_t* rdram, gpr g) {
 // and return of the two Render functions and the bar drawing, and each piece is drawn with RT64's rectangle alignment
 // on its side: a slot frame by where it stands, a portrait by the slot it goes to (so its fly-in ends at the edge
 // instead of jumping sides halfway), a bar by its x, the radar on the right. The message box and menus stay centred.
+// Target flash: the fighters the game marks as targeted (the ones whose models it pulses, CombatTargetVisuals::Render:
+// gCombatP->substruct2[1].arrayB while a spell is aimed, combat state 10 or 11, else substruct2[0].arrayB; an int per
+// combatEnts index) also pulse on their portraits: a white frame and a light flash over the picture, on the portrait
+// in its column (the outermost WidgetBorg8Combat render of a portrait, gCombatPortraits' cEntIndex = the fighter) and
+// in the turn order (below).
 namespace {
     constexpr gpr kCombatPortraitCount = (gpr)(int32_t)0x800E3144;  // u8
     constexpr gpr kCombatPortraits = (gpr)(int32_t)0x800E3148;      // CombatPortrait* (0x18 each: widget, ..., blipIndex at 0x10)
@@ -1725,6 +1730,55 @@ namespace {
     int combat_depth = 0;
     bool combat_aligned[64];
     bool radar_aligned = false, bar_aligned = false;
+    gpr combat_widget[64];  // the widget each nested render draws
+
+    constexpr gpr kCombatState = (gpr)(int32_t)0x800D9454;          // gGlobals.combatBytes[0]
+    constexpr int kTargetsAttack = 0x4EAC, kTargetsSpell = 0x4F54;  // gCombatP->substruct2[0 / 1].arrayB, int[18]
+
+    bool combat_targeted(uint8_t* rdram, gpr combat, int index) {
+        if (index < 0 || index >= 18) {
+            return false;
+        }
+        const int list = (uint8_t)(MEM_BU(0, kCombatState) - 10) < 2 ? kTargetsSpell : kTargetsAttack;
+        return MEM_W(list + 4 * index, combat) != 0;
+    }
+
+    // 0 to 1 and back, about once a second, like the game's pulse on the models.
+    float target_pulse() {
+        const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        return 0.5f - 0.5f * (float)std::cos(t * 2.0 * 3.14159265 / 0.9);
+    }
+
+    // Flat colour rectangles: one-cycle, blended, the primitive colour.
+    gpr rect_state(uint8_t* rdram, gpr g) {
+        put(rdram, g, 0xE7000000, 0);           // gDPPipeSync
+        put(rdram, g, 0xE3000A01, 0x00000000);  // gDPSetCycleType(G_CYC_1CYCLE)
+        put(rdram, g, 0xE200001C, 0x00504240);  // gDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2)
+        put(rdram, g, 0xFCFFFFFF, 0xFFFDF6FB);  // gDPSetCombineMode(G_CC_PRIMITIVE, G_CC_PRIMITIVE)
+        return g;
+    }
+
+    // x0..x1, y0..y1 in units of the 320x240 screen; hs, vs pixels a unit.
+    gpr rect(uint8_t* rdram, gpr g, float x0, float y0, float x1, float y1, uint32_t rgba, float hs, float vs) {
+        put(rdram, g, 0xFA000000, rgba);  // gDPSetPrimColor
+        const uint32_t ulx = (uint32_t)std::max(0, (int)(x0 * hs * 4.0f)), uly = (uint32_t)std::max(0, (int)(y0 * vs * 4.0f));
+        const uint32_t lrx = (uint32_t)(int)(x1 * hs * 4.0f), lry = (uint32_t)(int)(y1 * vs * 4.0f);
+        put(rdram, g, 0xF6000000 | ((lrx & 0xFFF) << 12) | (lry & 0xFFF), ((ulx & 0xFFF) << 12) | (uly & 0xFFF));
+        return g;
+    }
+
+    // The flash on a targeted fighter's portrait at x0..x1, y0..y1 (after the portrait is drawn).
+    gpr target_flash(uint8_t* rdram, gpr g, float x0, float y0, float x1, float y1, float hs, float vs) {
+        const float pulse = target_pulse();
+        const uint32_t frame = 0xFFFFFF00u | (uint32_t)(90 + 165 * pulse), flash = 0xFFFFFF00u | (uint32_t)(80 * pulse);
+        g = rect_state(rdram, g);
+        g = rect(rdram, g, x0, y0, x1, y1, flash, hs, vs);
+        g = rect(rdram, g, x0 - 1.0f, y0 - 1.0f, x1 + 1.0f, y0, frame, hs, vs);
+        g = rect(rdram, g, x0 - 1.0f, y1, x1 + 1.0f, y1 + 1.0f, frame, hs, vs);
+        g = rect(rdram, g, x0 - 1.0f, y0, x0, y1, frame, hs, vs);
+        g = rect(rdram, g, x1, y0, x1 + 1.0f, y1, frame, hs, vs);
+        return g;
+    }
 
     // Which edge a combat widget belongs to: false left, true right.
     bool combat_right(uint8_t* rdram, gpr widget) {
@@ -1752,6 +1806,7 @@ extern "C" void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx) {
     if (d >= (int)std::size(combat_aligned)) {
         return;
     }
+    combat_widget[d] = ctx->r4;
     combat_aligned[d] = d == 0 && hud_wide();
     if (combat_aligned[d]) {
         ctx->r5 = hud_begin(rdram, ctx->r5, combat_right(rdram, ctx->r4));
@@ -1760,6 +1815,21 @@ extern "C" void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" void aidyn_combat_widget_end(uint8_t* rdram, recomp_context* ctx) {
     const int d = --combat_depth;
+    const gpr combat = MEM_W(0, kCombatP), portraits = MEM_W(0, kCombatPortraits);
+    if (d == 0 && combat != 0 && portraits != 0 && MEM_W(0x7C, combat_widget[0]) != 0) {  // WidgetBorg8Combat visible
+        const gpr widget = combat_widget[0];
+        for (int i = 0; i < MEM_BU(0, kCombatPortraitCount); i++) {
+            const gpr p = portraits + i * 0x18;
+            if (MEM_W(0, p) == widget) {
+                if (combat_targeted(rdram, combat, MEM_BU(0x0A, p))) {  // cEntIndex
+                    const float x = (int16_t)MEM_HU(kWidgetPosX, widget), y = (int16_t)MEM_HU(kWidgetPosX + 2, widget);
+                    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+                    ctx->r2 = target_flash(rdram, ctx->r2, x, y, x + MEM_HU(0x74, widget), y + MEM_HU(0x72, widget), hs, vs);
+                }
+                break;
+            }
+        }
+    }
     if (d >= 0 && d < (int)std::size(combat_aligned) && combat_aligned[d]) {
         ctx->r2 = hud_end(rdram, ctx->r2);
     }
@@ -2563,7 +2633,8 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
 // group the order is rolled. CombatTurn::FUN_8007381c (func_8006A62C) starts the next round when the last turn ends.
 // The strip shows "Round" and its number, then the rest of the round from the fighter whose turn it is (larger, gold
 // frame; anyone dead or fled since is left out), a team colour under each portrait (the party blue, enemies red), then
-// a divider and the next round, dimmed. The next round's order is shown exactly: the order within each group is
+// a divider and the next round, dimmed; the fighters targeted flash ("Target flash", above). The next round's order
+// is shown exactly: the order within each group is
 // rolled a round ahead (turn_rank) and, right after Init lists that round, its groups are put in that order (Init's
 // own rolls still happen, so the game's random numbers are unchanged). A crowded round shrinks the portraits, then
 // ends with "+N" for the turns that still don't fit. aidyn.us.toml hooks Init's two calls (the battle's start in
@@ -2571,8 +2642,8 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
 // CombatDrawHealthbar, so menus and the pause menu cover it). The portraits are the combat portraits' images
 // (gCombatPortraits) drawn with the game's Borg8_DrawSimple, so the redrawn art replaces them. In widescreen with
 // hud_at_edges the strip may span the picture between the two columns at its edges, else the middle 4:3 between them.
-// settings.json graphics.turn_order (off: no strip and Init's own order). AIDYN_TURN_LOG=1 prints each round's list
-// and turn; AIDYN_TURN_TEST=n repeats the shown turns up to n (to look at a crowded strip).
+// settings.json graphics.turn_order (off: no strip and Init's own order). AIDYN_TURN_LOG=1 prints each round's list,
+// the turn, the combat state and the targets; AIDYN_TURN_TEST=n repeats the shown turns up to n (to look at a crowded strip).
 extern "C" void Entity__isDead(uint8_t* rdram, recomp_context* ctx);
 extern "C" void CombatEntity__Flag6(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_8005F024(uint8_t* rdram, recomp_context* ctx);  // CombatEntity::Flag1: takes turns
@@ -2600,6 +2671,7 @@ namespace {
     struct TurnEntry {
         gpr ent, image;
         bool party, current, next;
+        int index;  // into combatEnts
     };
 
     void roll_turn_rank() {
@@ -2687,17 +2759,9 @@ namespace {
             std::sort(group.begin(), group.end(), [](int a, int b) { return turn_rank[a] < turn_rank[b]; });
             for (int i : group) {
                 const gpr ent = MEM_W(kCombatEnts + 4 * i, combat);
-                out.push_back({ ent, turn_image(rdram, i, ent), i < party, false, true });
+                out.push_back({ ent, turn_image(rdram, i, ent), i < party, false, true, i });
             }
         }
-    }
-
-    gpr rect(uint8_t* rdram, gpr g, float x0, float y0, float x1, float y1, uint32_t rgba, float hs, float vs) {
-        put(rdram, g, 0xFA000000, rgba);  // gDPSetPrimColor
-        const uint32_t ulx = (uint32_t)std::max(0, (int)(x0 * hs * 4.0f)), uly = (uint32_t)std::max(0, (int)(y0 * vs * 4.0f));
-        const uint32_t lrx = (uint32_t)(int)(x1 * hs * 4.0f), lry = (uint32_t)(int)(y1 * vs * 4.0f);
-        put(rdram, g, 0xF6000000 | ((lrx & 0xFFF) << 12) | (lry & 0xFFF), ((ulx & 0xFFF) << 12) | (uly & 0xFFF));
-        return g;
     }
 
     int digit_image(char c) {
@@ -2867,7 +2931,7 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         if (!heap_pointer(ent) || (k > turn && !fighting(rdram, ctx, ent))) {
             continue;
         }
-        now.push_back({ ent, turn_image(rdram, i, ent), i < MEM_BU(kPartyCount, combat), k == turn, false });
+        now.push_back({ ent, turn_image(rdram, i, ent), i < MEM_BU(kPartyCount, combat), k == turn, false, i });
     }
     std::vector<TurnEntry> later;
     next_round(rdram, ctx, combat, later);
@@ -2884,6 +2948,14 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
             snprintf(item, sizeof(item), " %s%d:%04X", k == turn ? (ent == current ? "*" : "?") : "", i,
                      heap_pointer(sheet) ? MEM_HU(0, sheet) : 0);
             text += item;
+        }
+        text += " | state " + std::to_string(MEM_BU(0, kCombatState)) + ", targets";
+        for (int list : { kTargetsAttack, kTargetsSpell }) {
+            text += list == kTargetsAttack ? " [" : " spell [";
+            for (int i = 0; i < 18; i++) {
+                if (MEM_W(list + 4 * i, combat) != 0) text += " " + std::to_string(i);
+            }
+            text += " ]";
         }
         text += " | next:";
         for (const TurnEntry& e : later) {
@@ -2941,10 +3013,7 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
     }
 
     // Backing, frames, team colours, the divider.
-    put(rdram, g, 0xE7000000, 0);           // gDPPipeSync
-    put(rdram, g, 0xE3000A01, 0x00000000);  // gDPSetCycleType(G_CYC_1CYCLE)
-    put(rdram, g, 0xE200001C, 0x00504240);  // gDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2)
-    put(rdram, g, 0xFCFFFFFF, 0xFFFDF6FB);  // gDPSetCombineMode(G_CC_PRIMITIVE, G_CC_PRIMITIVE)
+    g = rect_state(rdram, g);
     const float left = items.front().x + shift;
     g = rect(rdram, g, left - 3.0f, kCentreY - kCurrentSize / 2.0f - 2.0f, left + width + 3.0f,
              kCentreY + kCurrentSize / 2.0f + 3.5f, 0x00000078, hs, vs);
@@ -2981,6 +3050,14 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = (gpr)(int32_t)call_game_stack(rdram, ctx, Borg8_DrawSimple, (uint32_t)g, (uint32_t)img,
                                           f32_bits(it.x + shift), f32_bits(kCentreY - it.w / 2.0f),
                                           { f32_bits(sx), f32_bits(sy), shade, shade, shade, alpha });
+    }
+
+    // The fighters targeted now flash.
+    for (const StripItem& it : items) {
+        if (it.kind == StripItem::Portrait && combat_targeted(rdram, combat, it.e->index)) {
+            const float px = it.x + shift, top = kCentreY - it.w / 2.0f;
+            g = target_flash(rdram, g, px, top, px + it.w, top + it.w, hs, vs);
+        }
     }
 
     // The labels: each badge ("Round" over the number, centred) and "+N".
