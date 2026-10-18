@@ -101,6 +101,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["smooth_animation_loops"] = g_graphics.smooth_animation_loops;
         j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
         j["graphics"]["controls_card"] = g_graphics.controls_card;
+        j["graphics"]["turn_order"] = g_graphics.turn_order;
         j["graphics"]["texture_packs"] = g_graphics.texture_packs;
         std::ofstream out(path);
         out << j.dump(4) << "\n";
@@ -138,6 +139,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.smooth_animation_loops = gfx.value("smooth_animation_loops", g_graphics.smooth_animation_loops);
         g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
         g_graphics.controls_card = gfx.value("controls_card", g_graphics.controls_card);
+        g_graphics.turn_order = gfx.value("turn_order", g_graphics.turn_order);
         g_graphics.texture_packs = gfx.value("texture_packs", g_graphics.texture_packs);
         // rechronicled-art (the redrawn portraits and icons) came after the first settings files were written: put it
         // in once, before "rechronicled" (later packs win).

@@ -199,6 +199,16 @@ bool aidyn::version_available(bool aidyn_patch) {
     return recomp::is_rom_valid(aidyn_patch ? game_id_aidyn_patch : game_id);
 }
 
+// The window's width / height (the picture's shape with aspect "window"), for the game thread's layout (the combat
+// turn order, src/game/patches.cpp); 0 before the window exists.
+float aidyn::window_aspect() {
+    int w = 0, h = 0;
+    if (window != nullptr) {
+        SDL_GetWindowSize(window, &w, &h);
+    }
+    return h > 0 ? (float)w / (float)h : 0.0f;
+}
+
 // Saves the choice in settings.json and starts this program again in its place, with the same arguments but the
 // version flag replaced. Game data comes from the ROM at start-up, so a version is only changed by a restart; the
 // Controller Pak is written through at once, so nothing is lost.

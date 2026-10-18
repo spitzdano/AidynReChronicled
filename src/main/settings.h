@@ -43,6 +43,7 @@ namespace aidyn::settings {
         bool hud_at_edges = true;    // widescreen: the time-of-day dial at the left edge, the compass at the right (portraits stay centred)
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops
         bool controls_card = true;   // the card of button prompts in the field and in combat (View shows / hides it)
+        bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's
         std::vector<std::string> texture_packs{ "hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled" }; // RT64 packs in <data>/texture-packs (folders or .rtz), later ones win
     };
 

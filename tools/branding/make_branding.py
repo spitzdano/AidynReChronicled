@@ -330,6 +330,21 @@ CONTROLS = [
     ("ctl_hide", (("CL",), "Hide this")),
 ]
 
+def turn_label(text, size):
+    """The combat turn order's round badge (src/game/patches.cpp, "Turn order"): light letters with a dark edge, like
+    the controls card's, left-aligned (the game measures the ink to centre them)."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        baseline = H - int(1.5 * SS)
+        x = SS // 2
+        if x + ink_width(text, MARCELLUS, size) > W:
+            sys.exit(f"make_branding.py: the turn label {text!r} is wider than {w} texels")
+        text_line(img, x, text, size, baseline, "#f2e6c8")
+        return img
+    return draw
+
+
 def art_off(w, h):
     """Top right while F2 has the redrawn art pack off: what is showing, and the key."""
     img = np.zeros((h * SS, w * SS, 4), np.float32)
@@ -351,6 +366,10 @@ IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in H
 IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPAD", True)),
            ("chint_use_items", 90, 11, menu_hint("Release to use", "CU", True)),
            ("chint_use_spells", 90, 11, menu_hint("Release to use", "CD", True))]
+# The combat turn order: "Round" over the round's number (capitals 4 and 9 texels tall), and "+" for "+N".
+IMAGES += [("turn_round", 20, 7, turn_label("Round", 44))]
+IMAGES += [(f"turn_d{d}", 12, 12, turn_label(str(d), 100)) for d in range(10)]
+IMAGES += [("turn_plus", 10, 12, turn_label("+", 100))]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
 

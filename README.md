@@ -191,6 +191,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
+| `turn_order` | combat: the round's turn order across the top of the screen, then the next round's (see "Turn order" below; `false`: none, and the game's own order within each speed group) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
 | `right_stick_camera` | `false` turns the right-stick camera off |
@@ -232,6 +233,16 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.
+- **Turn order.** In combat a strip across the top shows "Round" and its number, the turns left in the round from
+  the fighter whose turn it is (larger, gold frame) with a team colour under each portrait (the party blue, enemies
+  red), then a divider and the next round, dimmed. Turns come from base DEX as the game counts them: 0 or less one
+  turn every other round; 1 to 17 one; 18 to 24 one, or two every other round; 25 to 29 two; 30 to 34 two, or three
+  every other round; 35 and up three. The game rolls the order within each speed group when a round starts; here
+  that order is rolled a round ahead so the next round shows exactly as it will be (the game's own random numbers are
+  untouched). Anyone dead or fled drops out. A crowded round gets smaller portraits, then ends with "+N" for the turns
+  that don't fit. With `hud_at_edges` the strip can span the picture between the two portrait columns (about 25
+  portraits at 21:9, 16 at 16:9), else the middle 4:3 (about 10). `turn_order` turns it off; `AIDYN_TURN_LOG=1`
+  prints each round's list and the next round shown, `AIDYN_TURN_TEST=n` repeats the shown turns up to n.
 - **HD text spacing.** The HD letters keep Marcellus SC's own proportions: the game is given each
   letter's width (the font's advance plus 0.6 texels, `src/game/font_widths.h` from `tools/hdui/font.py --header`)
   in place of the widths it measures from the original, wide pixel font, which squeezed or spread the new letters.

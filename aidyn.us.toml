@@ -405,6 +405,29 @@ func = "CombatDrawHealthbar"
 before_vram = 0x8008739C
 text = "extern gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g); ctx->r2 = aidyn_combat_bar_end(rdram, ctx->r2);"
 
+# Turn order (src/game/patches.cpp, "Turn order"): the two calls of CombatTurn::Init (func_8006A16C), the battle's
+# first round (Combat_InitEncounter) and each next (func_8006A62C, CombatTurn::FUN_8007381c; and right after it, the
+# new round's list), and the combat HUD (func_800863E4) right after its CombatDrawHealthbar call (g in v0).
+[[patches.hook]]
+func = "Combat_InitEncounter"
+before_vram = 0x8005D2C4
+text = "extern void aidyn_turn_round(int next); aidyn_turn_round(0);"
+
+[[patches.hook]]
+func = "func_8006A62C"
+before_vram = 0x8006A750
+text = "extern void aidyn_turn_round(int next); aidyn_turn_round(1);"
+
+[[patches.hook]]
+func = "func_8006A62C"
+before_vram = 0x8006A758
+text = "extern void aidyn_turn_listed(uint8_t* rdram, recomp_context* ctx); aidyn_turn_listed(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_800863E4"
+before_vram = 0x8008644C
+text = "extern gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g); ctx->r2 = aidyn_turn_strip(rdram, ctx, ctx->r2);"
+
 # HD text widths (src/game/patches.cpp, "HD text widths"): Font::LoadFace (func_800AA474) right after its
 # Font::SetupBorg8 call: s4 = the Borg8 index, s0 = the FontSubstruct (letter widths at +0x10).
 [[patches.hook]]
