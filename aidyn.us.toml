@@ -405,6 +405,23 @@ func = "CombatDrawHealthbar"
 before_vram = 0x8008739C
 text = "extern gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g); ctx->r2 = aidyn_combat_bar_end(rdram, ctx->r2);"
 
+# Aiming marker (src/game/patches.cpp, "Aiming marker"): func_8008465C's entry (the controller sample in a0) and its
+# Vec2Scale call (the step in a1), and combat_control_case_0x12's entry (func_80084BA0, the sample in a0).
+[[patches.hook]]
+func = "func_8008465C"
+before_vram = 0x8008465C
+text = "extern void aidyn_marker_input(gpr cont); aidyn_marker_input(ctx->r4);"
+
+[[patches.hook]]
+func = "func_8008465C"
+before_vram = 0x800846BC
+text = "extern uint32_t aidyn_marker_step(uint8_t* rdram, uint32_t step); ctx->r5 = (int32_t)aidyn_marker_step(rdram, (uint32_t)ctx->r5);"
+
+[[patches.hook]]
+func = "func_80084BA0"
+before_vram = 0x80084BA0
+text = "extern void aidyn_ranged_dpad(uint8_t* rdram, gpr cont); aidyn_ranged_dpad(rdram, ctx->r4);"
+
 # Turn order (src/game/patches.cpp, "Turn order"): the two calls of CombatTurn::Init (func_8006A16C), the battle's
 # first round (Combat_InitEncounter) and each next (func_8006A62C, CombatTurn::FUN_8007381c; and right after it, the
 # new round's list), and the combat HUD (func_800863E4) right after its CombatDrawHealthbar call (g in v0).

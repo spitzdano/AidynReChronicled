@@ -246,6 +246,11 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   portraits at 21:9, 16 at 16:9), else the middle 4:3 (about 10). `turn_order` turns it off; `AIDYN_TURN_LOG=1`
   prints each round's list, the combat state, the targets and the next round shown, `AIDYN_TURN_TEST=n` repeats the
   shown turns up to n.
+- **Aiming.** Aiming a bow or thrown weapon, or an area spell, the stick moves a marker on the ground and whoever
+  stands within 1 unit of it is the target. The marker moved a fixed 0.8 a frame, paced for the N64's 20 or so
+  frames a second, so at 60 it skipped past targets; it now moves a third of that, times how far the stick is pushed
+  (a light push aims finely). With a bow the D-pad's left / right also jump to the previous / next target (as RT and
+  the game's C-left / C-right do).
 - **HD text spacing.** The HD letters keep Marcellus SC's own proportions: the game is given each
   letter's width (the font's advance plus 0.6 texels, `src/game/font_widths.h` from `tools/hdui/font.py --header`)
   in place of the widths it measures from the original, wide pixel font, which squeezed or spread the new letters.

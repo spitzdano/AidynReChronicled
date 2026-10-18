@@ -1799,6 +1799,8 @@ namespace {
     }
 }
 
+extern "C" void borg8DlistInit(uint8_t* rdram, recomp_context* ctx);  // (g, flags, hres, vres): the 2D images' state
+
 // WidgetBorg8Combat::Render(this, g, ...): this in a0, g in a1; returns g in v0. Only the outermost of nested renders
 // (a portrait and its crossbones) sets the alignment.
 extern "C" void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx) {
@@ -1824,7 +1826,13 @@ extern "C" void aidyn_combat_widget_end(uint8_t* rdram, recomp_context* ctx) {
                 if (combat_targeted(rdram, combat, MEM_BU(0x0A, p))) {  // cEntIndex
                     const float x = (int16_t)MEM_HU(kWidgetPosX, widget), y = (int16_t)MEM_HU(kWidgetPosX + 2, widget);
                     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-                    ctx->r2 = target_flash(rdram, ctx->r2, x, y, x + MEM_HU(0x74, widget), y + MEM_HU(0x72, widget), hs, vs);
+                    gpr g = target_flash(rdram, ctx->r2, x, y, x + MEM_HU(0x74, widget), y + MEM_HU(0x72, widget), hs, vs);
+                    // Back to the combat HUD's own state (its RSPFUNC6 at the start): the widgets after this one
+                    // (the other portraits, and the pause menu's pages in combat) draw with it, and would come out
+                    // in flat colour.
+                    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                                MEM_HU(kVres1, (gpr)gGfxManager));
+                    ctx->r2 = g;
                 }
                 break;
             }
@@ -2416,6 +2424,43 @@ extern "C" void aidyn_combat_menu_drawn(uint8_t* rdram) {
     }
 }
 
+// Aiming marker. Aiming a bow or a thrown weapon (combat state 18) or an area spell (11), the stick moves a marker on
+// the ground (gCombatP->SpellMarkerPos) and whoever stands within 1 unit of it is the target. Its step (func_8008465C,
+// FUN_8008dcfc in the decomp: the stick's direction scaled by 0.8, once a frame, however far the stick is pushed) was
+// paced for the N64's combat at about 20 frames a second; at 60 it crossed a target in two or three frames.
+// aidyn.us.toml hooks the function's entry (the controller sample, a0) and its Vec2Scale call (the step, a1): a third
+// of it, times how far the stick is pushed (at least a fifth), so a light push aims finely. In state 18 the D-pad's
+// left / right also jump to the previous / next target, as C-left / C-right do there (combat_control_case_0x12,
+// func_80084BA0, a0 = the sample, pressed at +8; RT is C-right, and View, the C-left, shows and hides the controls
+// card in combat).
+namespace {
+    gpr marker_input = 0;
+}
+
+extern "C" void aidyn_marker_input(gpr cont) {
+    marker_input = cont;
+}
+
+extern "C" uint32_t aidyn_marker_step(uint8_t* rdram, uint32_t step_bits) {
+    float step;
+    std::memcpy(&step, &step_bits, 4);
+    float push = 1.0f;
+    if (heap_pointer(marker_input)) {
+        const float x = read_f32(rdram, marker_input), y = read_f32(rdram, marker_input + 4);  // joy_x, joy_y
+        push = std::clamp(std::sqrt(x * x + y * y), 0.2f, 1.0f);
+    }
+    step *= push / 3.0f;
+    std::memcpy(&step_bits, &step, 4);
+    return step_bits;
+}
+
+extern "C" void aidyn_ranged_dpad(uint8_t* rdram, gpr cont) {
+    uint32_t pressed = (uint32_t)MEM_W(8, cont);
+    if (pressed & 0x0200) pressed |= 0x0002;  // D-left: C-left
+    if (pressed & 0x0100) pressed |= 0x0001;  // D-right: C-right
+    MEM_W(8, cont) = (int32_t)pressed;
+}
+
 // DollMenuLists::InitMenu (func_80030C50; a0 = this): the inventory page's lists, just set up.
 extern "C" void aidyn_doll_lists(gpr lists) {
     doll_lists = lists;
@@ -2648,7 +2693,6 @@ extern "C" void Entity__isDead(uint8_t* rdram, recomp_context* ctx);
 extern "C" void CombatEntity__Flag6(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_8005F024(uint8_t* rdram, recomp_context* ctx);  // CombatEntity::Flag1: takes turns
 extern "C" void func_8005F4D0(uint8_t* rdram, recomp_context* ctx);  // CombatEntity::DEXCheck
-extern "C" void borg8DlistInit(uint8_t* rdram, recomp_context* ctx);
 extern "C" void Borg8_DrawSimple(uint8_t* rdram, recomp_context* ctx);
 
 #include <numeric>
