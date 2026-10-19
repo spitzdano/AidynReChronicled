@@ -33,6 +33,7 @@ gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
+void all_props_frame_end();  // "Every prop considered", below
 void combat_log_new_battle();
 bool combat_log_frame = false;     // aidyn_prompts: in combat this frame, the log to be drawn
 float combat_card_top = 240.0f;    // the combat controls card's top this frame (240: not shown)
@@ -47,6 +48,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     aidyn_sky_horizon = -1;
     gpr g = ctx->r4;
     g = aidyn_ff_marker(rdram, g);
+    all_props_frame_end();
     g = aidyn_prompts(rdram, g);
     if (combat_log_frame) {
         g = draw_combat_log(rdram, ctx, g, combat_card_top);
@@ -670,16 +672,33 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
         // An item: its cut-off (the nearer of size and its farthest level of detail) moves out to reach(). Within its
         // own cut-off the game gets the real distance, so its levels of detail switch where they always did; beyond
         // it, out to reach(), a distance inside its farthest level of detail.
-        const float own = std::min(size, read_f32(rdram, prop + 0x28 + 12 * (models - 1)));
+        const float far_lod = read_f32(rdram, prop + 0x28 + 12 * (models - 1));
+        const float own = std::min(size, far_lod);
         const float nearer = models >= 2 ? read_f32(rdram, prop + 0x28 + 12 * (models - 2)) : 0.0f;
         items_seen++;
         items_before += prox / scale < own;
         if (prox >= own && prox < reach(own)) {
-            prox = (nearer + own) * 0.5f;
+            // Fading in over the last 15% of the reach (it popped in at full strength): the game fades a model in
+            // over the last unit of its farthest level of detail, so the band is mapped there.
+            const float r = reach(own), band = 0.15f * r;
+            prox = (prox > r - band && far_lod <= size) ? far_lod - 1.0f + (prox - (r - band)) / band
+                                                       : (nearer + own) * 0.5f;
         }
         items_now += prox < own;
     } else {
         prox /= scale;
+        // Fading in over the last 20% of the range instead of the game's last unit, which at draw_distance's longer
+        // ranges, out of the fog, showed as trees popping in whole (the title flyover's valley, Dan): that band of
+        // the distance is mapped onto the unit where the game fades the farthest level of detail. Kept inside that
+        // level's own band (above the nearer level's fade) and only where the level, not size, is the cut-off.
+        if (models >= 1 && models <= 3) {
+            const float far_lod = read_f32(rdram, prop + 0x28 + 12 * (models - 1));
+            const float nearer = models >= 2 ? read_f32(rdram, prop + 0x28 + 12 * (models - 2)) : 0.0f;
+            const float band = std::min(0.2f * far_lod, far_lod - nearer - 3.0f);
+            if (far_lod <= size && band > 1.0f && prox > far_lod - band && prox < far_lod) {
+                prox = far_lod - 1.0f + (prox - (far_lod - band)) / band;
+            }
+        }
     }
     props_scaled += prox < size;
     std::memcpy(&bits, &prox, sizeof(prox));
@@ -733,8 +752,8 @@ extern "C" int aidyn_prop_table_full(uint8_t* rdram) {
 
 // Far map cells. Outdoors the game keeps only the 3x3 block of map cells around the player, so the ground ends 100 to
 // 280 units away. With settings.json draw_distance above 1, rings of cells around that block are loaded and drawn too
-// (their ground only: no props, people or collision), out to radius R (5x5 at R = 2 ... 9x9 at R = 4, so the far
-// clip, which follows the loaded edge, can reach 180 x draw_distance):
+// (their ground; within three cells their props too, "Far props" below; no people or collision), out to radius R
+// (5x5 at R = 2 ... 9x9 at R = 4, so the far clip, which follows the loaded edge, can reach 180 x draw_distance):
 // - Each frame (aidyn.us.toml hook in RenderZones after the game's own cells, display list at sp+0x64): cells that left
 //   the radius are freed through the game's free queue; missing cells are loaded, nearest first (two a frame, six
 //   while more than 12 are missing: an area just loaded), with the game's BorgAnimLoadScene, while its heap's largest
@@ -758,6 +777,9 @@ extern "C" void BorgAnimDrawScene(uint8_t* rdram, recomp_context* ctx);
 extern "C" void SetSceneColors(uint8_t* rdram, recomp_context* ctx);
 extern "C" void get_memFree_2(uint8_t* rdram, recomp_context* ctx);
 extern "C" void AllocFreeQueueItem(uint8_t* rdram, recomp_context* ctx);
+extern "C" void loadBorg9(uint8_t* rdram, recomp_context* ctx);
+extern "C" void remove_borg_9(uint8_t* rdram, recomp_context* ctx);
+extern "C" void RenderVoxelScenes(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
     constexpr uint32_t kGameMemory = 15u << 20;
@@ -773,6 +795,8 @@ namespace {
         bool used = false;
     };
     FarCell far_cells[kSide * kSide];  // slot k's scene pointer is at kFarTable + 4k
+    gpr far_maps[kSide * kSide];       // slot k's map (Borg9Header) for its props, near cells only (see "Far props")
+    constexpr int kPropRing = 3;       // props are drawn out to their own reach x draw_distance: big trees to ~240 units
     int far_center_x = -1000, far_center_y = -1000;
     int far_radius_now = 1;
 
@@ -813,11 +837,14 @@ namespace {
         return MEM_HU(((gx * 30 + gy) * 3 + k) * 2, (gpr)kMapIndices);
     }
 
+    void free_far_map(uint8_t* rdram, recomp_context* ctx, int k);  // "Far props", below
+
     void free_far_cell(uint8_t* rdram, recomp_context* ctx, int k) {
         if (!far_cells[k].used) {
             return;
         }
         far_cells[k].used = false;
+        free_far_map(rdram, ctx, k);
         const uint32_t scene = (uint32_t)MEM_W(0, far_slot(k));
         if (scene == 0) {
             return;
@@ -886,6 +913,172 @@ namespace {
     }
 }
 
+// Far props. The trees, rocks, buildings and chests' models of a map cell (its Borg9 map's scene objects) are drawn by
+// RenderVoxelScenes only for the game's 3x3 block; the far cells above are ground only. With draw_distance above 1,
+// props reach past the 3x3 (to about 40 x draw_distance), so whole groups of trees popped in each time the camera's
+// cell changed and the next cells' maps arrived (the title flyover's valley before the castle, Dan). So the cells
+// within kPropRing of the centre get their map too, loaded with loadBorg9 alone (no collision, wanderers, sounds or
+// containers: loading_map_data's other steps), their scene objects marked active as VoxelObjects_Activate would with
+// the Expansion Pak (all but VOXEL_JumperPak ones; the voxel chart's few changed objects aren't looked up), and drawn
+// with the game's RenderVoxelScenes, as it draws its own neighbours: from the camera's place in that cell's
+// coordinates, with the collision section the camera is in or the edge nearest it (its lists say which objects to
+// consider) and the cell's offset. A cell in the 3x3 keeps its own copy only while the game has none (a neighbour the
+// centre hides); otherwise the game draws it and ours is freed. Freeing a map frees its props' models through the
+// game's free queue first (they may be in this frame's display list).
+namespace {
+    bool heap_pointer(gpr p);  // defined further down
+    uint32_t f32_bits(float f);
+    uint32_t call_game_stack(uint8_t* rdram, recomp_context* ctx, void (*fn)(uint8_t*, recomp_context*), uint32_t a0,
+                             uint32_t a1, uint32_t a2, uint32_t a3, std::initializer_list<uint32_t> stack);
+
+    // voxelObject: 0x6C bytes (RenderVoxelScenes indexes them x 108), its header 0x28 (Bitfeild +0x14, type +0x16),
+    // then a scene's three models (renderProx, borgIndex, scene / Borg7 pointer: 12 bytes each), BorgCount, sceneflags.
+    constexpr int kVoxelSize = 0x6C, kVoxelBits = 0x14, kVoxelType = 0x16, kSceneModels = 0x28, kSceneCount = 0x68,
+                  kSceneFlags = 0x6A;
+    constexpr int kB9VoxelCount = 0x28, kB9Voxels = 0x44;  // Borg9Data, at Borg9Header +8
+
+    // The game's free queue holds 256 entries (QueueA, its count at +0x800; more is a crash), and a map's props can
+    // need hundreds: maps to free wait in far_maps_pending and are freed a few a frame, keeping the queue under 200.
+    std::vector<gpr> far_maps_pending;
+
+    int far_map_models(uint8_t* rdram, gpr map, bool queue, recomp_context* ctx) {
+        const gpr dat = map + 8, voxels = MEM_W(kB9Voxels, dat);
+        const int count = MEM_HU(kB9VoxelCount, dat);
+        int n = 0;
+        for (int i = 0; heap_pointer(voxels) && i < count; i++) {
+            const gpr v = voxels + kVoxelSize * i;
+            if (MEM_HU(kVoxelType, v) != 0) {  // VOXEL_Scene
+                continue;
+            }
+            const uint32_t type = (MEM_HU(kSceneFlags, v) & 2) ? 0 /* QueueType_Borg7 */ : 1 /* QueueType_Scene */;
+            for (int j = 0; j < 3 && j < MEM_HU(kSceneCount, v); j++) {
+                const gpr slot = v + kSceneModels + 12 * j + 8;
+                if (MEM_W(0, slot) != 0) {
+                    n++;
+                    if (queue) {
+                        call_game(rdram, ctx, AllocFreeQueueItem, (uint32_t)kQueueA, (uint32_t)slot, type, 0);
+                    }
+                }
+            }
+        }
+        return n;
+    }
+
+    void free_far_map(uint8_t* rdram, recomp_context* ctx, int k) {
+        if (far_maps[k] != 0) {
+            far_maps_pending.push_back(far_maps[k]);
+            far_maps[k] = 0;
+        }
+    }
+
+    void free_pending_far_maps(uint8_t* rdram, recomp_context* ctx) {
+        while (!far_maps_pending.empty()) {
+            const gpr map = far_maps_pending.back();
+            const int used = MEM_HU(0x800, (gpr)kQueueA);
+            if (used + far_map_models(rdram, map, false, ctx) > 200) {
+                if (used > 0) {
+                    return;  // next frame, once the queue has emptied
+                }
+            }
+            far_map_models(rdram, map, true, ctx);  // (a map with more than 200 models alone still goes: never seen)
+            call_game(rdram, ctx, remove_borg_9, (uint32_t)map);
+            far_maps_pending.pop_back();
+        }
+    }
+
+    gpr load_far_map(uint8_t* rdram, recomp_context* ctx, uint16_t borg9) {
+        const gpr map = (gpr)(int32_t)call_game(rdram, ctx, loadBorg9, borg9);
+        if (!heap_pointer(map)) {
+            return 0;
+        }
+        const gpr dat = map + 8, voxels = MEM_W(kB9Voxels, dat);
+        const int count = MEM_HU(kB9VoxelCount, dat);
+        for (int i = 0; heap_pointer(voxels) && i < count; i++) {
+            const gpr v = voxels + kVoxelSize * i;
+            uint16_t bits = MEM_HU(kVoxelBits, v);
+            const bool active = MEM_HU(kVoxelType, v) == 0 && !(bits & 0x20);  // a scene, not "only without the pak"
+            bits = active ? (bits | 0x8000) : (bits & ~0x8000);
+            MEM_H(kVoxelBits, v) = (int16_t)bits;
+        }
+        return map;
+    }
+
+    // Whether the game has its own map in this 3x3 place.
+    bool game_has_map(uint8_t* rdram, int dx, int dz) {
+        return MEM_W(0xC, (gpr)(kZoneDatMtx + (dx + 1) * 0x60 + (dz + 1) * 0x20)) != 0;
+    }
+
+    bool wants_props(uint8_t* rdram, int dx, int dz) {
+        if (std::abs(dx) > kPropRing || std::abs(dz) > kPropRing || (dx == 0 && dz == 0)) {
+            return false;
+        }
+        return std::abs(dx) > 1 || std::abs(dz) > 1 || !game_has_map(rdram, dx, dz);
+    }
+
+    gpr draw_far_props(uint8_t* rdram, recomp_context* ctx, gpr g, int k, int dx, int dz, gpr cam) {
+        const gpr dat = far_maps[k] + 8;
+        const float cx = read_f32(rdram, (gpr)(int32_t)0x800D8404), cz = read_f32(rdram, (gpr)(int32_t)0x800D8408);
+        const float ox = -dx * cx, oz = -dz * cz;  // the camera's place in that cell = its place here + (ox, oz)
+        const float fx = read_f32(rdram, dat + 0xC), fz = read_f32(rdram, dat + 0x10);
+        const float lx = (read_f32(rdram, cam) + ox - read_f32(rdram, dat)) / std::max(fx, 1.0f);
+        const float lz = (read_f32(rdram, cam + 8) + oz - read_f32(rdram, dat + 8)) / std::max(fz, 1.0f);
+        const int sx = (int)std::clamp(std::floor(lx), -1000.0f, 1000.0f), sz = (int)std::clamp(std::floor(lz), -1000.0f, 1000.0f);
+        return (gpr)(int32_t)call_game_stack(rdram, ctx, RenderVoxelScenes, (uint32_t)g, (uint32_t)dat, (uint32_t)cam,
+                                             (uint32_t)(int32_t)sx, { (uint32_t)(int32_t)sz, f32_bits(ox), f32_bits(oz) });
+    }
+}
+
+// Every prop considered. A map's props are listed per collision section (about 5 x 5 units, some 20 x 20 to a cell):
+// each section lists the scene objects to consider from there (20 to 40 of a cell's 30 to 80), made for the N64's
+// short view. With draw_distance above 1 trees beyond those lists were in range, and whole groups appeared the moment
+// the camera crossed into the next section (the title flyover, Dan). Outdoors, with draw_distance above 1, every
+// RenderVoxelScenes (the game's own cells' and the far cells') is handed a section listing all of the map's scene
+// objects instead (aidyn.us.toml hook right after its getCollideSection): each object still checks its own distance
+// and view, and is drawn once a frame (its timestamp). The lists are made each frame in RDRAM above the game's 15 MB
+// (kAllPropsBase on, reset at the end of the frame).
+namespace {
+    constexpr uint32_t kAllPropsBase = 0x80FA0000, kAllPropsEnd = 0x81000000;
+    uint32_t all_props_next = kAllPropsBase;
+}
+
+void all_props_frame_end() {
+    all_props_next = kAllPropsBase;
+}
+
+extern "C" void aidyn_all_props(uint8_t* rdram, recomp_context* ctx) {
+    const gpr section = ctx->r2;
+    if (aidyn::settings::graphics().draw_distance <= 1.0f || !outdoors(rdram) || !heap_pointer(section)) {
+        return;
+    }
+    const gpr dat = MEM_W(0x1DC, ctx->r29);  // RenderVoxelScenes' Borg9Data argument
+    if (!heap_pointer(dat)) {
+        return;
+    }
+    const gpr voxels = MEM_W(kB9Voxels, dat);
+    const int count = MEM_HU(kB9VoxelCount, dat);
+    if (!heap_pointer(voxels) || count == 0) {
+        return;
+    }
+    const uint32_t need = 0x14 + 2 * (uint32_t)count + 4;
+    if (all_props_next + need > kAllPropsEnd) {
+        return;  // (never: some 20 KB a frame)
+    }
+    const gpr out = (gpr)(int32_t)all_props_next, list = out + 0x14;
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        if (MEM_HU(kVoxelType, voxels + kVoxelSize * i) == 0) {  // VOXEL_Scene
+            MEM_H(2 * n++, list) = (int16_t)i;
+        }
+    }
+    for (int k = 0; k < 0x14; k += 4) {
+        MEM_W(k, out) = MEM_W(k, section);
+    }
+    MEM_W(8, out) = (int32_t)list;     // voxelIndecies
+    MEM_H(0x10, out) = (int16_t)n;     // voxelSceneCount
+    all_props_next += (need + 7) & ~7u;
+    ctx->r2 = out;
+}
+
 extern "C" uint32_t aidyn_game_memory(uint32_t reported) {
     return std::max(reported, kGameMemory);
 }
@@ -930,6 +1123,7 @@ namespace {
 }
 
 extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
+    free_pending_far_maps(rdram, ctx);
     const int radius = outdoors(rdram) ? wanted_radius() : 1;
     const int sx = MEM_H(0, (gpr)(int32_t)0x800D83FA), sy = MEM_H(0, (gpr)(int32_t)0x800D83FC);  // mapShort1/2
     // Free cells no longer within the radius (and the centre cell: the game always has its own).
@@ -1009,6 +1203,25 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
         place_far_cell(rdram, k, missing[i].dx, missing[i].dz);
         loads++;
     }
+    // Far props: the near cells' maps, one a frame (and ours freed where the game has its own).
+    bool map_loaded = false;
+    for (int k = 0; k < kSide * kSide; k++) {
+        if (!far_cells[k].used) {
+            continue;
+        }
+        const int dx = far_cells[k].gx - sx, dz = far_cells[k].gy - sy;
+        const bool want = wants_props(rdram, dx, dz);
+        if (!want && far_maps[k] != 0) {
+            free_far_map(rdram, ctx, k);
+        }
+        else if (want && far_maps[k] == 0 && !map_loaded && call_game(rdram, ctx, get_memFree_2) >= 0x100000) {
+            const uint16_t borg9 = map_index(rdram, far_cells[k].gx, far_cells[k].gy, 1);
+            if (borg9 != 0) {
+                far_maps[k] = load_far_map(rdram, ctx, borg9);
+                map_loaded = true;
+            }
+        }
+    }
     // Draw the ones in view, after the game's own cells (display list pointer at sp+0x64 in RenderZones).
     const gpr sp = ctx->r29;
     uint32_t g = (uint32_t)MEM_W(0x64, sp);
@@ -1027,6 +1240,18 @@ extern "C" void aidyn_far_cells(uint8_t* rdram, recomp_context* ctx) {
         const uint32_t scene = (uint32_t)MEM_W(0, far_slot(k));
         call_game(rdram, ctx, SetSceneColors, scene, 0xFF, 1, 0);
         g = call_game(rdram, ctx, BorgAnimDrawScene, g, scene);
+    }
+    // Their props (each object checks its own distance and view, as the game's do), from RenderZones' camera place
+    // (its pos argument, at sp+0xB4).
+    const gpr cam = MEM_W(0xB4, sp);
+    for (int k = 0; heap_pointer(cam) && k < kSide * kSide; k++) {
+        if (!far_cells[k].used || far_maps[k] == 0) {
+            continue;
+        }
+        const int dx = far_cells[k].gx - sx, dz = far_cells[k].gy - sy;
+        if (wants_props(rdram, dx, dz)) {  // (each object checks its own distance and view)
+            g = (uint32_t)draw_far_props(rdram, ctx, (gpr)(int32_t)g, k, dx, dz, cam);
+        }
     }
     MEM_W(0x64, sp) = (int32_t)g;
 }

@@ -240,6 +240,12 @@ func = "RenderZones"
 before_vram = 0x8000D690
 text = "extern uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, uint32_t far_bits); ctx->r6 = (int32_t)aidyn_field_far_plane(rdram, ctx, (uint32_t)ctx->r6);"
 
+# Every prop considered (src/game/patches.cpp): RenderVoxelScenes right after getCollideSection (v0 the section).
+[[patches.hook]]
+func = "RenderVoxelScenes"
+before_vram = 0x8000C754
+text = "extern void aidyn_all_props(uint8_t* rdram, recomp_context* ctx); aidyn_all_props(rdram, ctx);"
+
 # Props (RenderVoxelScenes): the distance from the player, just returned by Vec3Dist in f0, scaled by draw_distance;
 # and the 32-entry table of fading props guarded where an entry is taken (L_8000CB90; full: draw it now, s5 = NULL).
 [[patches.hook]]

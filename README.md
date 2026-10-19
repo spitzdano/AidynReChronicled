@@ -376,6 +376,15 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   ships beside the game and which loads after `hd-ui`, so its letters win whatever `hd-ui` is installed (or none).
   The new widths are given only when the pack the letters come from (the later of `rechronicled-text` and `hd-ui` in
   `texture_packs`) says they were drawn for them (`aidyn-text-widths.txt`); otherwise the game keeps its own.
+- **Distant trees without pop-in.** With `draw_distance` above 1, trees and other props reach well past the game's
+  own 3x3 block of map cells, out of the fog, and three things made them pop in: (1) the far cells had no props, so
+  whole groups appeared when the camera's cell changed; the cells within three of the centre now load their map
+  (props only: no collision, wanderers or sounds) and draw its props with the game's own `RenderVoxelScenes`, freed a
+  few a frame through the game's 256-entry free queue; (2) each map lists the props to consider per 5-unit
+  collision section, lists made for the N64's short view, so trees appeared as the camera crossed sections;
+  outdoors every map now considers all its props (each still checks its own distance and view); (3) a prop faded in
+  over its last unit of range, effectively a pop at these ranges; it now fades over the last 20% (items, like chests,
+  the last 15% of their reach). Seen in the title flyover's valley before the castle.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while
