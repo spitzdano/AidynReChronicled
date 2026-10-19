@@ -233,9 +233,9 @@ Up / down pick one, A or left / right change it, B goes back. Each change takes 
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
 packs load, as F2 does.
 
-The game's own Options › Graphics "High Resolution" mode (a 512x240 framebuffer for the Expansion Pak) should stay on
-"Normal Resolution": RT64 already renders at `render_height`, and the wider framebuffer stretches the HUD and menus off
-the side of the picture.
+The game's own Options screen no longer has its Graphics row (Normal / High Resolution): the game always runs in the
+normal mode. RT64 already renders at `render_height` in full colour, and the High Resolution mode's 512-wide frame only
+stretched the HUD and menus off the side of the picture (its unused third mode, 32-bit colour, looked the same here).
 
 The game itself submits a new frame every 1/60 s (its logic is delta-timed, so it simply runs at 60 fps here, where the
 N64 managed 15 to 20). `AIDYN_FPS=1` prints the rate every two seconds. A file with a bad value stops the program with the

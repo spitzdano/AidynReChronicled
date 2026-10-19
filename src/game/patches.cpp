@@ -3589,3 +3589,38 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     }
     return g;
 }
+
+// ---- Graphics option ----
+// The game's Options screen (title and pause menu) had a Graphics row: Normal Resolution or, with the Expansion Pak,
+// High Resolution (a 512-wide frame; a third mode, 32-bit colour, is never offered). Here the renderer already draws
+// at render_height in full colour, and the wide frame only stretched the HUD and menus off the picture, so the row is
+// gone and the mode is always normal (aidyn.us.toml: Graphics::SetGfxMode and ResolutionSelect, and up / down skip
+// the row as the game does without an Expansion Pak). The constructor is hooked after it links its rows: the Graphics
+// title and its value move below the screen, and the Game title and Rename Character (pause menu only) move up into
+// their place. OptionsConfigSubstruct: AudioTitle +0, GraphicsTitle +4, GameTitle +8, optionTitles[4] +0xC.
+extern "C" void BaseWidget__SetCoords(uint8_t* rdram, recomp_context* ctx);
+
+extern "C" void aidyn_options_no_graphics(uint8_t* rdram, recomp_context* ctx) {
+    const gpr widget = ctx->r20;  // s4: the WidgetOptionsConfig
+    const gpr sub = heap_pointer(widget) ? MEM_W(0x40, widget) : 0;
+    if (!heap_pointer(sub)) {
+        return;
+    }
+    const gpr graphics = MEM_W(0x4, sub), value = MEM_W(0x14, sub), game = MEM_W(0x8, sub), rename = MEM_W(0x18, sub);
+    if (!heap_pointer(graphics) || !heap_pointer(value)) {
+        return;
+    }
+    auto move = [&](gpr w, int dy) {
+        call_game(rdram, ctx, BaseWidget__SetCoords, (uint32_t)w, (uint32_t)(int32_t)MEM_H(0x60, w),
+                  (uint32_t)(int32_t)(MEM_H(0x62, w) + dy));
+    };
+    const int up = heap_pointer(game) ? MEM_H(0x62, game) - MEM_H(0x62, graphics) : 0;
+    move(graphics, 600);
+    move(value, 600);
+    if (heap_pointer(game)) {
+        move(game, -up);
+    }
+    if (heap_pointer(rename)) {
+        move(rename, -up);
+    }
+}

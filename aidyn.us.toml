@@ -547,3 +547,29 @@ text = "extern void aidyn_save_picture_saved(uint8_t* rdram, recomp_context* ctx
 func = "RenderSky"
 before_vram = 0x8001DD50
 text = "extern void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx); aidyn_sky_fill(rdram, ctx);"
+
+# Graphics option (src/game/patches.cpp, "Graphics option"): the game's Options screen loses its Graphics row (Normal
+# Resolution / High Resolution). Graphics::SetGfxMode is always given the normal mode (320x240, 16-bit) and
+# ResolutionSelect is kept 0, whatever a save says; the Options widget's constructor (func_80041264) is hooked after it
+# links its rows (s4 the widget) to move the Graphics rows away and the Game rows (Rename) up; up / down
+# (func_800424BC, func_80042578) read the Expansion Pak flag as 0 there, which is how the game skips the row without
+# one.
+[[patches.hook]]
+func = "Graphics__SetGfxMode"
+before_vram = 0x800057E0
+text = "ctx->r4 = 320; ctx->r5 = 240; ctx->r6 = 16; MEM_B(0, (gpr)(int32_t)0x800D9688) = 0;"
+
+[[patches.hook]]
+func = "func_80041264"
+before_vram = 0x80041998
+text = "extern void aidyn_options_no_graphics(uint8_t* rdram, recomp_context* ctx); aidyn_options_no_graphics(rdram, ctx);"
+
+[[patches.instruction]]
+func = "func_800424BC"
+vram = 0x80042550
+value = 0x24030000   # addiu $v1, $zero, 0 (was lhu $v1, gExpPakFlag)
+
+[[patches.instruction]]
+func = "func_80042578"
+vram = 0x8004262C
+value = 0x24030000   # addiu $v1, $zero, 0 (was lhu $v1, gExpPakFlag)
