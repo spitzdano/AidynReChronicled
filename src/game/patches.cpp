@@ -3642,7 +3642,9 @@ extern "C" void aidyn_options_no_graphics(uint8_t* rdram, recomp_context* ctx) {
 // roller. PauseWidget::Render is hooked before it draws its children (aidyn.us.toml) to keep the clip between the
 // rollers' middles, measured in game: x 42.9 for the left one at 27, 292.3 for the right one at -26, moving 11 px a
 // unit (so they follow the page turns; on the equipment page both are off the screen). Only with the pause menu at
-// 4:3 (menus_4_3, the default), where the 3D and the pages share a frame.
+// 4:3 (menus_4_3, the default), where the 3D and the pages share a frame. Past the rollers the screen's picture shows:
+// draw_screenshot_background drew only its top and bottom 40 rows once the menu was open (black between, where the
+// parchment covered it), and now always draws it whole (aidyn.us.toml).
 extern "C" void aidyn_pause_clip(uint8_t* rdram, recomp_context* ctx) {
     const auto& gfx = aidyn::settings::graphics();
     if (!gfx.menus_4_3 && gfx.aspect != aidyn::settings::Aspect::Original) {

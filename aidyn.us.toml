@@ -322,6 +322,14 @@ func = "bigAssOpenCallback_1"
 before_vram = 0x8002F340
 text = "extern void aidyn_menu_opened(uint8_t* rdram, gpr scroll); aidyn_menu_opened(rdram, ctx->r23);"
 
+# The pause menu's background, the picture of the screen kept when it opened: draw_screenshot_background drew only its
+# top and bottom 40 rows (black between) once the menu was open, the parchment covering the rest; with the parchment
+# kept between the rollers (below) it is always drawn whole: the branch for "no pause menu" is taken always.
+[[patches.instruction]]
+func = "draw_screenshot_background"
+vram = 0x80048514
+value = 0x10000056   # beq $zero, $zero, L_80048670 (was beq $v0, $zero)
+
 # The pause pages' clip kept between the scroll's rollers (src/game/patches.cpp aidyn_pause_clip): PauseWidget::Render
 # before RenderChildren, x0 in a2, x1 at sp+0x10, s0 the PauseWidget.
 [[patches.hook]]
