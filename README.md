@@ -255,8 +255,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   (and past the right one on the map page); the clip is now kept between the rollers' middles, which follow the page
   turns (measured in game; only with the pause menu at 4:3, `menus_4_3`).
 - **Titles.** The pause pages' and menus' titles (Menu, Options, Theater, Pause, Enter Name) are drawn like the
-  ReChronicled page's (`art/titles`), and the title card's THE FIRST MAGE is written again in Marcellus with its TM
-  inside the picture (the HD pack's TM ran past the card's edge).
+  ReChronicled page's (`art/titles`), and the title card's TM is redrawn inside the picture (the HD pack's ran past the
+  card's edge; the rest of the card is the HD pack's).
 - **ReChronicled page.** The pause menu's list (`WidgetOptionsMenu::MakeScrollList`) gets one more entry, made the
   game's way (a `WidgetClipText` with its own id, appended to the scroll menu) after Theater, or at the end of a
   battle's shorter list. The scroll menu is made with room for exactly six entries and `Append` doesn't check, so its
