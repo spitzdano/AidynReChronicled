@@ -385,6 +385,11 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   outdoors every map now considers all its props (each still checks its own distance and view); (3) a prop faded in
   over its last unit of range, effectively a pop at these ranges; it now fades over the last 20% (items, like chests,
   the last 15% of their reach). Seen in the title flyover's valley before the castle.
+- **The Buckler.** Its model was exported with every texture coordinate inside a patch of about 5x5 of its texture's
+  32x32 texels, so its face showed a flat dark red-brown (on the N64 too) and never its red studded leather and gold
+  bands. As the model loads (`getBorgItem`, BORG2 asset 0x3520) its coordinates are projected flat across the shield,
+  so the texture covers it once. It is the only shield like that: every other one's face covers its texture at least
+  half.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while

@@ -615,3 +615,10 @@ text = "extern void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header);
 func = "copy_string_to_textbox"
 before_vram = 0x8005E604
 text = "extern void aidyn_combat_message(uint8_t* rdram, recomp_context* ctx); aidyn_combat_message(rdram, ctx);"
+
+# The Buckler (src/game/patches.cpp, "Buckler"): getBorgItem as it returns (v0 the loaded header, s3 the asset), so
+# the Buckler's vertices get texture coordinates that cover its texture.
+[[patches.hook]]
+func = "getBorgItem"
+before_vram = 0x80099210
+text = "extern void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header); aidyn_borg_loaded(rdram, (uint32_t)ctx->r19, ctx->r2);"

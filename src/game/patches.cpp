@@ -4483,3 +4483,43 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top) 
     return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
+// ---- Buckler ----
+// The Buckler's model (BORG5_ShieldBuckler; its vertices and display list are BORG2 asset 0x3520) was exported with
+// every texture coordinate inside a patch of about 5x5 of its texture's 32x32 texels, so in the game its face shows a
+// flat dark red-brown, the N64's picture and the HD one alike: the red studded leather with its gold bands never
+// shows (every other shield covers its texture at least half). getBorgItem is hooked as it returns the loaded asset:
+// the 33 vertices of its display list (Borg2Data vertlist2 at +0x34, count at +0x38; Vtx s, t at +8, +10) are given
+// coordinates projected flat on the shield (x across, y down), so the texture covers it once. Only the model as the 1.0 ROM has it is changed (checked
+// by its first vertex); a model already done gets the same values again (the asset stays loaded between uses).
+namespace {
+    constexpr uint32_t kBucklerVerts = 0x3520;
+    constexpr int kBorg2Dat = 0x58;  // Borg2Header: head 8, lookat[2] 8, MtxF 64, dlist, dlistSet, dat
+}
+
+extern "C" void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header) {
+    if (index != kBucklerVerts || !heap_pointer(header)) {
+        return;
+    }
+    const gpr dat = MEM_W(kBorg2Dat, header);
+    if (!heap_pointer(dat) || MEM_W(4, dat) != 1 || MEM_W(0x38, dat) != 33) {
+        return;
+    }
+    const gpr verts = MEM_W(0x34, dat);
+    if (!heap_pointer(verts) || MEM_H(0, verts) != -98 || MEM_H(2, verts) != 0) {
+        return;
+    }
+    const int count = MEM_W(0x38, dat);
+    int x0 = 0x7FFF, x1 = -0x8000, y0 = 0x7FFF, y1 = -0x8000;
+    for (int i = 0; i < count; i++) {
+        const gpr v = verts + 16 * i;
+        x0 = std::min<int>(x0, MEM_H(0, v)), x1 = std::max<int>(x1, MEM_H(0, v));
+        y0 = std::min<int>(y0, MEM_H(2, v)), y1 = std::max<int>(y1, MEM_H(2, v));
+    }
+    constexpr float kPerTexel = 64.0f;  // the vertex format's S10.5, under the game's gSPTexture scale of one half
+    for (int i = 0; i < count; i++) {
+        const gpr v = verts + 16 * i;
+        const float u = (MEM_H(0, v) - x0) / (float)(x1 - x0), w = (y1 - MEM_H(2, v)) / (float)(y1 - y0);
+        MEM_H(8, v) = (int16_t)std::lround(u * 32.0f * kPerTexel);
+        MEM_H(10, v) = (int16_t)std::lround(w * 32.0f * kPerTexel);
+    }
+}
