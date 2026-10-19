@@ -3,8 +3,8 @@
 # live in the dev folder: AIDYN_DEV_DIR, else a Claude session's own <CLAUDE_JOB_DIR>/tmp/aidyn-dev (so sessions can
 # test side by side), else build/dev with the log in build/play.log (by hand). Builds are still shared: build/cmake.
 #   pad.sh start            launch, always windowed (AIDYN_WINDOWED) and deaf to real controllers (with AIDYN_PAD_FILE
-#                           the game opens none); env passes through: AIDYN_MPK, AIDYN_SETTINGS_DIR,
-#                           AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS
+#                           the game opens none), opened straight on the Dell's workspace; every AIDYN_* variable passes
+#                           through (AIDYN_MPK, AIDYN_SETTINGS_DIR, AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS...)
 #   pad.sh tap BTN...       A B Z START DU DD DL DR L R CU CD CL CR R3 L3 F2 (the key: redrawn art off / on) (TAPGAP=seconds between taps, default 0.5)
 #   pad.sh hold SECS BTN [X Y [RX RY]]   hold a button (NONE for sticks only), left stick X Y -80..80,
 #                                        right stick RX RY -1..1
@@ -38,11 +38,14 @@ for c in json.load(sys.stdin):
 }
 # Tests run on the Dell (Dan plays on the other screens): the window goes to the workspace the Dell shows and stays
 # off fullscreen; checked until it's there (a move sent as the window maps can be lost).
+dell_ws() {
+  hyprctl monitors -j | python3 -c 'import json,sys
+for m in json.load(sys.stdin):
+    if "DELL" in m["description"].upper(): print(m["activeWorkspace"]["name"])'
+}
 to_dell() {
   local ws mon
-  ws=$(hyprctl monitors -j | python3 -c 'import json,sys
-for m in json.load(sys.stdin):
-    if "DELL" in m["description"].upper(): print(m["activeWorkspace"]["name"])')
+  ws=$(dell_ws)
   [[ -n $ws ]] || { echo "pad.sh: no Dell monitor found (is it on?)" >&2; return 1; }
   local pid
   for _ in $(seq 1 60); do
@@ -57,7 +60,17 @@ for m in json.load(sys.stdin):
 case $1 in
   start) if test_pid >/dev/null; then echo "pad.sh: a test game is already running (pad.sh close)" >&2; exit 1; fi
          echo "0 0 0" >"$F"
-         (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$LOG" 2>&1 &)
+         # Opened by Hyprland straight on the Dell's workspace, without taking the focus (exec_cmd's window rules), so
+         # it never shows on Dan's screen first. Hyprland's own environment is used, so the caller's AIDYN_* settings
+         # go into a small launcher script. Without Hyprland or the Dell: started here and moved after.
+         ws=$(dell_ws 2>/dev/null)
+         L=$D/launch.sh
+         { echo '#!/usr/bin/env bash'; printf 'cd %q || exit 1\n' "$P"
+           for v in $(compgen -e | grep '^AIDYN_'); do printf 'export %s=%q\n' "$v" "${!v}"; done
+           printf 'export AIDYN_PAD_FILE=%q AIDYN_WINDOWED=1\n' "$F"
+           printf 'exec stdbuf -oL -eL build/cmake/AidynReChronicled >%q 2>&1\n' "$LOG"; } >"$L"
+         if [[ -n $ws && $L != *[\"\\]* ]] && [[ $(hyprctl dispatch "hl.dsp.exec_cmd(\"bash $L\", { workspace = \"$ws silent\" })" 2>&1) == ok ]]; then :
+         else (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$LOG" 2>&1 &); fi
          to_dell ;;
   close) pid=$(test_pid) && hyprctl dispatch "hl.dsp.window.close({ window = \"pid:$pid\" })" >/dev/null
          for _ in $(seq 1 20); do test_pid >/dev/null || exit 0; sleep 0.5; done
