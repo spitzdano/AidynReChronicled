@@ -43,7 +43,8 @@ import labels as wordlabels  # noqa: E402
 import repaint  # noqa: E402
 
 PROJECT = Path(__file__).resolve().parents[2]
-SCALE = 4
+SCALE = 8       # letters and word pictures: sharp at 1080 lines and above (4x showed soft, stretched past 2x)
+PAGE_SCALE = 4  # the words painted into page pictures stay at hd-ui's scale: they go over its picture of the page
 NAME = "rechronicled-text"
 LABELS = {k: v for k, v in json.loads((Path(__file__).resolve().parent / "labels.json").read_text()).items() if k != "_"}
 LABELS_MARKER = "aidyn-labels.txt"  # in hd-ui and in page-words.json: which redrawn words a pack holds
@@ -112,7 +113,7 @@ def label_textures(labelled, tmemhash, font, scale=SCALE):
     return out
 
 
-def page_words(labelled, font, out, scale=SCALE):
+def page_words(labelled, font, out, scale=PAGE_SCALE):
     """For each page picture with painted words or buttons (labels.json "words", "buttons"): page-<name>.png (the
     new words and Xbox buttons at `scale` on nothing) and its page-words.json entry. Erase boxes as build_pack.py's."""
     pages = []
@@ -249,7 +250,7 @@ def main():
         write_png(out / f"{h_}.png", w, h, rgba)
         entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload" if whole else "stream"})
     pages = page_words(labelled, args.font, out)
-    (out / "page-words.json").write_text(json.dumps({"labels": labels_id(args.font), "scale": SCALE, "pages": pages},
+    (out / "page-words.json").write_text(json.dumps({"labels": labels_id(args.font), "scale": PAGE_SCALE, "pages": pages},
                                                     indent=1) + "\n")
     db = {
         "configuration": {"configurationVersion": 3, "autoPath": "rt64", "defaultOperation": "stream",

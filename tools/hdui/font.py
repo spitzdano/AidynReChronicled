@@ -50,7 +50,7 @@ def _magick(args):
     subprocess.run(["magick", *args], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
-BOLD = 0.32           # extra stroke weight in texels (the game's pixel font is heavy; book fonts are light)
+BOLD = 0.5            # extra stroke weight in texels (the game's pixel font is heavy; book fonts are light), as the ReChronicled page's words
 TRACK = 0.6           # texels of letter-spacing on top of each letter's own advance (small caps read better open)
 DEFAULT_FONT = Path(__file__).resolve().parent / "fonts/MarcellusSC-Regular.ttf"
 # In an hd-ui pack built with a font: the id of the widths its letters were drawn for (widths_id). The game gives

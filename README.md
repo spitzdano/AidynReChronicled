@@ -305,6 +305,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **HD text spacing.** The HD letters keep Marcellus SC's own proportions: the game is given each
   letter's width (the font's advance plus 0.6 texels, `src/game/font_widths.h` from `tools/hdui/font.py --header`)
   in place of the widths it measures from the original, wide pixel font, which squeezed or spread the new letters.
+  The letters are drawn half a texel heavier than the font (as the ReChronicled page's words) at 8 pixels a texel;
+  the weight changes their size a little, so `font_widths.h` is written again whenever it changes.
 - **Draw distance.** `draw_distance` scales how far props are drawn (and their detail levels); the far clip follows
   the edge of the loaded map cells, up to `draw_distance` times 180, never further, so the edge of the world never
   shows. The game's culling for map cells and props was made for 4:3 (a 42.5-degree wedge, props fading out from 37.5
