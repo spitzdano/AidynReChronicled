@@ -595,3 +595,10 @@ value = 0x24030000   # addiu $v1, $zero, 0 (was lhu $v1, gExpPakFlag)
 func = "func_80042578"
 vram = 0x8004262C
 value = 0x24030000   # addiu $v1, $zero, 0 (was lhu $v1, gExpPakFlag)
+
+# The Help book (src/game/patches.cpp, "Help book"): get_borg13 as it returns a loaded dialogue (v0 the Borg13Header,
+# s0 the asset): the help book's words for this edition and its ReChronicled topic.
+[[patches.hook]]
+func = "get_borg13"
+before_vram = 0x8009D814
+text = "extern void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header); aidyn_help_book(rdram, (uint32_t)ctx->r16, ctx->r2);"

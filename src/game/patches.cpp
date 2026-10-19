@@ -3690,3 +3690,192 @@ extern "C" void aidyn_pause_clip(uint8_t* rdram, recomp_context* ctx) {
     ctx->r6 = std::max(x0, left);
     MEM_W(0x10, ctx->r29) = std::min(x1, right);
 }
+
+// ---- Help book ----
+// The pause menu's Help is a dialogue (BORG13_HelpMenu, asset 0x54B): commands of 0x38 bytes (text at +0x20, an s16
+// offset into the text block, its length a u16 at +0x22; next command +0x28; a menu's other choices +0x29..+0x2F
+// with its own index at +0x30; +0x31 0x8 for a menu, 0x1 otherwise; ops at +0: {u16 value, u8 command}, 2 = go to
+// command `value`, 34 = end). Its words were written for the N64: "the \x7F BUTTON" (the text's escapes become the
+// button icons, now the Xbox ones: the BUTTON after them is dropped), "the Control Stick" (the left stick here), and
+// C-left to pick a target (View shows / hides the controls card here: RT does it). The L and R icons (\x88, \x89)
+// don't show in the book's text, so LB and RB are written as words. get_borg13 is hooked as it returns
+// the loaded book: its commands and text are copied above the game's 15 MB with those words changed and a
+// ReChronicled topic added before Exit Help (this edition's camera, fast-forward, controls card, menus, combat and
+// keyboard), and the book points at the copies. Only the book as the 1.0 ROM has it (229 commands) is changed.
+namespace {
+    constexpr gpr kHelpCmds = (gpr)(int32_t)0x80F90000;  // up to 255 commands
+    constexpr gpr kHelpText = (gpr)(int32_t)0x80F94000;  // up to 0xC000 bytes
+    constexpr int kCmdSize = 0x38;
+
+    struct HelpNode {
+        std::string text;
+        int next = 255;           // +0x28
+        int choices[7] = { 255, 255, 255, 255, 255, 255, 255 };
+        bool menu = false;
+        int go_to = -1;           // an op "go to" (Back)
+    };
+
+    std::string replace_all(std::string s, const std::string& from, const std::string& to) {
+        for (size_t at = 0; (at = s.find(from, at)) != std::string::npos; at += to.size()) {
+            s.replace(at, from.size(), to);
+        }
+        return s;
+    }
+
+    std::string help_words(std::string s) {
+        s = replace_all(s, "\\x82 BUTTON", "\\x81");  // pick a target: RT (C-right), not View
+        for (const char* code : { "7F", "80", "81", "83", "84", "85", "86", "87", "88", "89" }) {
+            s = replace_all(s, std::string("\\x") + code + " BUTTON", std::string("\\x") + code);
+        }
+        s = replace_all(s, "the Control Stick", "the left stick");
+        return replace_all(s, "Control Stick", "left stick");
+    }
+
+    // The ReChronicled topic: a menu of subjects, each one or more pages, then Back to the topics.
+    struct HelpSubject {
+        const char* name;
+        std::vector<const char*> pages;
+    };
+    const HelpSubject kHelpSubjects[] = {
+        { "Camera", {
+            "Turn the camera around the party with the right stick, and tilt it up or down. Once turned, the camera "
+            "keeps that direction while you walk. Click the right stick to bring it back behind the party.",
+            "Holding RB and moving the left stick still works the game's own camera. The right-stick camera can be "
+            "turned off, and either of its directions inverted, on the ReChronicled page of the Menu." } },
+        { "Fast-Forward", {
+            "Click the left stick to make everything run three times faster: long walks, fights and scenes. Click it "
+            "again to go back to normal speed. Two chevrons at the top right of the screen show when it is on.",
+            "In combat, the enemies' turns also run twice as fast on their own, so you spend less time waiting for "
+            "your next turn." } },
+        { "Controls Card", {
+            "While you walk and in combat, a card at the left edge of the screen lists what the buttons do there. "
+            "Press \\x82 to hide it or show it again; your choice is remembered.",
+            "The menus also show button hints, such as \\x7F Equip or Lists. The card and the hints can each be "
+            "turned off on the ReChronicled page of the Menu." } },
+        { "Menus", {
+            "In the pause menu, LB and RB turn the scroll to the previous or next page. On the equipment page, "
+            "\\x82 and \\x81 choose the previous or next member of your party.",
+            "The Menu page's Display and ReChronicled entries hold this edition's options: widescreen, the new "
+            "textures, the draw distance, the turn order and more. Each change takes effect at once." } },
+        { "Combat", {
+            "A strip across the top of the screen shows the order of the round's turns, from whoever acts now, then "
+            "the next round, dimmed. Quick fighters act two or three times a round. Whoever you are targeting flashes "
+            "on their portrait and in the strip.",
+            "Hold \\x84 for spells and skills, or \\x83 for items, choose with the left stick and let go to use it; a "
+            "quick tap uses the last one again. \\x87 or LB ends a character's turn.",
+            "With a bow or a thrown weapon, \\x86 left and right step through the targets in reach, and the aiming "
+            "marker follows how far you push the left stick, so a light push aims finely." } },
+        { "Keyboard and PC", {
+            "On a keyboard the arrows move; Z and X are \\x7F and \\x80; K and I are \\x84 and \\x83; J and L are "
+            "\\x82 and \\x81; C, Q and E are \\x87, LB and RB; Enter is \\x85. Hold Tab to fast-forward.",
+            "F1 opens this edition's manual in your web browser. F11, or Alt and Enter, switches between a window and "
+            "the full screen." } },
+    };
+}
+
+extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
+    if (index != 0x54B || !heap_pointer(header)) {
+        return;
+    }
+    const gpr book = MEM_W(0x10, header);  // Borg13Data
+    if (!heap_pointer(book) || MEM_W(0, book) == kHelpCmds || MEM_BU(0x12, book) != 229) {
+        return;
+    }
+    const gpr cmds = MEM_W(0, book), text = MEM_W(8, book);
+    auto text_of = [&](gpr cmd) {
+        std::string s;
+        const int at = MEM_H(0x20, cmd), len = MEM_HU(0x22, cmd);
+        for (int i = 0; at >= 0 && i < len; i++) {
+            s += (char)MEM_B(at + i, text);
+        }
+        return s;
+    };
+    if (text_of(cmds) != "Select a help topic:") {
+        return;
+    }
+    std::vector<std::string> texts;
+    for (int i = 0; i < 229; i++) {
+        const gpr from = cmds + kCmdSize * i, to = kHelpCmds + kCmdSize * i;
+        for (int k = 0; k < kCmdSize; k += 4) {
+            MEM_W(k, to) = MEM_W(k, from);
+        }
+        texts.push_back(help_words(text_of(from)));
+    }
+    // The topic: its choice in the topics (before Exit Help), its menu, each subject's choice and pages, Back.
+    std::vector<HelpNode> added;
+    const int first = 229;
+    auto add = [&](HelpNode n) { added.push_back(n); return first + (int)added.size() - 1; };
+    const int choice = add({ "ReChronicled" });
+    const int menu = add({ "ReChronicled Help:" });
+    added[menu - first].menu = true;
+    added[choice - first].next = menu;
+    std::vector<int> subject_choices;
+    for (const HelpSubject& s : kHelpSubjects) {
+        const int c = add({ s.name });
+        subject_choices.push_back(c);
+        int prev = c;
+        for (const char* page : s.pages) {
+            const int p = add({ page });
+            added[prev - first].next = p;
+            prev = p;
+        }
+    }
+    const int back = add({ "Back" });
+    added[back - first].next = 0;
+    added[back - first].go_to = 0;
+    added[menu - first].next = subject_choices[0];
+    for (size_t k = 1; k < subject_choices.size(); k++) {
+        added[menu - first].choices[k - 1] = subject_choices[k];
+    }
+    added[menu - first].choices[subject_choices.size() - 1] = back;
+    const int total = first + (int)added.size();
+    if (total > 255) {
+        return;
+    }
+    for (int k = 0; k < (int)added.size(); k++) {
+        const HelpNode& n = added[k];
+        const gpr c = kHelpCmds + kCmdSize * (first + k);
+        for (int b = 0; b < kCmdSize; b += 4) {
+            MEM_W(b, c) = 0;
+        }
+        if (n.go_to >= 0) {
+            MEM_H(0x0, c) = (int16_t)n.go_to;
+            MEM_B(0x2, c) = 2;
+        }
+        MEM_B(0x28, c) = (int8_t)n.next;
+        for (int i = 0; i < 7; i++) {
+            MEM_B(0x29 + i, c) = (int8_t)n.choices[i];
+        }
+        MEM_B(0x30, c) = (int8_t)(first + k);
+        MEM_B(0x31, c) = n.menu ? 0x8 : 0x1;
+        texts.push_back(n.text);
+    }
+    // The topics menu (command 0): Standard Controls (next), Trek, Combat, ReChronicled, Exit Help.
+    const gpr topics = kHelpCmds;
+    MEM_B(0x29 + 2, topics) = (int8_t)choice;
+    MEM_B(0x29 + 3, topics) = (int8_t)227;
+    // The text block: every command's text again, one after another (NUL after each, as the game's).
+    int at = 0;
+    for (int i = 0; i < total; i++) {
+        const gpr c = kHelpCmds + kCmdSize * i;
+        const std::string& s = texts[i];
+        if (at + (int)s.size() + 1 > 0xC000) {
+            return;  // never: the book points at the game's own still
+        }
+        if (i == 228) {  // the end marker: no text
+            MEM_H(0x20, c) = 0;
+            MEM_H(0x22, c) = 0;
+            continue;
+        }
+        MEM_H(0x20, c) = (int16_t)at;
+        MEM_H(0x22, c) = (int16_t)s.size();
+        for (char ch : s) {
+            MEM_B(at++, kHelpText) = (int8_t)ch;
+        }
+        MEM_B(at++, kHelpText) = 0;
+    }
+    MEM_W(0, book) = (int32_t)kHelpCmds;
+    MEM_W(8, book) = (int32_t)kHelpText;
+    MEM_H(0x10, book) = (int16_t)at;
+    MEM_B(0x12, book) = (int8_t)total;
+}

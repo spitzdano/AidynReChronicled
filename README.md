@@ -250,6 +250,11 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
+- **Help book.** The pause menu's Help (a dialogue, `BORG13_HelpMenu`) is copied as it loads with its words fitted to
+  this edition: the BUTTON after each button icon dropped (they're Xbox icons now), "the left stick" for the Control
+  Stick, RT (not View, which shows the controls card) to pick a target. A **ReChronicled** topic is added before Exit
+  Help: the camera, fast-forward, the controls card, the menus, combat (turn order, hold menus, D-pad targeting) and the
+  keyboard and PC keys.
 - **Pause scroll ends.** The pause pages are one long parchment drawn through a clip, and the scroll's rollers are a
   3D model moved sideways per page. On the Menu page the parchment ran on past the left roller to the screen's edge
   (and past the right one on the map page); the clip is now kept between the rollers' middles, which follow the page
