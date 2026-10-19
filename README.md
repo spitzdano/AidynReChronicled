@@ -293,16 +293,17 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.
-- **Turn order.** In combat a strip across the top shows "Round" and its number, the turns left in the round from
-  the fighter whose turn it is (larger, gold frame) with a team colour under each portrait (the party blue, enemies
-  red), then a divider and the next round, dimmed. Turns come from base DEX as the game counts them: 0 or less one
+- **Turn order.** In combat an ornate bar across the top (pieces cut from Dan's concept, `art/turn-order`, by
+  `tools/branding/turn_order.py`) shows "Round" and its number on a plate, the turns left in the round from the
+  fighter whose turn it is (in a glowing gold frame, the others bronze) with a team colour along the bottom of each
+  portrait (the party blue, enemies red), then a divider and the next round on its own plate, a little darker. Turns come from base DEX as the game counts them: 0 or less one
   turn every other round; 1 to 17 one; 18 to 24 one, or two every other round; 25 to 29 two; 30 to 34 two, or three
   every other round; 35 and up three. The game rolls the order within each speed group when a round starts; here
   that order is rolled a round ahead so the next round shows exactly as it will be (the game's own random numbers are
   untouched). Anyone dead or fled drops out. Whoever you're targeting (the fighters whose models the game pulses, also
-  each target of a spell) pulses on their portraits too, in their column and in the strip: a white frame and a light
-  flash. A crowded round gets smaller portraits, then ends with "+N" for the turns
-  that don't fit. With `hud_at_edges` the strip can span the picture between the two portrait columns (about 25
+  each target of a spell) pulses on their portraits too, in their column (a white frame and a light flash) and in the strip (a silver
+  frame and the flash). A crowded round gets a smaller bar, then ends with "+N" on a plate for the turns that don't
+  fit. With `hud_at_edges` the strip can span the picture between the two portrait columns (about 25
   portraits at 21:9, 16 at 16:9), else the middle 4:3 (about 10). `turn_order` turns it off; `AIDYN_TURN_LOG=1`
   prints each round's list, the combat state, the targets and the next round shown, `AIDYN_TURN_TEST=n` repeats the
   shown turns up to n.

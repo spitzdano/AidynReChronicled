@@ -31,6 +31,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[1]
 sys.path.insert(0, str(PROJECT / "tools/hdui"))
+sys.path.insert(0, str(HERE))
 from pngio import write_png  # noqa: E402
 
 SS = 8  # output pixels per texel
@@ -347,17 +348,30 @@ CONTROLS = [
     ("ctl_hide", (("CL",), "Hide this")),
 ]
 
-def turn_label(text, size):
-    """The combat turn order's round badge (src/game/patches.cpp, "Turn order"): light letters with a dark edge, like
-    the controls card's, left-aligned (the game measures the ink to centre them)."""
+TURN_INK = [(0.0, "#fff6e0"), (0.55, "#f1dcb2"), (1.0, "#c9a066")]
+
+
+def turn_label(text, caps):
+    """The combat turn order's words (src/game/patches.cpp, "Turn order"): ivory serif capitals `caps` texels tall,
+    lit from above, with a soft dark shadow, as in Dan's concept of the strip; left-aligned (the game measures the ink
+    to centre them on the plates)."""
     def draw(w, h):
         W, H = w * SS, h * SS
         img = np.zeros((H, W, 4), np.float32)
-        baseline = H - int(1.5 * SS)
+        baseline = H - int(0.8 * SS)
+        size = 20
+        while True:
+            top, base = cap_rows(MARCELLUS, size, baseline, H)
+            if base - top >= caps * SS or size > 400:
+                break
+            size += 1
         x = SS // 2
-        if x + ink_width(text, MARCELLUS, size) > W:
+        if x + ink_width(text, MARCELLUS, size) + SS // 2 > W:
             sys.exit(f"make_branding.py: the turn label {text!r} is wider than {w} texels")
-        text_line(img, x, text, size, baseline, "#f2e6c8")
+        m = text_mask(text, MARCELLUS, size, W, H, x, baseline)
+        over(img, rgb("#000000"), 0.8 * blur(shift(dilate(m, 2), SS // 5, SS // 4), 3))
+        f = (np.arange(H, dtype=np.float32)[:, None] - top) / max(base - top, 1)
+        over(img, gradient(TURN_INK, np.broadcast_to(f, (H, W))), m)
         return img
     return draw
 
@@ -431,9 +445,14 @@ IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPAD", True)),
            ("chint_use_items", 90, 11, menu_hint("Release to use", "CU", True)),
            ("chint_use_spells", 90, 11, menu_hint("Release to use", "CD", True))]
 # The combat turn order: "Round" over the round's number (capitals 4 and 9 texels tall), and "+" for "+N".
-IMAGES += [("turn_round", 20, 7, turn_label("Round", 44))]
-IMAGES += [(f"turn_d{d}", 12, 12, turn_label(str(d), 100)) for d in range(10)]
-IMAGES += [("turn_plus", 10, 12, turn_label("+", 100))]
+IMAGES += [("turn_round", 13, 5, turn_label("Round", 2.6))]
+IMAGES += [(f"turn_d{d}", 10, 10, turn_label(str(d), 7.6)) for d in range(10)]
+IMAGES += [("turn_plus", 10, 10, turn_label("+", 7.6))]
+# The strip's pieces, cut from Dan's concept (turn_order.py): its ends, the round plates, the portrait slots (bronze,
+# the current fighter's gold, a target's silver) and the divider. The game lines them up by kTurnPieces (header).
+import turn_order  # noqa: E402
+TURN_PIECES, TURN_PIECE_LINES = turn_order.images(SS)
+IMAGES += TURN_PIECES
 # The title screen's version list (bottom left): Aidyn Plus's name, "not found", the running one's marker, X and Y.
 IMAGES += [("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34, 12, version_label("not found", 52)),
            ("ver_mark", 10, 12, version_mark), ("ver_x", 10, 12, version_button("CD")), ("ver_y", 10, 12, version_button("CU"))]
@@ -525,7 +544,11 @@ def main():
         table.append(f'        {{ "{name}", {w}, {h}, {ident} }},')
         print(f"make_branding.py: {name} {w}x{h} -> {OUT / (name + '@8x.png')}")
     lines += ["", "    struct Image {", "        const char* name;", "        uint16_t w, h;", "        const uint16_t* rgba16;",
-              "    };", "    inline constexpr Image kImages[] = {"] + table + ["    };", "}", ""]
+              "    };", "    inline constexpr Image kImages[] = {"] + table + ["    };", "",
+              "    // The turn order strip's pieces (tools/branding/turn_order.py), in texels: the bar's middle row and a",
+              "    // slot's portrait window (left, top, right, bottom; 0 for the others).",
+              "    struct TurnPiece {", "        const char* name;", "        float bar_mid, x0, y0, x1, y1;", "    };",
+              "    inline constexpr TurnPiece kTurnPieces[] = {"] + TURN_PIECE_LINES + ["    };", "}", ""]
     HEADER.write_text("\n".join(lines))
     print(f"make_branding.py: wrote {HEADER}")
     write_pack()

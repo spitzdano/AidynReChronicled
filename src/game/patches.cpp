@@ -2898,13 +2898,16 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
 // 30 to 34 two, or three every other round; 35 and up three. The list is four groups in turn: the DEX 0 fighters, the
 // three-turn fighters' first turns, the two- and three-turn fighters' (next) turns, then everyone's last turn; within a
 // group the order is rolled. CombatTurn::FUN_8007381c (func_8006A62C) starts the next round when the last turn ends.
-// The strip shows "Round" and its number, then the rest of the round from the fighter whose turn it is (larger, gold
-// frame; anyone dead or fled since is left out), a team colour under each portrait (the party blue, enemies red), then
-// a divider and the next round, dimmed; the fighters targeted flash ("Target flash", above). The next round's order
+// The strip is an ornate bar of pieces cut from Dan's concept (tools/branding/turn_order.py; branding_images.h has
+// each piece's picture, the bar's middle row and a slot's portrait window): the left end with this round's plate
+// ("Round" and its number written on it), the rest of the round from the fighter whose turn it is (a glowing gold
+// frame, the others bronze; anyone dead or fled since is left out) with a team colour along the bottom of each
+// portrait (the party blue, enemies red), the divider, the next round's plate and turns (a little darker), the right
+// end. The fighters targeted get a silver frame and flash ("Target flash", above). The next round's order
 // is shown exactly: the order within each group is
 // rolled a round ahead (turn_rank) and, right after Init lists that round, its groups are put in that order (Init's
-// own rolls still happen, so the game's random numbers are unchanged). A crowded round shrinks the portraits, then
-// ends with "+N" for the turns that still don't fit. aidyn.us.toml hooks Init's two calls (the battle's start in
+// own rolls still happen, so the game's random numbers are unchanged). A crowded round shrinks the bar, then
+// ends with "+N" (on a plate) for the turns that still don't fit. aidyn.us.toml hooks Init's two calls (the battle's start in
 // Combat_InitEncounter: round 1; FUN_8007381c: the next) and the end of the combat HUD (func_800863E4 after
 // CombatDrawHealthbar, so menus and the pause menu cover it). The portraits are the combat portraits' images
 // (gCombatPortraits) drawn with the game's Borg8_DrawSimple, so the redrawn art replaces them. In widescreen with
@@ -2930,9 +2933,9 @@ namespace {
     // The groups (0..3) a DEXCheck type's turns go in, in order: -1 ends.
     constexpr int kTurnGroups[4][4] = { { 0, -1 }, { 3, -1 }, { 2, 3, -1 }, { 1, 2, 3, -1 } };
 
-    // Units of the 320x240 screen.
-    constexpr float kSize = 15.0f, kSmallest = 11.0f, kCurrentSize = 19.0f, kBadge = 14.0f, kCentreY = 15.0f;
-    constexpr float kLabelScale = 0.7f;
+    // Units of the 320x240 screen: the bar's middle row; the pieces are drawn kScale units a texel (a portrait slot 18
+    // wide), down to kSmallestScale for a crowded round.
+    constexpr float kCentreY = 16.0f, kScale = 1.0f, kSmallestScale = 0.72f;
 
     struct TurnEntry {
         gpr ent, image;
@@ -3035,94 +3038,143 @@ namespace {
         return branding_index(name);
     }
 
-    float label_width(const std::string& text) {
-        float w = 0.0f;
-        for (char c : text) {
-            const int i = c == '+' ? branding_index("turn_plus") : digit_image(c);
-            w += i < 0 ? 0.0f : ink_width(i);
-        }
-        return w * kLabelScale;
+    int label_image(char c) {
+        return c == '+' ? branding_index("turn_plus") : digit_image(c);
     }
 
-    // Digits (and '+') from x (units), their tops at y.
-    gpr draw_label(uint8_t* rdram, gpr g, const std::string& text, float x, float y, float shift, float hs, float vs) {
+    // A number (or "+N") in texels: each figure's ink, a little closer than its picture's margin.
+    float label_texels(const std::string& text) {
+        float w = 0.0f;
         for (char c : text) {
-            const int i = c == '+' ? branding_index("turn_plus") : digit_image(c);
+            const int i = label_image(c);
+            w += i < 0 ? 0.0f : ink_width(i) - 0.5f;
+        }
+        return w;
+    }
+
+    // The figures from x (units, the first one's ink at x), their pictures' tops at y; s units a texel.
+    gpr draw_label(uint8_t* rdram, gpr g, const std::string& text, float x, float y, float s, float hs, float vs) {
+        x -= 0.5f * s;  // the pictures' left margin
+        for (char c : text) {
+            const int i = label_image(c);
             if (i < 0) {
                 continue;
             }
-            g = draw_rgba16(rdram, g, i, (x + shift) * hs, y * vs, kLabelScale * hs, kLabelScale * vs);
-            x += ink_width(i) * kLabelScale;
+            g = draw_rgba16(rdram, g, i, x * hs, y * vs, s * hs, s * vs);
+            x += (ink_width(i) - 0.5f) * s;
         }
         return g;
     }
 
-    // One piece of the strip: the round's badge ("Round" over its number), a portrait, the divider before the next
-    // round, or "+N" for the turns that don't fit.
-    struct StripItem {
-        enum Kind { Badge, Portrait, Divider, More } kind;
-        const TurnEntry* e = nullptr;
-        float w = 0.0f;
-        int number = 0;
-        bool dim = false;
-        float x = 0.0f;  // left edge, units of the 4:3 (set when placed)
+    // The strip's pieces, cut from Dan's concept (tools/branding/turn_order.py): their pictures (branding_images.h)
+    // and, in texels, the bar's middle row and a slot's portrait window.
+    struct Piece {
+        int image = -1;
+        float w = 0.0f, h = 0.0f, mid = 0.0f, x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
     };
 
-    float strip_width(const std::vector<StripItem>& items, float gap) {
-        float w = 0.0f;
-        for (const StripItem& it : items) {
-            w += it.w;
+    const Piece& piece(const char* name) {
+        static std::unordered_map<std::string, Piece> pieces;
+        if (auto it = pieces.find(name); it != pieces.end()) {
+            return it->second;
         }
-        return items.empty() ? 0.0f : w + gap * (items.size() - 1);
+        Piece p;
+        p.image = branding_index(name);
+        if (p.image >= 0) {
+            p.w = aidyn::branding::kImages[p.image].w;
+            p.h = aidyn::branding::kImages[p.image].h;
+        }
+        for (const auto& t : aidyn::branding::kTurnPieces) {
+            if (std::strcmp(t.name, name) == 0) {
+                p.mid = t.bar_mid;
+                p.x0 = t.x0, p.y0 = t.y0, p.x1 = t.x1, p.y1 = t.y1;
+            }
+        }
+        return pieces.emplace(name, p).first->second;
     }
 
-    StripItem more_item(int count, bool dim) {
-        return { StripItem::More, nullptr, label_width("+" + std::to_string(count)), count, dim };
+    // One piece of the strip, left to right: the left end with this round's plate, a portrait slot per turn, "+N" on
+    // a plate for the turns that don't fit, the divider, the next round's plate and slots, the right end.
+    struct StripItem {
+        enum Kind { EndL, Slot, More, Divider, Plate, EndR } kind;
+        const TurnEntry* e = nullptr;
+        int number = 0;      // EndL, Plate: the round; More: the turns left out
+        bool dim = false;    // the next round
+        float x = 0.0f;      // left edge, texels from the strip's left
+    };
+
+    const Piece& item_piece(const StripItem& it, bool targeted) {
+        switch (it.kind) {
+            case StripItem::EndL: return piece("to_end_l");
+            case StripItem::More:
+            case StripItem::Plate: return piece("to_plate");
+            case StripItem::Divider: return piece("to_divider");
+            case StripItem::EndR: return piece("to_end_r");
+            case StripItem::Slot:
+            default: return it.e->current ? piece("to_gold") : piece(targeted ? "to_silver" : "to_slot");
+        }
     }
 
-    // The strip at portrait size `size` within `room`; false if not every turn of this round fits (it then ends with
-    // "+N"). The next round follows only if this one fits, with as many of its turns as fit.
+    float strip_texels(std::vector<StripItem>& items) {
+        float w = 0.0f;
+        for (StripItem& it : items) {
+            it.x = w;
+            w += item_piece(it, false).w;
+        }
+        return w;
+    }
+
+    // The strip within `room` texels; false if not every turn of this round fits (it then has "+N"). The next round
+    // follows only if this one fits, with as many of its turns as fit.
     bool lay_out_strip(std::vector<StripItem>& items, const std::vector<TurnEntry>& now,
-                       const std::vector<TurnEntry>& later, float size, float gap, float room) {
+                       const std::vector<TurnEntry>& later, float room) {
         auto this_round = [&](size_t n) {
             items.clear();
-            items.push_back({ StripItem::Badge, nullptr, kBadge, turn_round });
+            items.push_back({ StripItem::EndL, nullptr, turn_round });
             for (size_t k = 0; k < n; k++) {
-                items.push_back({ StripItem::Portrait, &now[k], now[k].current ? kCurrentSize : size });
+                items.push_back({ StripItem::Slot, &now[k] });
             }
             if (n < now.size()) {
-                items.push_back(more_item((int)(now.size() - n), false));
+                items.push_back({ StripItem::More, nullptr, (int)(now.size() - n) });
             }
+        };
+        auto with_end = [&]() {
+            items.push_back({ StripItem::EndR });
+            const float w = strip_texels(items);
+            items.pop_back();
+            return w;
         };
         size_t n = now.size();
         this_round(n);
-        while (strip_width(items, gap) > room && n > 1) {
+        while (with_end() > room && n > 1) {
             this_round(--n);
         }
-        if (n < now.size()) {
-            return false;
-        }
-        const size_t keep = items.size();
-        auto next_round_part = [&](size_t m) {
-            items.resize(keep);
-            items.push_back({ StripItem::Divider, nullptr, 1.0f });
-            items.push_back({ StripItem::Badge, nullptr, kBadge, turn_round + 1, true });
-            for (size_t k = 0; k < m; k++) {
-                items.push_back({ StripItem::Portrait, &later[k], size });
+        const bool all = n == now.size();
+        if (all) {
+            const size_t keep = items.size();
+            auto next_round_part = [&](size_t m) {
+                items.resize(keep);
+                items.push_back({ StripItem::Divider });
+                items.push_back({ StripItem::Plate, nullptr, turn_round + 1, true });
+                for (size_t k = 0; k < m; k++) {
+                    items.push_back({ StripItem::Slot, &later[k], 0, true });
+                }
+                if (m < later.size()) {
+                    items.push_back({ StripItem::More, nullptr, (int)(later.size() - m), true });
+                }
+            };
+            size_t m = later.size();
+            next_round_part(m);
+            while (with_end() > room && m > 0) {
+                next_round_part(--m);
             }
-            if (m < later.size()) {
-                items.push_back(more_item((int)(later.size() - m), true));
+            if (m == 0) {
+                items.resize(keep);  // no room for any of the next round
             }
-        };
-        size_t m = later.size();
-        next_round_part(m);
-        while (strip_width(items, gap) > room && m > 0) {
-            next_round_part(--m);
         }
-        if (m == 0) {
-            items.resize(keep);  // no room for any of the next round
-        }
-        return true;
+        items.push_back({ StripItem::EndR });
+        strip_texels(items);
+        return all;
     }
 }
 
@@ -3247,7 +3299,7 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
     }
 
     // What fits: the room between the two columns (enemies x 21 to 47, the party 270 to 298 of the 4:3; at the
-    // picture's edges with hud_at_edges). A crowded round first gets smaller portraits and gaps.
+    // picture's edges with hud_at_edges). A crowded round first gets a smaller strip.
     const bool wide = hud_wide();
     float aspect = view_aspect();
     if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Window && aidyn::window_aspect() > 0.0f) {
@@ -3255,17 +3307,12 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
     }
     const float room = wide ? std::max(216.0f, 240.0f * aspect - 2.0f * 56.0f) : 216.0f;
     std::vector<StripItem> items;
-    float size = kSize, gap = 3.0f;
-    while (!lay_out_strip(items, now, later, size, gap, room) && size > kSmallest) {
-        size -= 1.0f;
-        gap = 2.0f;
+    float sc = kScale;
+    while (!lay_out_strip(items, now, later, room / sc) && sc > kSmallestScale + 0.001f) {
+        sc = std::max(kSmallestScale, sc - 0.04f);
     }
-    const float width = strip_width(items, gap);
-    float x = 160.0f - width / 2.0f;
-    for (StripItem& it : items) {
-        it.x = x;
-        x += it.w + gap;
-    }
+    const float width = strip_texels(items) * sc;
+    const float left = 160.0f - width / 2.0f;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     // Widescreen: drawn from the picture's centre, every x moved right by shift (rectangle x can't be negative).
     const float shift = wide ? std::max(0.0f, std::ceil(width / 2.0f - 160.0f) + 8.0f) : 0.0f;
@@ -3277,75 +3324,102 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         gEXSetRectAlign(&c[3], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, off, 0, off, 0);
         g = put_cmds(rdram, g, c, 5);
     }
-
-    // Backing, frames, team colours, the divider.
-    g = rect_state(rdram, g);
-    const float left = items.front().x + shift;
-    g = rect(rdram, g, left - 3.0f, kCentreY - kCurrentSize / 2.0f - 2.0f, left + width + 3.0f,
-             kCentreY + kCurrentSize / 2.0f + 3.5f, 0x00000078, hs, vs);
+    // Where each piece goes (units, shift included), and a slot's portrait: the window's width, at its top.
+    struct Placed {
+        const StripItem* it;
+        const Piece* p;
+        float x, y;            // the piece's top left
+        float wx0, wy0, wx1, wy1, ps;
+        bool targeted;
+    };
+    std::vector<Placed> placed;
     for (const StripItem& it : items) {
-        const float px = it.x + shift, top = kCentreY - it.w / 2.0f;
-        if (it.kind == StripItem::Divider) {
-            g = rect(rdram, g, px, kCentreY - 9.0f, px + 1.0f, kCentreY + 9.0f, 0xD2AA5AB4, hs, vs);
-        }
-        if (it.kind != StripItem::Portrait) {
-            continue;
-        }
-        const TurnEntry& e = *it.e;
-        if (e.current) {
-            g = rect(rdram, g, px - 1.0f, top - 1.0f, px + it.w + 1.0f, top + it.w + 1.0f, 0xFFCD5AFF, hs, vs);
-        }
-        if (e.image == 0) {
-            g = rect(rdram, g, px, top, px + it.w, top + it.w, e.next ? 0x303030A0 : 0x404040FF, hs, vs);
-        }
-        const uint32_t team = e.party ? 0x4696FF00 : 0xE13C2D00;
-        const float bar = top + it.w + (e.current ? 1.5f : 1.0f);
-        g = rect(rdram, g, px, bar, px + it.w, bar + 1.5f, team | (e.next ? 0x78 : 0xFF), hs, vs);
+        const bool targeted = it.kind == StripItem::Slot && combat_targeted(rdram, combat, it.e->index);
+        const Piece& pc = item_piece(it, targeted);
+        Placed q{ &it, &pc, left + it.x * sc + shift, kCentreY - pc.mid * sc };
+        q.wx0 = q.x + pc.x0 * sc, q.wy0 = q.y + pc.y0 * sc, q.wx1 = q.x + pc.x1 * sc, q.wy1 = q.y + pc.y1 * sc;
+        q.ps = std::min(q.wx1 - q.wx0, q.wy1 - q.wy0);
+        q.targeted = targeted;
+        placed.push_back(q);
     }
 
-    // The portraits.
+    // A slot without a picture: its window filled dark.
+    g = rect_state(rdram, g);
+    for (const Placed& q : placed) {
+        if (q.it->kind == StripItem::Slot && q.it->e->image == 0) {
+            g = rect(rdram, g, q.wx0, q.wy0, q.wx1, q.wy1, q.it->dim ? 0x202020FF : 0x303030FF, hs, vs);
+        }
+    }
+    // The portraits, in their windows (the game's Borg8_DrawSimple, so the redrawn art replaces them).
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
-    for (const StripItem& it : items) {
-        if (it.kind != StripItem::Portrait || it.e->image == 0) {
+    for (const Placed& q : placed) {
+        if (q.it->kind != StripItem::Slot || q.it->e->image == 0) {
             continue;
         }
-        const gpr img = it.e->image;
-        const float sx = it.w / MEM_HU(0x0A, img), sy = it.w / MEM_HU(0x0C, img);
-        const uint32_t shade = it.e->next ? 150 : 255, alpha = it.e->next ? 200 : 255;
-        g = (gpr)(int32_t)call_game_stack(rdram, ctx, Borg8_DrawSimple, (uint32_t)g, (uint32_t)img,
-                                          f32_bits(it.x + shift), f32_bits(kCentreY - it.w / 2.0f),
-                                          { f32_bits(sx), f32_bits(sy), shade, shade, shade, alpha });
+        const gpr img = q.it->e->image;
+        const float sx = q.ps / MEM_HU(0x0A, img), sy = q.ps / MEM_HU(0x0C, img);
+        const float px = q.wx0 + (q.wx1 - q.wx0 - q.ps) / 2.0f;
+        const uint32_t shade = q.it->dim ? 175 : 255;
+        g = (gpr)(int32_t)call_game_stack(rdram, ctx, Borg8_DrawSimple, (uint32_t)g, (uint32_t)img, f32_bits(px),
+                                          f32_bits(q.wy0), { f32_bits(sx), f32_bits(sy), shade, shade, shade, 255 });
     }
-
-    // The fighters targeted now flash.
-    for (const StripItem& it : items) {
-        if (it.kind == StripItem::Portrait && combat_targeted(rdram, combat, it.e->index)) {
-            const float px = it.x + shift, top = kCentreY - it.w / 2.0f;
-            g = target_flash(rdram, g, px, top, px + it.w, top + it.w, hs, vs);
+    // The bar itself: every piece over the portraits (their windows are clear), the next round's a little darker.
+    copy_branding(rdram);
+    for (const Placed& q : placed) {
+        if (q.p->image < 0) {
+            continue;
+        }
+        g = prompt_state(rdram, g, 255);
+        put(rdram, g, 0xFA000000, q.it->dim ? 0xBEBEBEFF : 0xFFFFFFFF);
+        g = draw_rgba16(rdram, g, q.p->image, q.x * hs, q.y * vs, sc * hs, sc * vs);
+    }
+    // Team colours along the bottom of each window (the party blue, enemies red), and the targets' pulse.
+    g = rect_state(rdram, g);
+    for (const Placed& q : placed) {
+        if (q.it->kind != StripItem::Slot) {
+            continue;
+        }
+        const uint32_t team = q.it->e->party ? 0x3C82F000 : 0xE0322800;
+        const float inset = 0.6f * sc, y1 = q.wy1 - 0.45f * sc;
+        g = rect(rdram, g, q.wx0 + inset, y1 - 0.75f * sc, q.wx1 - inset, y1, team | (q.it->dim ? 0xC8 : 0xFF), hs, vs);
+        if (q.targeted) {
+            g = rect(rdram, g, q.wx0, q.wy0, q.wx1, q.wy1, 0xFFFFFF00u | (uint32_t)(70 * target_pulse()), hs, vs);
         }
     }
-
-    // The labels: each badge ("Round" over the number, centred) and "+N".
+    // The words: "Round" over its number on each plate, "+N" on a plate of its own.
     const int word = branding_index("turn_round");
-    for (const StripItem& it : items) {
-        if (it.kind == StripItem::Badge && word >= 0) {
-            const std::string number = std::to_string(it.number);
-            const float centre = it.x + it.w / 2.0f;
-            g = prompt_state(rdram, g, it.dim ? 150 : 255);
-            g = draw_rgba16(rdram, g, word, (centre + shift - ink_width(word) * kLabelScale / 2.0f) * hs,
-                            (kCentreY - 9.0f) * vs, kLabelScale * hs, kLabelScale * vs);
-            g = draw_label(rdram, g, number, centre - label_width(number) / 2.0f, kCentreY - 4.5f, shift, hs, vs);
+    for (const Placed& q : placed) {
+        float centre = 0.0f;
+        if (q.it->kind == StripItem::EndL) {
+            centre = q.x + 12.4f * sc;
         }
-        else if (it.kind == StripItem::More) {
-            g = prompt_state(rdram, g, it.dim ? 150 : 255);
-            g = draw_label(rdram, g, "+" + std::to_string(it.number), it.x, kCentreY - 6.5f, shift, hs, vs);
+        else if (q.it->kind == StripItem::Plate || q.it->kind == StripItem::More) {
+            centre = q.x + 7.2f * sc;
         }
+        else {
+            continue;
+        }
+        g = prompt_state(rdram, g, 255);
+        put(rdram, g, 0xFA000000, q.it->dim ? 0xC4C4C4FF : 0xFFFFFFFF);
+        if (q.it->kind == StripItem::More) {
+            const std::string text = "+" + std::to_string(q.it->number);
+            g = draw_label(rdram, g, text, centre - label_texels(text) * sc / 2.0f, kCentreY - 5.4f * sc, sc, hs, vs);
+            continue;
+        }
+        if (word >= 0) {
+            const float ww = (ink_width(word) - 0.5f) * sc;
+            g = draw_rgba16(rdram, g, word, (centre - ww / 2.0f - 0.5f * sc) * hs, (kCentreY - 8.4f * sc) * vs,
+                            sc * hs, sc * vs);
+        }
+        const std::string number = std::to_string(q.it->number);
+        g = draw_label(rdram, g, number, centre - label_texels(number) * sc / 2.0f, kCentreY - 3.9f * sc, sc, hs, vs);
     }
     if (wide) {
         g = hud_end(rdram, g);
     }
-    return g;
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
 // ---- ReChronicled page ----
