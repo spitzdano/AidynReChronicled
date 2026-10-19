@@ -46,7 +46,7 @@ namespace aidyn::settings {
         bool controls_card = true;   // the card of button prompts in the field and in combat (View shows / hides it)
         bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's
         bool textures = true;        // every custom texture: the packs below, HD save pictures, redrawn page words, the HD letters' spacing (false: as the N64)
-        bool vsync = false;          // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn (G-Sync / FreeSync)
+        bool vsync = true;           // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn (G-Sync / FreeSync)
         std::vector<std::string> texture_packs{ "hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled" }; // RT64 packs in <data>/texture-packs (folders or .rtz), later ones win
     };
 
