@@ -3323,8 +3323,9 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         gEXSetRectAlign(&c[3], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, off, 0, off, 0);
         g = put_cmds(rdram, g, c, 5);
     }
-    // Where each piece goes (units, shift included), and a slot's portrait: filling its window, centred (the gold
-    // frame's window is a little taller than wide: the portrait's sides go under the frame).
+    // Where each piece goes (units, shift included), and a slot's portrait: filling its window, centred, and a texel
+    // larger all round so its soft edges go under the frame (the gold frame's window is a little taller than wide: the
+    // portrait's sides go under it too).
     struct Placed {
         const StripItem* it;
         const Piece* p;
@@ -3338,16 +3339,17 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         const Piece& pc = item_piece(it, targeted);
         Placed q{ &it, &pc, left + it.x * sc + shift, kCentreY - pc.mid * sc };
         q.wx0 = q.x + pc.x0 * sc, q.wy0 = q.y + pc.y0 * sc, q.wx1 = q.x + pc.x1 * sc, q.wy1 = q.y + pc.y1 * sc;
-        q.ps = std::max(q.wx1 - q.wx0, q.wy1 - q.wy0);
+        q.ps = std::max(q.wx1 - q.wx0, q.wy1 - q.wy0) + 1.0f * sc;
         q.targeted = targeted;
         placed.push_back(q);
     }
 
-    // A slot without a picture: its window backed dark.
+    // Every window backed solid dark (the portraits' see-through edges, a slot without a picture), a texel into the
+    // frame all round.
     g = rect_state(rdram, g);
     for (const Placed& q : placed) {
-        if (q.it->kind == StripItem::Slot && q.it->e->image == 0) {
-            g = rect(rdram, g, q.wx0, q.wy0, q.wx1, q.wy1, q.it->dim ? 0x141414FF : 0x1C1C1CFF, hs, vs);
+        if (q.it->kind == StripItem::Slot) {
+            g = rect(rdram, g, q.wx0 - sc, q.wy0 - sc, q.wx1 + sc, q.wy1 + sc, 0x141414FF, hs, vs);
         }
     }
     // The portraits, in their windows (the game's Borg8_DrawSimple, so the redrawn art replaces them).

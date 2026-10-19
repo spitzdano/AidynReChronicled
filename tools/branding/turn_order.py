@@ -28,7 +28,7 @@ PIECES = {
     "to_end_l": ((0, 222, 214, 484), "end_l", {"text": [(96, 270, 218, 309), (122, 314, 178, 424)], "tip": 76}),
     "to_plate": ((986, 222, 1158, 484), "plate", {"text": [(1000, 272, 1120, 312), (1020, 312, 1095, 400)]}),
     "to_slot": ((470, 222, 690, 484), "slot", {"window": (490, 263, 669, 444)}),
-    "to_gold": ((214, 168, 471, 500), "slot", {"window": (247, 245, 443, 466)}),
+    "to_gold": ((214, 168, 471, 500), "slot", {"window": (247, 245, 443, 446), "rows": (452, 464, 464)}),
     "to_silver": ((1556, 222, 1772, 484), "slot", {"window": (1575, 263, 1749, 442)}),
     "to_divider": ((914, 168, 1000, 500), "divider", {}),
     "to_end_r": ((1958, 222, 2078, 484), "end_r", {"tip": 1984}),
@@ -101,6 +101,12 @@ def cut(name):
     info = {"bar_mid": (BAR_MID - y0) * TEXELS_PER_PX}
     if "text" in extra:
         rgb = _fill_text(rgb, extra["text"], x0, y0)
+    if "rows" in extra:  # the gold frame's blue team bar, under its window: its blue painted over with the band below
+        d0, d1, src = (v - y0 for v in extra["rows"])
+        for k in range(d1 - d0):
+            row = rgb[d0 + k]
+            blue = (row[:, 2] > row[:, 0] + 0.08) | (row[:, 2] > 0.55)
+            row[blue] = rgb[src + k * 10 // (d1 - d0)][blue]
     # Coverage: inside the bar solid; outside it (and the ends' tips) the brightness over black.
     soft = 0.14 if kind in ("end_l", "end_r") else 0.45  # the ends' tips are metal; the gold frame's haze fades
     over_black = np.clip((rgb.max(axis=2) - 0.02) / soft, 0, 1)
