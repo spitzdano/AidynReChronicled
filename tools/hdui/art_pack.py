@@ -25,6 +25,13 @@ import redone  # noqa: E402
 import romimages  # noqa: E402
 
 
+# Textures the game draws whole although their palettes mark texels transparent: the starting forest's pine walls,
+# whose bottom rows are a fringe of transparent spikes that the game draws as dark foliage. RT64 cuts a replacement's
+# transparent texels out instead, so where a wall's foot stood clear of the ground (a corner on the night path in Dan's
+# first save) the sky showed through as a pale wedge. Their replacements are made fully opaque, as the game shows them.
+DRAWN_WHOLE = {3749, 3858, 3860, 3861}
+
+
 def world_textures(rom_path, textures, out, tmemhash):
     """Replacements for the redrawn world textures ({ROM index: path}); returns rt64.json entries."""
     import tempfile
@@ -61,6 +68,9 @@ def world_textures(rom_path, textures, out, tmemhash):
             pic = box_down(img, lw * redone.SCALE, lh * redone.SCALE)
         else:
             continue
+        if index in DRAWN_WHOLE:
+            pic = pic.copy()
+            pic[..., 3] = 255
         write_png(out / f"{h_}.png", pic.shape[1], pic.shape[0], np.ascontiguousarray(pic).tobytes())
         entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "stream"})
     print(f"art_pack.py: {len(infos)} world textures, {len(entries)} replacements")
