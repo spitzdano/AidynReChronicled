@@ -41,6 +41,7 @@ namespace aidyn {
     // The pause menu's ReChronicled page changed settings.json graphics.textures / vsync: apply on the next frame.
     void refresh_textures();
     void refresh_vsync();
+    void refresh_aspect();   // the Display page's Widescreen: picture shape again on the next frame
     bool redrawn_art();
 
     // Save pictures (src/game/save_pictures.cpp). RT64 copies part of a framebuffer's full-resolution picture (area in

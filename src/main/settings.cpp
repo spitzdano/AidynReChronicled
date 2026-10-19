@@ -90,6 +90,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["game"]["save_backups"] = g_game.save_backups;
         j["graphics"]["render_height"] = g_graphics.render_height;
         j["graphics"]["aspect"] = g_graphics.aspect_text;
+        j["graphics"]["widescreen"] = g_graphics.widescreen;
         j["graphics"]["msaa"] = g_graphics.msaa;
         j["graphics"]["supersampling"] = g_graphics.supersampling;
         j["graphics"]["fps_limit"] = g_graphics.fps_limit;
@@ -175,6 +176,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
                 f["game"]["text_pack_added"] = true;
             });
         }
+        g_graphics.widescreen = gfx.value("widescreen", g_graphics.widescreen);
         const std::string aspect = gfx.value("aspect", g_graphics.aspect_text);
         g_graphics.aspect_text = aspect;
         if (aspect == "4:3") {
@@ -191,6 +193,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
             }
             g_graphics.aspect = Aspect::Ratio;
             g_graphics.aspect_ratio = ratio;
+        }
+        if (!g_graphics.widescreen) {
+            g_graphics.aspect = Aspect::Original;
         }
     }
     catch (const nlohmann::json::exception& e) {
@@ -263,6 +268,24 @@ void aidyn::settings::save_number(const char* section, const char* key, double v
             j[section][key] = value;
         }
     });
+}
+
+void aidyn::settings::apply_widescreen() {
+    if (g_graphics.widescreen && g_graphics.aspect_text == "4:3") {
+        g_graphics.aspect_text = "16:9";
+        edit_file(g_folder / "settings.json", [](nlohmann::ordered_json& j) { j["graphics"]["aspect"] = "16:9"; });
+    }
+    const std::string& a = g_graphics.aspect_text;
+    if (!g_graphics.widescreen || a == "4:3") {
+        g_graphics.aspect = Aspect::Original;
+    }
+    else if (a == "window") {
+        g_graphics.aspect = Aspect::Window;
+    }
+    else {
+        g_graphics.aspect = Aspect::Ratio;
+        g_graphics.aspect_ratio = parse_ratio(a);
+    }
 }
 
 void aidyn::settings::save_controls_card(bool shown) {

@@ -3359,43 +3359,60 @@ extern "C" void PlayAudioSound(uint8_t* rdram, recomp_context* ctx);
 namespace aidyn {
     void refresh_textures();  // src/main/rt64_context.cpp
     void refresh_vsync();
+    void refresh_aspect();
 }
 
 namespace {
-    constexpr uint16_t kRcId = 0x7A11;                          // our entry's id (the game's are 0xA0..0x17A and 9999)
-    constexpr gpr kRcText = (gpr)(int32_t)0x80F81100;           // the entry's text (above the game's 15 MB), copied by WidgetClipText
+    // Our entries' ids (the game's are 0xA0..0x17A and 9999), their texts and their pages' titles.
+    constexpr uint16_t kRcId = 0x7A11, kDisplayId = 0x7A12;
+    constexpr gpr kRcText = (gpr)(int32_t)0x80F81100;           // the entries' texts (above the game's 15 MB), 0x20 each
+    enum RcKind { kRcGameplay = 0, kRcDisplay = 1 };
+    constexpr const char* kRcEntryText[] = { "ReChronicled", "Display" };
+    constexpr uint16_t kRcEntryId[] = { kRcId, kDisplayId };
     constexpr gpr kBigAssMenu = (gpr)(int32_t)0x800D9558;       // gGlobals.BigAssMenu (the pause menu)
     constexpr gpr kSfx = (gpr)(int32_t)0x800D9380;              // gGlobals.SFXStruct
     // The list's colours (MakeScrollList: SetColor(COLOR_RED1), SetScrollMenuColors(COLOR_BROWN2, COLOR_PURPLE1, 0x14)):
     // red-brown, the highlighted entry pulsing from dark brown to purple and back over 20 frames each way.
     constexpr uint32_t kMenuInk = 0x825050, kMenuHighlight0 = 0x442A22, kMenuHighlight1 = 0x978DBF;
-    constexpr float kRowsLeft = 76.0f, kRowsRight = 286.0f, kRowsTop = 50.0f, kRowStep = 13.0f;  // N64 pixels, 4:3
+    constexpr float kRowsLeft = 76.0f, kRowsRight = 286.0f, kRowsTop = 54.0f, kRowStep = 16.0f;  // N64 pixels, 4:3
 
     struct RcRow {
         const char* label;
         bool* flag;           // a switch; nullptr: the draw distance
         const char* key;      // in settings.json's "graphics"
         void (*applied)(uint8_t* rdram);
+        bool (*shown)() = nullptr;  // what the row shows when not just *flag (Widescreen: the picture really wide)
     };
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
     constexpr const char* kDistanceWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_25", "rc_dd_3" };
 
-    std::vector<RcRow> rc_rows() {
+    std::vector<RcRow> rc_rows(int kind) {
         auto& gfx = aidyn::settings::graphics_rw();
+        if (kind == kRcDisplay) {
+            return {
+                { "rc_widescreen", &gfx.widescreen, "widescreen",
+                  [](uint8_t*) { aidyn::settings::apply_widescreen(); aidyn::refresh_aspect(); },
+                  [] { return aidyn::settings::graphics().aspect != aidyn::settings::Aspect::Original; } },
+                { "rc_textures", &gfx.textures, "textures", [](uint8_t* rdram) { aidyn::refresh_textures(); apply_font_widths(rdram); } },
+                { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
+                { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
+                { "rc_draw_distance", nullptr, "draw_distance", nullptr },
+            };
+        }
         return {
-            { "rc_textures", &gfx.textures, "textures", [](uint8_t* rdram) { aidyn::refresh_textures(); apply_font_widths(rdram); } },
-            { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
-            { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
-            { "rc_draw_distance", nullptr, "draw_distance", nullptr },
             { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
         };
+    }
+
+    bool rc_on(const RcRow& r) {
+        return r.shown != nullptr ? r.shown() : *r.flag;
     }
 
     int distance_index() {
@@ -3411,11 +3428,12 @@ namespace {
         bool open = false, closing = false;
         gpr menu = 0, sub = 0, list = 0;  // the WidgetOptionsMenu, its substruct and its list
         int fade = 0;                     // 0..255, like the menu's own fades (60 a frame)
-        int row = 0;
+        int kind = kRcGameplay;
         uint32_t held = 0;                // last frame's buttons (N64 bits; the stick as D-pad bits)
         int repeat = 0;                   // frames up / down / left / right have been held
         int pulse = 0;                    // frames since opening: the highlight's colour
     } rc;
+    int rc_row[2] = { 0, 0 };             // each page's highlighted row, kept between visits
 
     uint32_t rc_highlight() {
         const int k = rc.pulse % 40;
@@ -3435,7 +3453,7 @@ namespace {
     void rc_change(uint8_t* rdram, const RcRow& r, int step) {
         auto& gfx = aidyn::settings::graphics_rw();
         if (r.flag != nullptr) {
-            *r.flag = !*r.flag;
+            *r.flag = !rc_on(r);
             if (r.flag == &gfx.controls_card) {
                 aidyn::input::set_controls_card(*r.flag);  // its own state in input.cpp, and saved
             } else {
@@ -3459,9 +3477,7 @@ namespace {
     }
 
     void rc_end() {
-        const int row = rc.row;
         rc = RcPage{};
-        rc.row = row;
         aidyn::input::set_capture(false);
     }
 }
@@ -3470,24 +3486,27 @@ namespace {
     bool rc_entry_added = false;  // this MakeScrollList has added ours (after Theater)
 }
 
-// MakeScrollList: after Theater is appended, and where the list ends (s1 the substruct, list at +0).
+// MakeScrollList: after Theater is appended, and where the list ends (s1 the substruct, list at +0): Display, then
+// ReChronicled.
 extern "C" void aidyn_rc_entry(uint8_t* rdram, recomp_context* ctx) {
     const gpr list = MEM_W(0, ctx->r17);
     if (!heap_pointer(list)) {
         return;
     }
     rc_entry_added = true;
-    const char text[] = "ReChronicled";
-    for (size_t i = 0; i < sizeof(text); i++) {
-        MEM_B(i, kRcText) = (int8_t)text[i];
+    for (int kind : { kRcDisplay, kRcGameplay }) {
+        const gpr text = kRcText + 0x20 * kind;
+        for (size_t i = 0; i <= std::strlen(kRcEntryText[kind]); i++) {
+            MEM_B(i, text) = (int8_t)kRcEntryText[kind][i];
+        }
+        const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+        if (!heap_pointer(memory)) {
+            return;
+        }
+        const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory, (uint32_t)text, 400);
+        MEM_H(0x5E, entry) = (int16_t)kRcEntryId[kind];
+        call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
     }
-    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
-    if (!heap_pointer(memory)) {
-        return;
-    }
-    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory, (uint32_t)kRcText, 400);
-    MEM_H(0x5E, entry) = (int16_t)kRcId;
-    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
 }
 
 extern "C" void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx) {
@@ -3499,10 +3518,12 @@ extern "C" void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx) {
 
 // PauseMenuSelectCallback, the Menu page's entry chosen: v1 its id, s0 the substruct, s2 the WidgetOptionsMenu.
 extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
-    if ((ctx->r3 & 0xFFFF) != kRcId || rc.open) {
+    const uint32_t id = ctx->r3 & 0xFFFF;
+    if ((id != kRcId && id != kDisplayId) || rc.open) {
         return 0;
     }
     rc.open = true;
+    rc.kind = id == kDisplayId ? kRcDisplay : kRcGameplay;
     rc.closing = false;
     rc.menu = ctx->r18;
     rc.sub = ctx->r16;
@@ -3536,12 +3557,14 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     rc.repeat = dirs != 0 ? rc.repeat + 1 : 0;
     const uint32_t repeated = (rc.repeat > 24 && rc.repeat % 6 == 0) ? dirs : 0;
     const uint32_t act = pressed | repeated;
-    const std::vector<RcRow> rows = rc_rows();
+    const std::vector<RcRow> rows = rc_rows(rc.kind);
+    int& row = rc_row[rc.kind];
+    row = std::min(row, (int)rows.size() - 1);
     if (!rc.closing && rc.fade == 255) {
-        if (act & 0x0800) { rc.row = (rc.row + (int)rows.size() - 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
-        if (act & 0x0400) { rc.row = (rc.row + 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
-        if (act & 0x8000) { rc_change(rdram, rows[rc.row], 1); rc_sound(rdram, ctx, 0x740, 60); }
-        else if (act & 0x0300) { rc_change(rdram, rows[rc.row], (act & 0x0200) ? -1 : 1); rc_sound(rdram, ctx, 0x740, 60); }
+        if (act & 0x0800) { row = (row + (int)rows.size() - 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0400) { row = (row + 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x8000) { rc_change(rdram, rows[row], 1); rc_sound(rdram, ctx, 0x740, 60); }
+        else if (act & 0x0300) { rc_change(rdram, rows[row], (act & 0x0200) ? -1 : 1); rc_sound(rdram, ctx, 0x740, 60); }
         if (pressed & (0x4000 | 0x1000)) {  // B, Start: back to the list
             rc.closing = true;
             rc_sound(rdram, ctx, 0x741, 60);
@@ -3575,18 +3598,25 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const float centre = (kRowsLeft + kRowsRight) / 2.0f;
     rc.pulse++;
     g = prompt_state(rdram, g, (uint8_t)rc.fade);
-    const int title_l = branding_index("rc_title_l"), title_r = branding_index("rc_title_r");  // halves: 4 KB of TMEM each
-    if (title_l >= 0 && title_r >= 0) {
-        const float w = aidyn::branding::kImages[title_l].w, x = centre - w;
-        word("rc_title_l", x, kRowsTop - 29.0f, false);
-        word("rc_title_r", x + w, kRowsTop - 29.0f, false);
+    if (rc.kind == kRcDisplay) {
+        const int title = branding_index("rc_title_display");
+        if (title >= 0) {
+            word("rc_title_display", centre - aidyn::branding::kImages[title].w / 2.0f, kRowsTop - 31.0f, false);
+        }
+    } else {
+        const int title_l = branding_index("rc_title_l"), title_r = branding_index("rc_title_r");  // halves: 4 KB of TMEM each
+        if (title_l >= 0 && title_r >= 0) {
+            const float w = aidyn::branding::kImages[title_l].w, x = centre - w;
+            word("rc_title_l", x, kRowsTop - 31.0f, false);
+            word("rc_title_r", x + w, kRowsTop - 31.0f, false);
+        }
     }
     for (int k = 0; k < (int)rows.size(); k++) {
         const RcRow& r = rows[k];
         const float y = kRowsTop + kRowStep * k;
-        ink(k == rc.row ? rc_highlight() : kMenuInk);
+        ink(k == row ? rc_highlight() : kMenuInk);
         word(r.label, kRowsLeft, y, false);
-        word(r.flag != nullptr ? (*r.flag ? "rc_on" : "rc_off") : kDistanceWords[distance_index()], kRowsRight, y, true);
+        word(r.flag != nullptr ? (rc_on(r) ? "rc_on" : "rc_off") : kDistanceWords[distance_index()], kRowsRight, y, true);
     }
     g = prompt_state(rdram, g, (uint8_t)rc.fade);
     const int change = branding_index("rc_hint_change"), back = branding_index("rc_hint_back");

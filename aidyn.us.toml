@@ -449,11 +449,18 @@ text = "extern int aidyn_title_back(uint8_t* rdram, recomp_context* ctx); if (ai
 # list; s1 the substruct), and PauseMenuSelectCallback
 # (func_800403AC) where it reads the chosen entry's id (v1), which returns through its exit L_8004054C for ours.
 # The list is made with room for six entries (new WidgetScrollMenu(6)) and Append doesn't check: a seventh would be
-# written past its array, into the heap (the game hung freeing the pause menu). Room for eight.
+# written past its array, into the heap (the game hung freeing the pause menu). Ours are two (Display, ReChronicled):
+# room for ten. And the eight entries sit 3 pixels apart instead of 5 (Utilities::SetArrayVSpace), clear of the page
+# arrow.
 [[patches.instruction]]
 func = "func_8003F8C4"
 vram = 0x8003F92C
-value = 0x24050008   # addiu $a1, $zero, 8 (was 6)
+value = 0x2405000A   # addiu $a1, $zero, 10 (was 6)
+
+[[patches.instruction]]
+func = "func_8003F8C4"
+vram = 0x8003FBDC
+value = 0x24050003   # addiu $a1, $zero, 3 (was 5)
 
 [[patches.hook]]
 func = "func_8003F8C4"

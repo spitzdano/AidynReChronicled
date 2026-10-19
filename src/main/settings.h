@@ -28,7 +28,8 @@ namespace aidyn::settings {
 
     struct Graphics {
         int render_height = 1080;    // internal resolution in lines (240 = N64); 0 = largest integer scale that fits the window
-        Aspect aspect = Aspect::Ratio;
+        Aspect aspect = Aspect::Ratio;   // in effect: Original while widescreen is off
+        bool widescreen = true;          // false: 4:3, the N64's picture, whatever "aspect" says (the Display page)
         std::string aspect_text = "16:9"; // as written in settings.json
         double aspect_ratio = 16.0 / 9.0; // width / height, for Aspect::Ratio
         int msaa = 4;                // 0, 2, 4 or 8 (capped to what the GPU supports)
@@ -66,4 +67,7 @@ namespace aidyn::settings {
     Game& game_rw();
     void save_bool(const char* section, const char* key, bool value);
     void save_number(const char* section, const char* key, double value);
+    // The Display page's Widescreen switch: graphics().aspect again from "aspect" and widescreen (turning it on with
+    // "aspect": "4:3" makes that "16:9", saved). Saving widescreen itself is the caller's.
+    void apply_widescreen();
 }

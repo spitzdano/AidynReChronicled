@@ -531,7 +531,7 @@ void aidyn::set_gap_fill_horizon(int row) {
 }
 
 // The pause menu's ReChronicled page: textures on / off (the packs again, or none) and vsync, applied on the next frame.
-static std::atomic_bool vsync_dirty{ true };
+static std::atomic_bool vsync_dirty{ true }, aspect_dirty{ false };
 
 void aidyn::refresh_textures() {
     redrawn_art_reload = true;
@@ -541,10 +541,18 @@ void aidyn::refresh_vsync() {
     vsync_dirty = true;
 }
 
+void aidyn::refresh_aspect() {
+    aspect_dirty = true;
+}
+
 void aidyn::RT64Context::send_dl(const OSTask* task) {
     if (vsync_dirty.exchange(false) && app->swapChain != nullptr) {
         // FIFO (vsync) or immediate; plume rebuilds the swap chain with it on the next present.
         app->swapChain->setVsyncEnabled(aidyn::settings::graphics().vsync);
+    }
+    if (aspect_dirty.exchange(false)) {  // the Display page's Widescreen: the picture's shape again
+        set_application_user_config(app.get(), ultramodern::renderer::get_graphics_config());
+        app->updateUserConfig(true);
     }
     app->sharedQueueResources->gapFillHorizon = gap_fill_horizon.load(std::memory_order_relaxed);
     if (redrawn_art_reload.exchange(false)) {  // F2 or the textures switch: the packs again (a few seconds), or none

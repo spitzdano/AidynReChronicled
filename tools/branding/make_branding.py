@@ -443,7 +443,7 @@ IMAGES += [("verno_v", 6, 9, version_label("v", 44)), ("verno_dot", 4, 9, versio
            ("verno_dev", 14, 9, version_label("dev", 44))]
 IMAGES += [(f"verno_{d}", 6, 9, version_label(str(d), 44)) for d in range(10)]
 # The pause menu's ReChronicled page: its title, each row's name and the values (tinted by the game), and the hints.
-RC_WORDS = [("rc_textures", "Textures"), ("rc_vsync", "VSync"), ("rc_turn_order", "Turn order"),
+RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_vsync", "VSync"), ("rc_turn_order", "Turn order"),
             ("rc_controls_card", "Controls card"), ("rc_button_prompts", "Button prompts"),
             ("rc_hud_edges", "HUD at the screen edges"),
             ("rc_draw_distance", "Draw distance"), ("rc_smooth_loops", "Smooth walk cycles"),
@@ -461,6 +461,8 @@ def half(draw, w, h, right):
     return part
 
 
+IMAGES += [("rc_title_display", int(ink_width("Display", MARCELLUS, TITLE_SIZE) / SS) + 10, 25,
+            page_title("Display", TITLE_SIZE, 5))]
 IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, False)),
            ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, True))]
 IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]

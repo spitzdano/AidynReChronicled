@@ -182,6 +182,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
     "graphics": {
         "render_height": 1080,
         "aspect": "16:9",
+        "widescreen": true,
         "msaa": 4,
         "supersampling": 2,
         "fps_limit": 120,
@@ -209,6 +210,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `save_backups` | how many copies of the Controller Pak to keep in `~/.local/share/AidynReChronicled/backups` (made at start and before each save; 0 = none) |
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |
+| `widescreen` | `false`: 4:3, the N64's picture, whatever `aspect` says (the Display page's switch; turning it on with `"aspect": "4:3"` sets `"16:9"`) |
 | `fullscreen` | `true`: borderless fullscreen on the display the window is on (F11 or Alt+Enter switches while playing); with `"aspect": "window"` the picture takes that display's shape (21:9 on an ultrawide). `AIDYN_WINDOWED=1` starts in a window whatever this says (`tools/dev/pad.sh` uses it) |
 | `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate (and never above it). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
 | `msaa` | 0, 2, 4 or 8 |
@@ -227,9 +229,10 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
 
-**In the game.** The pause menu's Menu page has a **ReChronicled** entry below Theater (in a battle, last): a page of
-the switches above that can change while playing (`textures`, `vsync`, `turn_order`, `controls_card`, `button_prompts`, `hud_at_edges`,
-`draw_distance` from 1 to 3 in halves, `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`).
+**In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, last), each a page of the
+switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `hud_at_edges`,
+`draw_distance` from 1 to 3 in halves) and **ReChronicled** (`turn_order`, `controls_card`, `button_prompts`,
+`smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
 packs load, as F2 does.
