@@ -32,6 +32,10 @@ namespace {
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
+gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
+void combat_log_new_battle();
+bool combat_log_frame = false;     // aidyn_prompts: in combat this frame, the log to be drawn
+float combat_card_top = 240.0f;    // the combat controls card's top this frame (240: not shown)
 
 namespace aidyn {
     void set_gap_fill_horizon(int row);  // src/main/rt64_context.cpp
@@ -44,6 +48,9 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     gpr g = ctx->r4;
     g = aidyn_ff_marker(rdram, g);
     g = aidyn_prompts(rdram, g);
+    if (combat_log_frame) {
+        g = draw_combat_log(rdram, ctx, g, combat_card_top);
+    }
     g = aidyn_rc_page(rdram, ctx, g);
     if (aidyn::settings::graphics().overscan_borders) {
         const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager);
@@ -2470,9 +2477,11 @@ namespace {
             y0 = kMessageTop - 3.0f - height - 2 * kPad;
         }
         const auto& p = aidyn::branding::kImages[panel];
+        if (card.bottom) {
+            combat_card_top = y0;  // the combat log goes above it
+        }
+        (void)p;  // no backing (Dan): the rows' letters have their own dark edge
         g = hud_begin(rdram, g, false);
-        g = prompt_state(rdram, g, 150);
-        g = draw_rgba16(rdram, g, panel, x0 * hs, y0 * vs, (width + 2 * kPad) / p.w * hs, (height + 2 * kPad) / p.h * vs);
         g = prompt_state(rdram, g, 255);
         float y = y0 + kPad;
         for (int k = 0; k < n; k++) {
@@ -2789,6 +2798,8 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     }
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
+    combat_card_top = 240.0f;
+    combat_log_frame = mode == 2 && !aidyn::input::start_held();
     if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen && !combat_menu_box.seen) {
         return g;
     }
@@ -3181,6 +3192,7 @@ extern "C" void aidyn_turn_round(int next) {
     turn_round = next ? turn_round + 1 : 1;
     if (!next) {
         roll_turn_rank();
+        combat_log_new_battle();
     }
 }
 
@@ -3489,6 +3501,7 @@ namespace {
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
+            { "rc_combat_log", &gfx.combat_log, "combat_log", nullptr },
             { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
@@ -3963,4 +3976,285 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
     MEM_W(8, book) = (int32_t)kHelpText;
     MEM_H(0x10, book) = (int16_t)at;
     MEM_B(0x12, book) = (int8_t)total;
+}
+
+// ---- Combat log ----
+// A log of the fight at the bottom left, in the game's own letters: every message the game writes in combat's
+// message box (turns, attacks, hits, misses, damage, kills, spells, healing, potions, fleeing), many of which it shows
+// only for a moment or replaces at once, and "Round N" when a round begins. They all go through
+// copy_string_to_textbox (0x8005E604: a0 gCombatP, a1 the text; aidyn.us.toml hooks its entry). "X begins action" is
+// written more than once a turn: a line the same as the last one, in the same turn of the same round, is left out.
+// Each message is split into coloured parts (the party's names blue, enemies' red, hit points lost orange and gained
+// green, the rest parchment) and wrapped to the log's width, measured with the game's font (Font::GetWidthScaled);
+// the last kLogShown lines are drawn at the end of the frame with Font::printSimple (func_800AA6E8), with a soft
+// shadow and no backing, older lines dimmer: in the corner when the picture is wide enough to clear the
+// message box, else above it right of the enemies' column, and above the controls card when that is shown. The latest fight is also written to
+// combat-log.txt in the data folder. settings.json graphics.combat_log (the ReChronicled page). AIDYN_COMBAT_LOG_DEBUG=1
+// prints each message.
+extern "C" void func_800AA6E8(uint8_t* rdram, recomp_context* ctx);  // Font::printSimple(font, Gfx**, txt, x, y, sx, sy)
+extern "C" void Font__GetWidthScaled(uint8_t* rdram, recomp_context* ctx);
+extern "C" void Font__SetFace(uint8_t* rdram, recomp_context* ctx);
+
+#include <deque>
+
+namespace {
+    constexpr gpr kFontPtr = (gpr)(int32_t)0x800D968C;  // gGlobals.font
+    constexpr gpr kLogText = (gpr)(int32_t)0x80F81200;  // a part's text for the font (256 bytes)
+    constexpr gpr kLogGfx = (gpr)(int32_t)0x80F81300;   // printSimple's Gfx**
+    constexpr uint32_t kMainFont = 28;
+    constexpr float kLogScale = 0.62f, kLogLine = 6.6f, kLogPad = 2.5f;
+    constexpr int kLogShown = 7;
+    constexpr uint32_t kLogInk = 0xEADFC8, kLogParty = 0x8CBCFF, kLogEnemy = 0xFF8A78, kLogHurt = 0xFFA040,
+                       kLogHeal = 0x86DC86, kLogRound = 0xD8B070;
+
+    struct LogPart {
+        std::string text;
+        uint32_t rgb;
+    };
+    struct LogLine {
+        std::vector<LogPart> parts;
+    };
+    std::deque<LogLine> combat_log;
+    std::string log_last_text;
+    int log_last_turn = -1, log_last_round = -1, log_round_shown = 0;
+    float log_width = 140.0f;  // units: the log's text width (set by the draw from the room there is)
+    FILE* log_file = nullptr;
+
+    // The font set to the main face and the log's scale meanwhile; put back after.
+    struct FontState {
+        uint32_t w[8];
+    };
+    FontState font_save(uint8_t* rdram, gpr font) {
+        FontState st;
+        for (int k = 0; k < 8; k++) st.w[k] = (uint32_t)MEM_W(4 + 4 * k, font);
+        return st;
+    }
+    void font_restore(uint8_t* rdram, gpr font, const FontState& st) {
+        for (int k = 0; k < 8; k++) MEM_W(4 + 4 * k, font) = (int32_t)st.w[k];
+    }
+
+    void put_text(uint8_t* rdram, const std::string& text) {
+        const size_t n = std::min<size_t>(text.size(), 250);
+        for (size_t i = 0; i < n; i++) MEM_B(i, kLogText) = (int8_t)text[i];
+        MEM_B(n, kLogText) = 0;
+    }
+
+    float text_width(uint8_t* rdram, recomp_context* ctx, gpr font, const std::string& text) {
+        put_text(rdram, text);
+        return (float)(int32_t)call_game(rdram, ctx, Font__GetWidthScaled, (uint32_t)font, (uint32_t)kLogText,
+                                         f32_bits(kLogScale));
+    }
+
+    // The fighters' names, longest first, with their side.
+    std::vector<std::pair<std::string, bool>> fighter_names(uint8_t* rdram, gpr combat) {
+        std::vector<std::pair<std::string, bool>> names;
+        const int ents = std::min<int>(MEM_BU(kEntCount, combat), kMaxEnts), party = MEM_BU(kPartyCount, combat);
+        for (int i = 0; i < ents; i++) {
+            const gpr ent = MEM_W(kCombatEnts + 4 * i, combat);
+            const gpr sheet = heap_pointer(ent) ? MEM_W(kCharSheet, ent) : 0;
+            const gpr name = heap_pointer(sheet) ? MEM_W(4, sheet) : 0;
+            if (!heap_pointer(name & ~(gpr)3)) continue;  // a string: any byte
+            std::string s;
+            for (int k = 0; k < 40; k++) {
+                const char c = (char)MEM_B(k, name);
+                if (c == 0) break;
+                s += c;
+            }
+            if (!s.empty()) names.push_back({ s, i < party });
+        }
+        std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
+        return names;
+    }
+
+    // A message in coloured parts.
+    std::vector<LogPart> colour_parts(const std::string& text, const std::vector<std::pair<std::string, bool>>& names) {
+        const bool hurt = text.find(" loses ") != std::string::npos, heal = text.find(" gains ") != std::string::npos;
+        std::vector<LogPart> parts;
+        auto add = [&](const std::string& t, uint32_t rgb) {
+            if (t.empty()) return;
+            if (!parts.empty() && parts.back().rgb == rgb) parts.back().text += t;
+            else parts.push_back({ t, rgb });
+        };
+        size_t i = 0;
+        while (i < text.size()) {
+            bool matched = false;
+            for (const auto& [name, party] : names) {
+                if (text.compare(i, name.size(), name) == 0) {
+                    add(name, party ? kLogParty : kLogEnemy);
+                    i += name.size();
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) continue;
+            if (std::isdigit((unsigned char)text[i])) {
+                size_t j = i;
+                while (j < text.size() && std::isdigit((unsigned char)text[j])) j++;
+                add(text.substr(i, j - i), hurt ? kLogHurt : heal ? kLogHeal : kLogRound);
+                i = j;
+                continue;
+            }
+            add(std::string(1, text[i]), kLogInk);
+            i++;
+        }
+        return parts;
+    }
+
+    // Wrapped to log_width: words kept whole (a part may end mid-line and the next start there).
+    void push_wrapped(uint8_t* rdram, recomp_context* ctx, gpr font, const std::vector<LogPart>& parts) {
+        struct Word { std::string text; uint32_t rgb; bool space_before; };
+        std::vector<Word> words;
+        bool space = false;
+        for (const LogPart& p : parts) {
+            std::string cur;
+            for (char c : p.text) {
+                if (c == ' ') {
+                    if (!cur.empty()) { words.push_back({ cur, p.rgb, space }); cur.clear(); }
+                    space = true;
+                }
+                else {
+                    if (cur.empty() && !words.empty() && !space && words.back().rgb != p.rgb) {
+                        // a new colour right after the last word (no space): the same word, another part
+                    }
+                    cur += c;
+                }
+            }
+            if (!cur.empty()) { words.push_back({ cur, p.rgb, space }); space = false; }
+        }
+        const float space_w = std::max(1.0f, text_width(rdram, ctx, font, "a a") - text_width(rdram, ctx, font, "aa"));
+        LogLine line;
+        float x = 0.0f;
+        for (const Word& w : words) {
+            const float ww = text_width(rdram, ctx, font, w.text);
+            const float gap = (w.space_before && x > 0.0f) ? space_w : 0.0f;
+            if (x > 0.0f && x + gap + ww > log_width) {
+                combat_log.push_back(line);
+                line = LogLine{};
+                x = 0.0f;
+            }
+            const std::string t = (w.space_before && x > 0.0f) ? " " + w.text : w.text;
+            if (!line.parts.empty() && line.parts.back().rgb == w.rgb) line.parts.back().text += t;
+            else line.parts.push_back({ t, w.rgb });
+            x += (x > 0.0f ? gap : 0.0f) + ww;
+        }
+        if (!line.parts.empty()) combat_log.push_back(line);
+        while (combat_log.size() > 64) combat_log.pop_front();
+    }
+
+    void log_to_file(const std::string& text) {
+        if (log_file != nullptr) {
+            fprintf(log_file, "%s\n", text.c_str());
+            fflush(log_file);
+        }
+    }
+}
+
+// A new battle (aidyn_turn_round with next 0): the log starts empty, and so does combat-log.txt.
+void combat_log_new_battle() {
+    combat_log.clear();
+    log_last_text.clear();
+    log_last_turn = log_last_round = -1;
+    log_round_shown = 0;
+    if (log_file != nullptr) fclose(log_file);
+    std::error_code ec;
+    log_file = std::fopen((aidyn::settings::folder() / "combat-log.txt").string().c_str(), "w");
+}
+
+extern "C" void aidyn_combat_message(uint8_t* rdram, recomp_context* ctx) {
+    std::string text;
+    for (int i = 0; i < 200; i++) {
+        const char c = (char)MEM_B(i, ctx->r5);
+        if (c == 0) break;
+        text += c;
+    }
+    static const bool debug = std::getenv("AIDYN_COMBAT_LOG_DEBUG") != nullptr;
+    if (debug) {
+        static int n = 0;
+        fprintf(stderr, "combat message %d: \"%s\"\n", n++, text.c_str());
+    }
+    const gpr combat = ctx->r4, font = MEM_W(0, kFontPtr);
+    if (text.find_first_not_of(' ') == std::string::npos || !heap_pointer(combat) || !heap_pointer(font)) {
+        return;
+    }
+    const int turn = MEM_BU(kTurn + 1, combat);
+    if (text == log_last_text && turn == log_last_turn && turn_round == log_last_round) {
+        return;  // the same message again in the same turn
+    }
+    log_last_text = text;
+    log_last_turn = turn;
+    log_last_round = turn_round;
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    if (turn_round > 0 && turn_round != log_round_shown) {
+        log_round_shown = turn_round;
+        const std::string r = "Round " + std::to_string(turn_round);
+        push_wrapped(rdram, ctx, font, { { r, kLogRound } });
+        log_to_file("-- " + r + " --");
+    }
+    const auto names = fighter_names(rdram, combat);
+    const auto parts = colour_parts(text, names);
+    if (debug) {
+        std::string d = "  names:";
+        for (const auto& [n, party] : names) d += " [" + n + (party ? " party]" : " enemy]");
+        d += " | parts:";
+        for (const auto& pt : parts) { char c[16]; snprintf(c, sizeof(c), " %06X:", pt.rgb); d += c + ("\"" + pt.text + "\""); }
+        fprintf(stderr, "%s\n", d.c_str());
+    }
+    push_wrapped(rdram, ctx, font, parts);
+    font_restore(rdram, font, st);
+    log_to_file(text);
+}
+
+// Drawn after the controls card (aidyn_prompts), in combat; card_top: the card's top (240 if not shown).
+gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top) {
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!aidyn::settings::graphics().combat_log || combat_log.empty() || !heap_pointer(font)) {
+        return g;
+    }
+    constexpr float kMargin = 6.0f, kMessagePortraitX = 25.0f, kMessageTop = 178.0f;
+    // The room left of the message box's portrait (its x 25 of the middle 4:3, plus the picture's extra width).
+    const float room = kMessagePortraitX + (hud_wide() ? (240.0f * view_aspect() - 320.0f) / 2.0f : 0.0f);
+    const bool corner = room - kMargin - 3.0f >= 120.0f;
+    log_width = corner ? std::min(150.0f, room - kMargin - 3.0f - 2 * kLogPad) : 140.0f;
+    const int shown = std::min<int>(kLogShown, (int)combat_log.size());
+    const float height = shown * kLogLine + 2 * kLogPad;
+    float bottom = corner ? 240.0f - kMargin : kMessageTop - 3.0f;
+    bottom = std::min(bottom, card_top - 3.0f);
+    // Above the message box it starts right of the enemies' column (portraits and bars, x 21 to 50), clear of it.
+    const float x0 = corner ? kMargin : 53.0f, y0 = bottom - height;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    g = hud_begin(rdram, g, false);
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    const int first = (int)combat_log.size() - shown;
+    // No backing: each line has a soft dark shadow, the same text drawn first a little down and right (RT64's rectangle
+    // alignment offsets, in quarter units).
+    for (int pass = 0; pass < 2; pass++) {
+        GfxCommand a[2];
+        const int d = pass == 0 ? 2 : 0;
+        gEXSetRectAlign(&a[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, d, d, d, d);
+        g = put_cmds(rdram, g, a, 2);
+        for (int k = 0; k < shown; k++) {
+            const LogLine& line = combat_log[first + k];
+            const int age = shown - 1 - k;  // 0 the newest
+            const uint32_t alpha = age < 4 ? 255 : (uint32_t)std::max(90, 255 - (age - 3) * 50);
+            int x = (int)std::lround(x0 + kLogPad);
+            const int y = (int)std::lround(y0 + kLogPad + k * kLogLine);
+            for (const LogPart& part : line.parts) {
+                MEM_W(0x1C, font) = (int32_t)(pass == 0 ? (alpha * 7 / 8) : (part.rgb << 8 | alpha));
+                put_text(rdram, part.text);
+                MEM_W(0, kLogGfx) = (int32_t)g;
+                x = (int)(int32_t)call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx,
+                                                  (uint32_t)kLogText, (uint32_t)x,
+                                                  { (uint32_t)y, f32_bits(kLogScale), f32_bits(kLogScale) });
+                g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            }
+        }
+    }
+    font_restore(rdram, font, st);
+    g = hud_end(rdram, g);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
 }

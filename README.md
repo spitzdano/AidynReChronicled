@@ -218,6 +218,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
+| `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
 | `turn_order` | combat: the round's turn order across the top of the screen, then the next round's (see "Turn order" below; `false`: none, and the game's own order within each speed group) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
@@ -232,7 +233,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, last), each a page of the
 switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `hud_at_edges`,
 `draw_distance` from 1 to 3 in halves) and **ReChronicled** (`turn_order`, `controls_card`, `button_prompts`,
-`smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`).
+`smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, `combat_log`).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
 packs load, as F2 does.
@@ -293,6 +294,14 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.
+- **Combat log.** The bottom left of a fight keeps the game's messages, which its message box shows only for a moment
+  or replaces at once: turns, attacks, hits, misses, damage, kills, spells, healing, potions, fleeing, with "Round N"
+  as each round begins. Names are in their side's colour (the party blue, enemies red), hit points lost orange and
+  gained green. The last seven lines show, older ones fainter, in the game's own letters with a soft shadow (no
+  backing; the controls card has none either), in the corner when the picture is wide enough to clear the message
+  box, else above it, and above the controls card. The latest fight is also written to `combat-log.txt` in the data
+  folder. All messages go through `copy_string_to_textbox` (hooked); a message repeated in the same turn is left out.
+  `combat_log` (the ReChronicled page) turns it off; `AIDYN_COMBAT_LOG_DEBUG=1` prints each message.
 - **Turn order.** In combat an ornate bar across the top (pieces cut from Dan's concept, `art/turn-order`, by
   `tools/branding/turn_order.py`) shows "Round" and its number on a plate, the turns left in the round from the
   fighter whose turn it is (in a glowing gold frame, the others bronze), then a divider and the next round on its own

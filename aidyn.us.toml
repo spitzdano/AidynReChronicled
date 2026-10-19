@@ -602,3 +602,10 @@ value = 0x24030000   # addiu $v1, $zero, 0 (was lhu $v1, gExpPakFlag)
 func = "get_borg13"
 before_vram = 0x8009D814
 text = "extern void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header); aidyn_help_book(rdram, (uint32_t)ctx->r16, ctx->r2);"
+
+# The combat log (src/game/patches.cpp, "Combat log"): every message for combat's message box, at
+# copy_string_to_textbox's entry (a0 gCombatP, a1 the text).
+[[patches.hook]]
+func = "copy_string_to_textbox"
+before_vram = 0x8005E604
+text = "extern void aidyn_combat_message(uint8_t* rdram, recomp_context* ctx); aidyn_combat_message(rdram, ctx);"
