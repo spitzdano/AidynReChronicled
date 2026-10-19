@@ -2901,9 +2901,8 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
 // The strip is an ornate bar of pieces cut from Dan's concept (tools/branding/turn_order.py; branding_images.h has
 // each piece's picture, the bar's middle row and a slot's portrait window): the left end with this round's plate
 // ("Round" and its number written on it), the rest of the round from the fighter whose turn it is (a glowing gold
-// frame, the others bronze; anyone dead or fled since is left out) with a team colour along the bottom of each
-// portrait (the party blue, enemies red), the divider, the next round's plate and turns (a little darker), the right
-// end. The fighters targeted get a silver frame and flash ("Target flash", above). The next round's order
+// frame, the others bronze; anyone dead or fled since is left out), the divider, the next round's plate and turns
+// (a little darker), the right end. The fighters targeted get a silver frame and flash ("Target flash", above). The next round's order
 // is shown exactly: the order within each group is
 // rolled a round ahead (turn_rank) and, right after Init lists that round, its groups are put in that order (Init's
 // own rolls still happen, so the game's random numbers are unchanged). A crowded round shrinks the bar, then
@@ -3324,7 +3323,8 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         gEXSetRectAlign(&c[3], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, off, 0, off, 0);
         g = put_cmds(rdram, g, c, 5);
     }
-    // Where each piece goes (units, shift included), and a slot's portrait: the window's width, at its top.
+    // Where each piece goes (units, shift included), and a slot's portrait: filling its window, centred (the gold
+    // frame's window is a little taller than wide: the portrait's sides go under the frame).
     struct Placed {
         const StripItem* it;
         const Piece* p;
@@ -3338,16 +3338,16 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         const Piece& pc = item_piece(it, targeted);
         Placed q{ &it, &pc, left + it.x * sc + shift, kCentreY - pc.mid * sc };
         q.wx0 = q.x + pc.x0 * sc, q.wy0 = q.y + pc.y0 * sc, q.wx1 = q.x + pc.x1 * sc, q.wy1 = q.y + pc.y1 * sc;
-        q.ps = std::min(q.wx1 - q.wx0, q.wy1 - q.wy0);
+        q.ps = std::max(q.wx1 - q.wx0, q.wy1 - q.wy0);
         q.targeted = targeted;
         placed.push_back(q);
     }
 
-    // A slot without a picture: its window filled dark.
+    // A slot without a picture: its window backed dark.
     g = rect_state(rdram, g);
     for (const Placed& q : placed) {
         if (q.it->kind == StripItem::Slot && q.it->e->image == 0) {
-            g = rect(rdram, g, q.wx0, q.wy0, q.wx1, q.wy1, q.it->dim ? 0x202020FF : 0x303030FF, hs, vs);
+            g = rect(rdram, g, q.wx0, q.wy0, q.wx1, q.wy1, q.it->dim ? 0x141414FF : 0x1C1C1CFF, hs, vs);
         }
     }
     // The portraits, in their windows (the game's Borg8_DrawSimple, so the redrawn art replaces them).
@@ -3359,10 +3359,10 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         }
         const gpr img = q.it->e->image;
         const float sx = q.ps / MEM_HU(0x0A, img), sy = q.ps / MEM_HU(0x0C, img);
-        const float px = q.wx0 + (q.wx1 - q.wx0 - q.ps) / 2.0f;
+        const float px = q.wx0 + (q.wx1 - q.wx0 - q.ps) / 2.0f, py = q.wy0 + (q.wy1 - q.wy0 - q.ps) / 2.0f;
         const uint32_t shade = q.it->dim ? 175 : 255;
         g = (gpr)(int32_t)call_game_stack(rdram, ctx, Borg8_DrawSimple, (uint32_t)g, (uint32_t)img, f32_bits(px),
-                                          f32_bits(q.wy0), { f32_bits(sx), f32_bits(sy), shade, shade, shade, 255 });
+                                          f32_bits(py), { f32_bits(sx), f32_bits(sy), shade, shade, shade, 255 });
     }
     // The bar itself: every piece over the portraits (their windows are clear), the next round's a little darker.
     copy_branding(rdram);
@@ -3374,16 +3374,10 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
         put(rdram, g, 0xFA000000, q.it->dim ? 0xBEBEBEFF : 0xFFFFFFFF);
         g = draw_rgba16(rdram, g, q.p->image, q.x * hs, q.y * vs, sc * hs, sc * vs);
     }
-    // Team colours along the bottom of each window (the party blue, enemies red), and the targets' pulse.
+    // The targets' pulse.
     g = rect_state(rdram, g);
     for (const Placed& q : placed) {
-        if (q.it->kind != StripItem::Slot) {
-            continue;
-        }
-        const uint32_t team = q.it->e->party ? 0x3C82F000 : 0xE0322800;
-        const float inset = 0.6f * sc, y1 = q.wy1 - 0.45f * sc;
-        g = rect(rdram, g, q.wx0 + inset, y1 - 0.75f * sc, q.wx1 - inset, y1, team | (q.it->dim ? 0xC8 : 0xFF), hs, vs);
-        if (q.targeted) {
+        if (q.it->kind == StripItem::Slot && q.targeted) {
             g = rect(rdram, g, q.wx0, q.wy0, q.wx1, q.wy1, 0xFFFFFF00u | (uint32_t)(70 * target_pulse()), hs, vs);
         }
     }

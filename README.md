@@ -295,8 +295,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   slot goes to the edge its slot is on.
 - **Turn order.** In combat an ornate bar across the top (pieces cut from Dan's concept, `art/turn-order`, by
   `tools/branding/turn_order.py`) shows "Round" and its number on a plate, the turns left in the round from the
-  fighter whose turn it is (in a glowing gold frame, the others bronze) with a team colour along the bottom of each
-  portrait (the party blue, enemies red), then a divider and the next round on its own plate, a little darker. Turns come from base DEX as the game counts them: 0 or less one
+  fighter whose turn it is (in a glowing gold frame, the others bronze), then a divider and the next round on its own
+  plate, a little darker. Turns come from base DEX as the game counts them: 0 or less one
   turn every other round; 1 to 17 one; 18 to 24 one, or two every other round; 25 to 29 two; 30 to 34 two, or three
   every other round; 35 and up three. The game rolls the order within each speed group when a round starts; here
   that order is rolled a round ahead so the next round shows exactly as it will be (the game's own random numbers are
