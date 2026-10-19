@@ -103,6 +103,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["smooth_animation_loops"] = g_graphics.smooth_animation_loops;
         j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
         j["graphics"]["controls_card"] = g_graphics.controls_card;
+        j["graphics"]["button_prompts"] = g_graphics.button_prompts;
         j["graphics"]["turn_order"] = g_graphics.turn_order;
         j["graphics"]["textures"] = g_graphics.textures;
         j["graphics"]["vsync"] = g_graphics.vsync;
@@ -144,6 +145,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.smooth_animation_loops = gfx.value("smooth_animation_loops", g_graphics.smooth_animation_loops);
         g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
         g_graphics.controls_card = gfx.value("controls_card", g_graphics.controls_card);
+        g_graphics.button_prompts = gfx.value("button_prompts", g_graphics.button_prompts);
         g_graphics.turn_order = gfx.value("turn_order", g_graphics.turn_order);
         g_graphics.textures = gfx.value("textures", g_graphics.textures);
         g_graphics.vsync = gfx.value("vsync", g_graphics.vsync);

@@ -2782,6 +2782,13 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     if (mode != 0 && aidyn::input::controls_card() && !aidyn::input::start_held()) {
         g = draw_card(rdram, g, mode == 1 ? kFieldCard : kCombatCard);
     }
+    if (!aidyn::settings::graphics().button_prompts) {  // the ReChronicled page's Button prompts: off, only the card
+        page_arrows.clear();
+        treasure_title.seen = false;
+        inventory_page.seen = false;
+        combat_menu_box.seen = false;
+        return g;
+    }
     const int lb = branding_index("prompt_lb"), rb = branding_index("prompt_rb");
     for (const PageArrow& a : page_arrows) {
         if (lb < 0 || rb < 0) {
@@ -3339,7 +3346,8 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // it closes, and the game gets no input meanwhile (aidyn::input::set_capture), so nothing it does with a button can
 // reach a list that isn't there. Up / down choose a row, A or left / right change it, B (or Start) goes back. Each
 // change is applied at once and written into settings.json: textures (every pack, HD save pictures, redrawn page
-// words, the HD letters' widths; off: as the N64), vsync, the turn order, the controls card, the HUD at the screen
+// words, the HD letters' widths; off: as the N64), vsync, the turn order, the controls card, the other button prompts
+// (menu hints, LB / RB at the page arrows, the party switch), the HUD at the screen
 // edges, the draw distance, smooth walk cycles and the camera's right stick and its directions. The words are
 // make_branding.py's rc_* pictures, tinted with the list's own colours (red-brown; the highlight pulsing brown to
 // purple); the title is two halves (one picture would be more than a load of TMEM).
@@ -3361,7 +3369,7 @@ namespace {
     // The list's colours (MakeScrollList: SetColor(COLOR_RED1), SetScrollMenuColors(COLOR_BROWN2, COLOR_PURPLE1, 0x14)):
     // red-brown, the highlighted entry pulsing from dark brown to purple and back over 20 frames each way.
     constexpr uint32_t kMenuInk = 0x825050, kMenuHighlight0 = 0x442A22, kMenuHighlight1 = 0x978DBF;
-    constexpr float kRowsLeft = 76.0f, kRowsRight = 286.0f, kRowsTop = 50.0f, kRowStep = 14.0f;  // N64 pixels, 4:3
+    constexpr float kRowsLeft = 76.0f, kRowsRight = 286.0f, kRowsTop = 50.0f, kRowStep = 13.0f;  // N64 pixels, 4:3
 
     struct RcRow {
         const char* label;
@@ -3380,6 +3388,7 @@ namespace {
             { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
+            { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
             { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
             { "rc_draw_distance", nullptr, "draw_distance", nullptr },
             { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
@@ -3623,4 +3632,29 @@ extern "C" void aidyn_options_no_graphics(uint8_t* rdram, recomp_context* ctx) {
     if (heap_pointer(rename)) {
         move(rename, -up);
     }
+}
+
+// ---- Pause scroll ----
+// The pause pages are one long parchment (PauseBGOptions, PauseBGStats, PauseBGMap) drawn through that clip, and the
+// scroll's wooden rollers are a 3D model (the pause substruct's borg7) moved sideways per page (scrollSpeed, +0x2C:
+// 27 on the Menu page, 0 on the equipment page, -26 on the map; scroll_floats). On the Menu page the left roller sits
+// at x 22..64 and the parchment still ran on to the screen's edge behind it; on the map page, the same past the right
+// roller. PauseWidget::Render is hooked before it draws its children (aidyn.us.toml) to keep the clip between the
+// rollers' middles, measured in game: x 42.9 for the left one at 27, 292.3 for the right one at -26, moving 11 px a
+// unit (so they follow the page turns; on the equipment page both are off the screen). Only with the pause menu at
+// 4:3 (menus_4_3, the default), where the 3D and the pages share a frame.
+extern "C" void aidyn_pause_clip(uint8_t* rdram, recomp_context* ctx) {
+    const auto& gfx = aidyn::settings::graphics();
+    if (!gfx.menus_4_3 && gfx.aspect != aidyn::settings::Aspect::Original) {
+        return;
+    }
+    const gpr sub = MEM_W(0x40, ctx->r16);  // s0: the PauseWidget
+    if (!heap_pointer(sub)) {
+        return;
+    }
+    const float s = read_f32(rdram, sub + 0x2C);
+    const int left = (int)std::lround(42.9f + (s - 27.0f) * 11.0f), right = (int)std::lround(292.3f + (s + 26.0f) * 11.0f);
+    const int x0 = (int16_t)ctx->r6, x1 = (int16_t)MEM_W(0x10, ctx->r29);
+    ctx->r6 = std::max(x0, left);
+    MEM_W(0x10, ctx->r29) = std::min(x1, right);
 }

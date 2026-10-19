@@ -67,11 +67,21 @@ def world_textures(rom_path, textures, out, tmemhash):
     return entries
 
 
+def big_pictures(rom_path, decomp, art, out, tmemhash):
+    """Replacements for redrawn pictures too big for one load of TMEM (the pause pages' titles, the title card): the
+    fixed strips the game draws them in (bigstrips.py), cut from the picture at 8x."""
+    import bigstrips
+    items = [(img, redone.load(art[name], img[1], img[2]), redone.SCALE)
+             for name, img in bigstrips.big_images(rom_path, decomp).values() if name in art]
+    return bigstrips.cut(out, tmemhash, items) if items else []
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path,
                     default=Path.home() / ".local/share/AidynReChronicled/texture-packs/rechronicled-art")
     ap.add_argument("--rom", type=Path, default=PROJECT / "baserom.z64")
+    ap.add_argument("--no-world", action="store_true", help="leave out the world textures (a quick test pack)")
     args = ap.parse_args()
     tmemhash = PROJECT / "build/cmake/tmemhash"
     if not tmemhash.exists():
@@ -89,7 +99,8 @@ def main():
     entries = portraits.build(args.rom, decomp, tmemhash, None, None, out, redone.SCALE, 4, art=art, only_art=True,
                               crop_scale_of=lambda name: 4 if name in party else 2)
     entries += romimages.build(args.rom, decomp, tmemhash, None, None, out, 4, set(), image_key, art=art, only_art=True)
-    textures = redone.collect_textures()
+    entries += big_pictures(args.rom, decomp, art, out, tmemhash)
+    textures = {} if args.no_world else redone.collect_textures()
     if textures:
         entries += world_textures(args.rom, textures, out, tmemhash)
     db = {

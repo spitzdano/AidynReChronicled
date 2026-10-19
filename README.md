@@ -215,6 +215,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
+| `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
 | `turn_order` | combat: the round's turn order across the top of the screen, then the next round's (see "Turn order" below; `false`: none, and the game's own order within each speed group) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
@@ -227,7 +228,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
 
 **In the game.** The pause menu's Menu page has a **ReChronicled** entry below Theater (in a battle, last): a page of
-the switches above that can change while playing (`textures`, `vsync`, `turn_order`, `controls_card`, `hud_at_edges`,
+the switches above that can change while playing (`textures`, `vsync`, `turn_order`, `controls_card`, `button_prompts`, `hud_at_edges`,
 `draw_distance` from 1 to 3 in halves, `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
@@ -246,6 +247,13 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
+- **Pause scroll ends.** The pause pages are one long parchment drawn through a clip, and the scroll's rollers are a
+  3D model moved sideways per page. On the Menu page the parchment ran on past the left roller to the screen's edge
+  (and past the right one on the map page); the clip is now kept between the rollers' middles, which follow the page
+  turns (measured in game; only with the pause menu at 4:3, `menus_4_3`).
+- **Titles.** The pause pages' and menus' titles (Menu, Options, Theater, Pause, Enter Name) are drawn like the
+  ReChronicled page's (`art/titles`), and the title card's THE FIRST MAGE is written again in Marcellus with its TM
+  inside the picture (the HD pack's TM ran past the card's edge).
 - **ReChronicled page.** The pause menu's list (`WidgetOptionsMenu::MakeScrollList`) gets one more entry, made the
   game's way (a `WidgetClipText` with its own id, appended to the scroll menu) after Theater, or at the end of a
   battle's shorter list. The scroll menu is made with room for exactly six entries and `Append` doesn't check, so its

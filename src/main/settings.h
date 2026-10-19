@@ -44,6 +44,7 @@ namespace aidyn::settings {
         bool hud_at_edges = true;    // widescreen: the time-of-day dial at the left edge, the compass at the right (portraits stay centred)
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops
         bool controls_card = true;   // the card of button prompts in the field and in combat (View shows / hides it)
+        bool button_prompts = true;  // the port's other prompts: menu hints (Equip, Lists, Take...), LB / RB at page arrows, party switch
         bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's
         bool textures = true;        // every custom texture: the packs below, HD save pictures, redrawn page words, the HD letters' spacing (false: as the N64)
         bool vsync = true;           // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn (G-Sync / FreeSync)

@@ -386,13 +386,16 @@ def page_word_image(name, text, size=78, h=11):
 PAGE_TITLE = [(0.0, "#fde2ae"), (0.3, "#f3a95a"), (0.7, "#c8702e"), (1.0, "#6a3014")]
 
 
-def page_title(text, size):
-    """The ReChronicled page's title, like the pause pages' own (MENU, INVENTORY): copper letters lit from above, a dark
-    edge and a soft purple glow. Centred; drawn untinted."""
+TITLE_SIZE = 150  # the page titles' letters: capitals about 13 texels tall, as the game's own titles
+
+
+def page_title(text, size, above=4.5):
+    """A page title like the pause pages' own (MENU, OPTIONS): copper letters lit from above, a dark edge and a soft
+    purple glow; the baseline `above` texels over the bottom. Centred; drawn untinted."""
     def draw(w, h):
         W, H = w * SS, h * SS
         img = np.zeros((H, W, 4), np.float32)
-        baseline = int(H - 5 * SS)
+        baseline = int(H - above * SS)
         width = ink_width(text, MARCELLUS, size)
         if width + 8 * SS > W:
             sys.exit(f"make_branding.py: the page title {text!r} is wider than {w} texels")
@@ -441,14 +444,15 @@ IMAGES += [("verno_v", 6, 9, version_label("v", 44)), ("verno_dot", 4, 9, versio
 IMAGES += [(f"verno_{d}", 6, 9, version_label(str(d), 44)) for d in range(10)]
 # The pause menu's ReChronicled page: its title, each row's name and the values (tinted by the game), and the hints.
 RC_WORDS = [("rc_textures", "Textures"), ("rc_vsync", "VSync"), ("rc_turn_order", "Turn order"),
-            ("rc_controls_card", "Controls card"), ("rc_hud_edges", "HUD at the screen edges"),
+            ("rc_controls_card", "Controls card"), ("rc_button_prompts", "Button prompts"),
+            ("rc_hud_edges", "HUD at the screen edges"),
             ("rc_draw_distance", "Draw distance"), ("rc_smooth_loops", "Smooth walk cycles"),
             ("rc_stick_camera", "Right-stick camera"), ("rc_invert_x", "Invert camera turning"),
             ("rc_invert_y", "Invert camera tilt"),
             ("rc_on", "On"), ("rc_off", "Off"), ("rc_dd_1", "Original"), ("rc_dd_15", "1.5x"), ("rc_dd_2", "2x"),
             ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x")]
 # The title is wider than one load of TMEM (4 KB) allows: two halves, drawn side by side.
-RC_TITLE_W = (int(ink_width("ReChronicled", MARCELLUS, 160) / SS) + 11) // 2 * 2
+RC_TITLE_W = (int(ink_width("ReChronicled", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 
 
 def half(draw, w, h, right):
@@ -457,12 +461,30 @@ def half(draw, w, h, right):
     return part
 
 
-IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", 160), RC_TITLE_W, 25, False)),
-           ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", 160), RC_TITLE_W, 25, True))]
+IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, False)),
+           ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, True))]
 IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
 IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back", 60, 11, menu_hint("Back", "B"))]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
+
+
+# The pause pages' and menus' titles (the game's own pictures, 32-bit, in its decorative capitals), redrawn like the
+# ReChronicled page's title: written into art/titles at 8x their size, where tools/hdui/art_pack.py takes them.
+TITLES = [("TitleMenui", "Menu", 60, 24), ("TitleOptions", "Options", 86, 24), ("TitleTheater", "Theater", 87, 24),
+          ("TitlePause", "Pause", 62, 24), ("TitleEnterName", "Enter Name", 125, 24)]
+TITLES_DIR = PROJECT / "art/titles"
+
+
+def write_titles():
+    TITLES_DIR.mkdir(parents=True, exist_ok=True)
+    for name, text, w, h in TITLES:
+        size = TITLE_SIZE
+        while ink_width(text, MARCELLUS, size) + 8 * SS > w * SS:
+            size -= 4
+        img = page_title(text, size)(w, h)
+        write_png(TITLES_DIR / f"{name}.png", w * SS, h * SS, to_rgba8(img).tobytes())
+        print(f"make_branding.py: {name} ({text!r}, size {size}) -> {TITLES_DIR / (name + '.png')}")
 
 
 def to_rgba8(img):
@@ -505,6 +527,7 @@ def main():
     HEADER.write_text("\n".join(lines))
     print(f"make_branding.py: wrote {HEADER}")
     write_pack()
+    write_titles()
 
 
 def write_pack():

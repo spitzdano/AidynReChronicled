@@ -322,6 +322,13 @@ func = "bigAssOpenCallback_1"
 before_vram = 0x8002F340
 text = "extern void aidyn_menu_opened(uint8_t* rdram, gpr scroll); aidyn_menu_opened(rdram, ctx->r23);"
 
+# The pause pages' clip kept between the scroll's rollers (src/game/patches.cpp aidyn_pause_clip): PauseWidget::Render
+# before RenderChildren, x0 in a2, x1 at sp+0x10, s0 the PauseWidget.
+[[patches.hook]]
+func = "PauseWidget__Render"
+before_vram = 0x8002EDE8
+text = "extern void aidyn_pause_clip(uint8_t* rdram, recomp_context* ctx); aidyn_pause_clip(rdram, ctx);"
+
 # Right-stick camera while walking (src/game/patches.cpp aidyn_camera_stick): after Actor::Move's reset of the
 # camera turn and height, s3 = player handler, s2 = actor.
 [[patches.hook]]
