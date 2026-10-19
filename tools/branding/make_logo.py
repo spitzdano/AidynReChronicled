@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""make_logo.py: the title card (BORG8_TitleCard, the AIDYN CHRONICLES logo) with its TM inside the picture.
+"""make_logo.py: the title card (BORG8_TitleCard, the AIDYN CHRONICLES logo) and its shadow, from Dan's redesign.
 
-The game's card has its TM pressed against the picture's right edge (x 174..187 of 188); the HD pack's redrawn TM came
-out wider and ran past the edge, cut off. This keeps the HD pack's card as it is (hd-ui's strips of it, put back
-together: the map and THE FIRST MAGE untouched), clears that TM (grey letters over nothing) and writes a slightly
-smaller one in Marcellus that ends inside the card. Out: art/titles/TitleCard.png at 8x (1504x1392), which
-tools/hdui/art_pack.py cuts into the strips the game draws the card in.
+art/titles/source/aidyn-chronicles-logo-redesign.png (the logo redrawn whole: the parchment, AIDYN CHRONICLES, THE
+FIRST MAGE and RECHRONICLED, on nothing) is fitted into the card's 188x174 texels, centred, and written at 8x as
+art/titles/TitleCard.png. The card's shadow (BORG8_TitleCardShadow, 213x180: the card's outline 19 texels right and 3
+down, softened, 60% dark) is made again from the new outline: art/titles/TitleCardShadow.png. tools/hdui/art_pack.py
+cuts both into the strips the game draws them in. With the redesign on screen the game no longer draws its own
+"Rechronicled" under the card (src/game/patches.cpp, "Title screen").
 
-    python3 -I tools/branding/make_logo.py      (needs build/cmake/tmemhash and the hd-ui pack)
+    python3 -I tools/branding/make_logo.py
 """
-import json
 import subprocess
 import sys
 import tempfile
@@ -20,80 +20,65 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[1]
 sys.path.insert(0, str(PROJECT / "tools/hdui"))
-sys.path.insert(0, str(HERE))
-import bigstrips  # noqa: E402
-import portraits  # noqa: E402
 from pngio import read_png, write_png  # noqa: E402
-from make_branding import MARCELLUS, SS, dilate, ink_width, over, rgb, text_mask, to_rgba8  # noqa: E402
 
-HD_UI = Path.home() / ".local/share/AidynReChronicled/texture-packs/hd-ui"
-OUT = PROJECT / "art/titles/TitleCard.png"
-TM_BOX = (173, 126, 188, 142)  # x0, y0, x1, y1 (N64 texels): the old TM, over nothing
-TM_RIGHT, TM_BASE = 185.5, 138.5  # the new TM ends here, on this baseline (the old one's)
-TM_CAPS = 5.5                     # its capitals' height in texels (the old one's were 7)
-
-
-def card():
-    big = bigstrips.big_images(PROJECT / "baserom.z64", PROJECT / "decomp")
-    return [img for name, img in big.values() if name == "TitleCard"][0]
+SS = 8
+SOURCE = PROJECT / "art/titles/source/aidyn-chronicles-logo-redesign.png"
+CARD, SHADOW = (188, 174), (213, 180)
+SHADOW_OFFSET = (19, 3)     # texels: where the card's outline sits in the shadow picture
+SHADOW_ALPHA = 0.6          # the original's darkest (153 of 255)
 
 
-def hd_card(img):
-    """The hd-ui pack's card, from its strips: H x W x 4 uint8 at the pack's scale."""
-    fmt, w, h = img[:3]
-    jobs = bigstrips.jobs(img)
-    hashes = portraits.hashes(PROJECT / "build/cmake/tmemhash", [j for _, _, j in jobs])
-    paths = {t["hashes"]["rt64"]: t["path"] for t in json.loads((HD_UI / "rt64.json").read_text())["textures"]}
-    out = None
-    for (y0, rows, _), h_ in zip(jobs, hashes):
-        if h_ not in paths:
-            sys.exit(f"make_logo.py: the hd-ui pack has no strip {h_} of the title card")
-        W, H, rgba = read_png(HD_UI / paths[h_])
-        strip = np.frombuffer(bytes(rgba), np.uint8).reshape(H, W, 4)
-        scale = W // w
-        if out is None:
-            out = np.zeros((h * scale, w * scale, 4), np.uint8)
-        out[y0 * scale:y0 * scale + H] = strip[:h * scale - y0 * scale]
-    return out
+def load(path):
+    w, h, rgba = read_png(path)
+    return np.frombuffer(bytes(rgba), np.uint8).reshape(h, w, 4).astype(np.float32) / 255.0
 
 
-def to_8x(hd, W, H):
+def resized(img, w, h):
     with tempfile.TemporaryDirectory() as t:
-        src, dst = Path(t) / "a.png", Path(t) / "b.png"
-        write_png(src, hd.shape[1], hd.shape[0], hd.tobytes())
-        subprocess.run(["magick", str(src), "-filter", "Lanczos", "-resize", f"{W}x{H}!", f"PNG32:{dst}"], check=True)
-        _, _, rgba = read_png(dst)
-    return np.frombuffer(bytes(rgba), np.uint8).reshape(H, W, 4).copy()
+        a, b = Path(t) / "a.png", Path(t) / "b.png"
+        write_png(a, img.shape[1], img.shape[0], (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
+        subprocess.run(["magick", str(a), "-filter", "Lanczos", "-resize", f"{w}x{h}!", f"PNG32:{b}"], check=True)
+        return load(b)
+
+
+def blur(m, r):
+    for axis in (0, 1):
+        for _ in range(3):
+            c = np.cumsum(np.pad(m, [(r + 1, r) if a == axis else (0, 0) for a in (0, 1)], mode="constant"), axis=axis)
+            m = (np.take(c, range(2 * r + 1, c.shape[axis]), axis=axis)
+                 - np.take(c, range(0, c.shape[axis] - 2 * r - 1), axis=axis)) / (2 * r + 1)
+    return m
 
 
 def main():
-    img = card()
-    w, h = img[1], img[2]
-    W, H = w * SS, h * SS
-    big = to_8x(hd_card(img), W, H)
-    # Clear the old TM: its grey letters and their dark edge, not the blue glow of MAGE's E beside it.
-    x0, y0, x1, y1 = (v * SS for v in TM_BOX)
-    box = big[y0:y1, x0:x1].astype(int)
-    blue = box[..., 2] > box[..., 0] + 30
-    box[~blue] = 0
-    big[y0:y1, x0:x1] = box.astype(np.uint8)
-    # The new TM.
-    f = big.astype(np.float32) / 255.0
-    pm = np.concatenate([f[..., :3] * f[..., 3:], f[..., 3:]], -1)
-    size = 60.0
-    while True:  # point size for capitals TM_CAPS texels tall
-        m = text_mask("T", MARCELLUS, size, 400, 400, 50, 300)
-        rows = np.nonzero(m.max(axis=1) > 0.5)[0]
-        if rows.max() - rows.min() + 1 >= TM_CAPS * SS:
-            break
-        size += 1.0
-    x = int(TM_RIGHT * SS) - ink_width("TM", MARCELLUS, size)
-    t = text_mask("TM", MARCELLUS, size, W, H, x, int(TM_BASE * SS))
-    over(pm, rgb("#16182a"), dilate(t, 3))
-    over(pm, rgb("#eef0f6"), t)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    write_png(OUT, W, H, to_rgba8(pm).tobytes())
-    print(f"make_logo.py: TM at size {size:.0f}, from x {x / SS:.1f} to {TM_RIGHT} -> {OUT}")
+    logo = load(SOURCE)
+    ys, xs = np.nonzero(logo[..., 3] > 0.02)
+    logo = logo[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    W, H = CARD[0] * SS, CARD[1] * SS
+    margin = 1 * SS
+    scale = min((W - 2 * margin) / logo.shape[1], (H - 2 * margin) / logo.shape[0])
+    lw, lh = round(logo.shape[1] * scale), round(logo.shape[0] * scale)
+    small = resized(logo, lw, lh)
+    card = np.zeros((H, W, 4), np.float32)
+    x0, y0 = (W - lw) // 2, (H - lh) // 2
+    card[y0:y0 + lh, x0:x0 + lw] = small
+    out = PROJECT / "art/titles/TitleCard.png"
+    write_png(out, W, H, (np.clip(card, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
+    print(f"make_logo.py: the logo at {lw / SS:.1f}x{lh / SS:.1f} texels in the card -> {out}")
+    # The shadow: the outline, moved, softened, dark.
+    SW, SH = SHADOW[0] * SS, SHADOW[1] * SS
+    a = np.zeros((SH, SW), np.float32)
+    dx, dy = SHADOW_OFFSET[0] * SS, SHADOW_OFFSET[1] * SS
+    h, w = min(H, SH - dy), min(W, SW - dx)
+    a[dy:dy + h, dx:dx + w] = card[:h, :w, 3]
+    a = np.clip(blur(a, SS // 2), 0, 1) * SHADOW_ALPHA
+    shadow = np.zeros((SH, SW, 4), np.float32)
+    shadow[..., :3] = 17 / 255.0
+    shadow[..., 3] = a
+    out = PROJECT / "art/titles/TitleCardShadow.png"
+    write_png(out, SW, SH, (np.clip(shadow, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
+    print(f"make_logo.py: the shadow -> {out}")
 
 
 if __name__ == "__main__":

@@ -1714,11 +1714,26 @@ extern "C" int aidyn_title_back(uint8_t* rdram, recomp_context* ctx) {
     return 1;
 }
 
+namespace aidyn {
+    bool redrawn_art();  // src/main/rt64_context.cpp: false while F2 has the redrawn art pack off
+}
+
+// The redrawn title card (art/titles, tools/branding/make_logo.py: Dan's redesign) has RECHRONICLED in it: on screen
+// while textures are on, the art pack is listed and F2 hasn't turned it off.
+bool redesigned_card() {
+    const auto& gfx = aidyn::settings::graphics();
+    return gfx.textures && aidyn::redrawn_art()
+        && std::find(gfx.texture_packs.begin(), gfx.texture_packs.end(), "rechronicled-art") != gfx.texture_packs.end();
+}
+
 gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba) {
     copy_branding(rdram);
     title_version_switch();
-    // "Rechronicled": centred under THE FIRST MAGE (card texels 26..172, rows 120..138) on the card's lower parchment.
-    g = draw_rgba16(rdram, g, 0, ox + (97 - 48) * sx, oy + 139 * sy, sx, sy);
+    // "Rechronicled": centred under THE FIRST MAGE (card texels 26..172, rows 120..138) on the card's lower parchment
+    // (the redesigned card has its own).
+    if (!redesigned_card()) {
+        g = draw_rgba16(rdram, g, 0, ox + (97 - 48) * sx, oy + 139 * sy, sx, sy);
+    }
     // "Enhanced by SPITZDANO": bottom right of the whole picture, 10 texels in from the edge and the bottom. RT64
     // extended GBI: with the right edge as origin RT64 adds the frame width (320) to x, so the rectangle, drawn where it
     // would sit in 320x240, is moved back 320 by the alignment's offsets (texture rectangles can't take negative x).
