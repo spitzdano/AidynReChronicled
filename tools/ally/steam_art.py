@@ -3,18 +3,19 @@
 
     tools/ally/steam_art.py [--scene PNG]
 
-  logo.png      the title card from the ROM (BORG8_TitleCard), upscaled 4x with Real-ESRGAN, its TM redrawn in the
-                text font and "Rechronicled" added where the title screen draws it (as the HD UI pack and the title
-                screen show it); transparent
-  hero.png      3840x1240: the scene, the band around its middle (Steam lays the logo over it)
-  capsule.png   600x900 (library grid): the scene with the logo
+  logo.png      Dan's logo (art/titles/source/aidyn-chronicles-logo-redesign.png, RECHRONICLED included), trimmed and
+                fitted into 1280x720; transparent
+  hero.png      3840x1240: a band of the scene, around the castle (Steam lays the logo over it)
+  capsule.png   600x900 (library grid): the scene around the castle, darker towards the logo, with the logo
   wide.png      920x430 (recent games, wide capsule): the scene with the logo
   icon.png      256x256: an illuminated A like the manual's initials (tools/manual/initial.svg, Marcellus SC)
 
---icon PATH writes only the icon (it is drawn from the manual's tile and font, nothing from the ROM: a release
-ships it). --scene is a 1920x1080 screenshot without HUD; the default is build/ally/scene.png, the castle gate from the
-opening cinematic (capture it with tools/dev/pad.sh: New Game, keep the name, then shots during the intro). Everything
-here is made from the ROM, so it stays in build/.
+--icon PATH writes only the icon. --scene is a screenshot without HUD or title (a wide one, 64:27 or so); the default
+is build/ally/scene.png, Gwernia Castle on the sea from the title flyover (about 90 s in). To capture one: a throwaway
+RT64 pack, listed last in a scratch settings.json, that replaces the title card's strips, its shadow's and every
+picture of the rechronicled pack with a clear 4x4 PNG (hashes: bigstrips.jobs + portraits.hashes, and the rechronicled
+pack's rt64.json), then tools/dev/pad.sh shots once a second, keeping a frame between "Press Start"'s blinks. The scene
+comes from the game, so it and the art stay in build/; the logo is Dan's own and is in the repository.
 """
 import argparse
 import subprocess
@@ -41,28 +42,21 @@ def magick(*args):
     subprocess.run(["magick", *map(str, args)], check=True)
 
 
-def logo(rom_path, out, tmp):
-    rom = romassets.Rom(rom_path)
-    index = {n: i for i, n in romassets.borg8_names(PROJECT / "decomp").items()}["TitleCard"]
-    fmt, w, h, pixels, palette = rom.image(index)
-    rgba = decode_borg8(fmt, w, h, pixels, palette)
-    img = {"w": w, "h": h, "rgba": rgba}
-    colour = repaint.mark_colour(img, TM_BOX)
-    rgba = bleed(w, h, repaint.clear(img, [TM_BOX]))
-    write_png(tmp / "card.png", w, h, rgba)
-    esrgan = toolkit() / "opt/realesrgan/realesrgan-ncnn-vulkan"
-    subprocess.run([str(esrgan), "-i", str(tmp / "card.png"), "-o", str(tmp / "card4.png"), "-n",
-                    "realesrgan-x4plus-anime", "-s", str(SCALE), "-f", "png"],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    W, H, big = read_png(tmp / "card4.png")
-    big = repaint.draw_mark(W, H, big, TM_BOX, "TM", colour, FONT, SCALE)
-    write_png(tmp / "card4tm.png", W, H, big)
-    branding = PROJECT / "build/branding/rechronicled@8x.png"  # 8x of 96x16 texels (tools/branding/make_branding.py)
-    if not branding.exists():
-        sys.exit("steam_art.py: build/branding/rechronicled@8x.png missing: run tools/branding/make_branding.py")
-    x, y = RECHRONICLED
-    magick(tmp / "card4tm.png", "(", branding, "-resize", "50%", ")", "-geometry", f"+{x * SCALE}+{y * SCALE}",
-           "-composite", "-trim", "+repage", out)
+LOGO = PROJECT / "art/titles/source/aidyn-chronicles-logo-redesign.png"
+FOCUS_X = 0.43   # the castle gate's place across the scene (the capsules are centred on it)
+
+
+def logo(out):
+    magick(LOGO, "-trim", "+repage", "-resize", "1280x720", out)
+
+
+def grade(scene, out, w, h, x_off):
+    """The scene cropped to w:h around FOCUS_X, a little more contrast and saturation, and a soft vignette."""
+    magick(scene, "-gravity", "center", "-crop", f"{w}x{h}{x_off:+d}+0", "+repage",
+           "-modulate", "100,112,100", "-sigmoidal-contrast", "3,50%",
+           "(", "+clone", "-fill", "black", "-colorize", "100", "-fill", "white", "-draw",
+           f"ellipse {w // 2},{h // 2} {int(w * 0.62)},{int(h * 0.7)} 0,360", "-blur", f"0x{max(w, h) // 8}", ")",
+           "-compose", "multiply", "-composite", out)
 
 
 def icon(path):
@@ -77,7 +71,6 @@ def icon(path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--scene", type=Path, default=PROJECT / "build/ally/scene.png")
-    ap.add_argument("--rom", type=Path, default=PROJECT / "baserom.z64")
     ap.add_argument("--icon", type=Path, help="only write the icon, to this path")
     args = ap.parse_args()
     if args.icon:
@@ -88,21 +81,31 @@ def main():
         sys.exit(f"steam_art.py: no scene at {args.scene} (see --help)")
     out = PROJECT / "build/ally/steam-art"
     out.mkdir(parents=True, exist_ok=True)
+    W, H = (int(v) for v in subprocess.run(["magick", "identify", "-format", "%w %h", str(args.scene)],
+                                           capture_output=True, text=True, check=True).stdout.split())
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
-        logo(args.rom, out / "logo.png", tmp)
-        scene = args.scene
-        # Hero: a 31:10 band of the scene, a little above the middle, at Steam's 3840x1240.
-        magick(scene, "-gravity", "center", "-crop", "1920x620+0-60", "+repage", "-filter", "Lanczos", "-resize",
+        logo(out / "logo.png")
+        # Hero: a 31:10 band, the castle's walls and gate (a little above the middle), at Steam's 3840x1240.
+        bh = round(W * 1240 / 3840)
+        magick(args.scene, "-gravity", "north", "-crop", f"{W}x{bh}+0+{max(0, (H - bh) // 3)}", "+repage",
+               "-modulate", "100,112,100", "-sigmoidal-contrast", "3,50%", "-filter", "Lanczos", "-resize",
                "3840x1240!", out / "hero.png")
-        # Capsules: the scene, darkened towards the logo, with the logo on top.
-        magick(scene, "-gravity", "center", "-crop", "720x1080+0+0", "+repage", "-resize", "600x900!",
-               "(", "-size", "600x900", "gradient:#000000c0-#00000030", ")", "-composite",
-               "(", out / "logo.png", "-resize", "540x", ")", "-gravity", "north", "-geometry", "+0+70", "-composite",
+        # Capsule: portrait around the gate, darker at the top for the logo.
+        cw = round(H * 600 / 900)
+        x_off = round(W * FOCUS_X - W / 2)
+        grade(args.scene, tmp / "c.png", cw, H, x_off)
+        magick(tmp / "c.png", "-resize", "600x900!",
+               "(", "-size", "600x900", "gradient:#000000b0-#00000000", ")", "-composite",
+               "(", out / "logo.png", "-resize", "520x", ")", "-gravity", "north", "-geometry", "+0+36", "-composite",
                out / "capsule.png")
-        magick(scene, "-gravity", "center", "-crop", "1920x897+0+0", "+repage", "-resize", "920x430!",
-               "(", "-size", "920x430", "radial-gradient:#00000090-#00000020", ")", "-composite",
-               "(", out / "logo.png", "-resize", "x380", ")", "-gravity", "center", "-composite", out / "wide.png")
+        # Wide capsule: the scene with the logo on the left third.
+        ww = min(W, round(H * 920 / 430))
+        grade(args.scene, tmp / "w.png", ww, H, x_off + round(ww * 0.12))
+        magick(tmp / "w.png", "-resize", "920x430!",
+               "(", "-size", "430x920", "gradient:#000000c0-#00000000", "-rotate", "-90", ")", "-composite",
+               "(", out / "logo.png", "-resize", "x390", ")", "-gravity", "west", "-geometry", "+24+0", "-composite",
+               out / "wide.png")
         icon(out / "icon.png")
     for f in sorted(out.iterdir()):
         print(f"steam_art.py: {f}")
