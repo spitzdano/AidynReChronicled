@@ -385,6 +385,12 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   outdoors every map now considers all its props (each still checks its own distance and view); (3) a prop faded in
   over its last unit of range, effectively a pop at these ranges; it now fades over the last 20% (items, like chests,
   the last 15% of their reach). Seen in the title flyover's valley before the castle.
+  Once, at draw distance 3 near the first forest's hut, a prop model one of the game's own cells still pointed at had
+  been overwritten with zeros, and drawing it crashed. Such a model is now skipped (noted once in the log) and
+  `AIDYN_HEAP_TRACE=1` hunts the cause: it records the game's allocations, frees, zero fills and free-queue entries
+  with their call stacks, checks every prop model the maps point at each frame, and writes the first damaged one and
+  everything that touched its memory to `heap-trace.txt` in the data folder (no measurable cost: 60 fps either way).
+  `tools/dev/aidyn-steam.sh`, the PC's launcher, turns it on until the cause is found.
 - **The Buckler.** Its model was exported with every texture coordinate inside a patch of about 5x5 of its texture's
   32x32 texels, so its face showed a flat dark red-brown (on the N64 too) and never its red studded leather and gold
   bands. As the model loads (`getBorgItem`, BORG2 asset 0x3520) its coordinates are projected flat across the shield,
