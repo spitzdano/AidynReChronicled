@@ -34,6 +34,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
 void all_props_frame_end();  // "Every prop considered", below
+void heap_trace_frame(uint8_t* rdram);  // "Heap trace", below
 void combat_log_new_battle();
 bool combat_log_frame = false;     // aidyn_prompts: in combat this frame, the log to be drawn
 float combat_card_top = 240.0f;    // the combat controls card's top this frame (240: not shown)
@@ -49,6 +50,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     gpr g = ctx->r4;
     g = aidyn_ff_marker(rdram, g);
     all_props_frame_end();
+    heap_trace_frame(rdram);
     g = aidyn_prompts(rdram, g);
     if (combat_log_frame) {
         g = draw_combat_log(rdram, ctx, g, combat_card_top);
@@ -1348,13 +1350,21 @@ namespace {
     }
 }
 
-extern "C" void aidyn_scene_draw_begin(uint8_t* rdram, recomp_context* ctx) {
+bool scene_intact(uint8_t* rdram, gpr scene);  // "Heap trace", below
+
+// Returns false to skip the model (the hook returns the display list unchanged): one whose memory was overwritten
+// (its Borg5 pointer no longer one), which the function would read through and crash on (see "Heap trace").
+extern "C" int aidyn_scene_draw_begin(uint8_t* rdram, recomp_context* ctx) {
+    if (!scene_intact(rdram, ctx->r5)) {
+        return 0;
+    }
     if (!interpolating()) {
-        return;
+        return 1;
     }
     GfxCommand c[1];
     gEXEnable(&c[0]);
     ctx->r4 = put_cmds(rdram, ctx->r4, c, 1);  // a0 = the display list pointer, before the function copies it
+    return 1;
 }
 
 extern "C" void aidyn_scene_node_matrix(uint8_t* rdram, recomp_context* ctx) {
@@ -4521,5 +4531,182 @@ extern "C" void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header) {
         const float u = (MEM_H(0, v) - x0) / (float)(x1 - x0), w = (y1 - MEM_H(2, v)) / (float)(y1 - y0);
         MEM_H(8, v) = (int16_t)std::lround(u * 32.0f * kPerTexel);
         MEM_H(10, v) = (int16_t)std::lround(w * 32.0f * kPerTexel);
+    }
+}
+// ---- Heap trace ----
+// Dan's game crashed at draw distance 3 near the hut by the first forest (2026-10-19): a prop's model (a SceneData
+// one of the game's own cells still pointed at, its second detail level) had been overwritten with zeros, and
+// BorgAnimDrawSceneRaw read through its zeroed Borg5 pointer. Such a model is now skipped (aidyn_scene_draw_begin)
+// and reported once on stdout. AIDYN_HEAP_TRACE=1 also finds what did it: the game's HeapAlloc, HeapFree, _bzero,
+// memset and AllocFreeQueueItem (models are freed through its free queue: who queued one) are recorded in a ring
+// with the host call stack, and at the end of every frame every prop model the maps point at (the game's 3x3 cells,
+// the far props' maps) is checked: its heap block still in use (the size tag before it has bit 0 set) and its Borg5
+// pointer intact. The first one that isn't goes to heap-trace.txt in the settings folder with every recorded event
+// that touched its block.
+#include <execinfo.h>
+
+namespace {
+    bool heap_trace_on() {
+        static const bool on = [] {
+            const char* v = std::getenv("AIDYN_HEAP_TRACE");
+            return v != nullptr && *v != '\0' && std::strcmp(v, "0") != 0;
+        }();
+        return on;
+    }
+
+    struct HeapEvent {
+        uint32_t frame;
+        char kind;  // A alloc, F free, Z bzero, M memset, Q queued to be freed
+        uint32_t addr, size;
+        int depth;
+        void* stack[10];
+    };
+    constexpr size_t kHeapRing = 1 << 18;
+    std::vector<HeapEvent> heap_ring;
+    size_t heap_ring_next = 0;
+    uint32_t heap_frame = 0;
+    bool heap_reported = false;
+    HeapEvent alloc_pending;
+
+    void heap_record(char kind, uint32_t addr, uint32_t size, const HeapEvent* stack_from = nullptr) {
+        if (heap_ring.empty()) {
+            heap_ring.resize(kHeapRing);
+        }
+        HeapEvent& e = heap_ring[heap_ring_next++ % kHeapRing];
+        e.frame = heap_frame;
+        e.kind = kind;
+        e.addr = addr;
+        e.size = size;
+        if (stack_from != nullptr) {
+            e.depth = stack_from->depth;
+            std::memcpy(e.stack, stack_from->stack, sizeof(e.stack));
+        }
+        else {
+            e.depth = backtrace(e.stack, 10);
+        }
+    }
+
+    void heap_report(uint8_t* rdram, const char* where, int voxel, int model, gpr scene) {
+        heap_reported = true;
+        const uint32_t s = (uint32_t)scene, block = s - 4;
+        const uint32_t tag = (uint32_t)MEM_W(-4, scene);
+        std::string out;
+        char line[256];
+        std::snprintf(line, sizeof line, "frame %u: %s, voxel %d model %d: model %08x (block %08x, size tag %08x, %s), "
+                      "Borg5 pointer %08x\n", heap_frame, where, voxel, model, s, block, tag,
+                      (tag & 1) ? "in use" : "FREE", (uint32_t)MEM_W(0, scene));
+        out += line;
+        const uint32_t lo = block - 0x40, hi = block + std::max<uint32_t>(tag & ~1u, 0x120) + 0x40;
+        const size_t n = std::min(heap_ring_next, kHeapRing);
+        for (size_t i = 0; i < n; i++) {
+            const HeapEvent& e = heap_ring[(heap_ring_next - n + i) % kHeapRing];
+            const uint32_t a = e.kind == 'Q' ? e.addr : e.addr, end = a + std::max<uint32_t>(e.size, 4);
+            if (end <= lo || a >= hi) {
+                continue;
+            }
+            std::snprintf(line, sizeof line, "  frame %u %c %08x size %x\n", e.frame, e.kind, a, e.size);
+            out += line;
+            char** names = backtrace_symbols(e.stack, e.depth);
+            for (int k = 1; names != nullptr && k < e.depth; k++) {
+                out += "      ";
+                out += names[k];
+                out += "\n";
+            }
+            std::free(names);
+        }
+        std::fputs(out.c_str(), stdout);
+        std::fflush(stdout);
+        if (FILE* f = std::fopen((aidyn::settings::folder() / "heap-trace.txt").string().c_str(), "w")) {
+            std::fputs(out.c_str(), f);
+            std::fclose(f);
+        }
+    }
+
+    void heap_check_map(uint8_t* rdram, gpr map, const char* where) {
+        if (heap_reported || !heap_pointer(map)) {
+            return;
+        }
+        const gpr dat = map + 8, voxels = MEM_W(kB9Voxels, dat);
+        const int count = MEM_HU(kB9VoxelCount, dat);
+        for (int i = 0; heap_pointer(voxels) && i < count && !heap_reported; i++) {
+            const gpr v = voxels + kVoxelSize * i;
+            if (MEM_HU(kVoxelType, v) != 0) {
+                continue;
+            }
+            const bool b7 = (MEM_HU(kSceneFlags, v) & 2) != 0;
+            for (int j = 0; j < 3 && j < MEM_HU(kSceneCount, v); j++) {
+                const gpr scene = MEM_W(0, v + kSceneModels + 12 * j + 8);
+                if (scene == 0) {
+                    continue;
+                }
+                const bool used = heap_pointer(scene) && (MEM_W(-4, scene) & 1);
+                if (!used || (!b7 && !scene_intact(rdram, scene))) {
+                    heap_report(rdram, where, i, j, scene);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+bool scene_intact(uint8_t* rdram, gpr scene) {
+    if (heap_pointer(scene) && heap_pointer(MEM_W(0, scene))) {
+        return true;
+    }
+    static std::set<uint32_t> told;
+    if (told.insert((uint32_t)scene).second) {
+        std::fprintf(stdout, "Skipped a damaged prop model at %08x (its Borg5 pointer %08x)\n", (uint32_t)scene,
+                     heap_pointer(scene) ? (uint32_t)MEM_W(0, scene) : 0u);
+        std::fflush(stdout);
+    }
+    return false;
+}
+
+void heap_trace_frame(uint8_t* rdram) {
+    if (!heap_trace_on()) {
+        return;
+    }
+    heap_frame++;
+    char where[32];
+    for (int i = 0; i < 9; i++) {
+        std::snprintf(where, sizeof where, "game cell %d", i);
+        heap_check_map(rdram, MEM_W(0xC, (gpr)(kZoneDatMtx + 0x20 * i)), where);
+    }
+    for (int k = 0; k < kSide * kSide; k++) {
+        std::snprintf(where, sizeof where, "far props slot %d", k);
+        heap_check_map(rdram, far_maps[k], where);
+    }
+}
+
+extern "C" void aidyn_heap_alloc_begin(uint8_t* rdram, recomp_context* ctx) {
+    if (heap_trace_on()) {
+        alloc_pending.depth = backtrace(alloc_pending.stack, 10);
+    }
+}
+
+extern "C" void aidyn_heap_alloc_end(uint8_t* rdram, recomp_context* ctx) {
+    if (heap_trace_on() && heap_pointer(ctx->r2)) {
+        heap_record('A', (uint32_t)ctx->r2 - 4, (uint32_t)MEM_W(-4, ctx->r2) & ~1u, &alloc_pending);
+    }
+}
+
+extern "C" void aidyn_heap_free(uint8_t* rdram, recomp_context* ctx) {
+    if (heap_trace_on() && heap_pointer(ctx->r4)) {
+        heap_record('F', (uint32_t)ctx->r4 - 4, (uint32_t)MEM_W(-4, ctx->r4) & ~1u);
+    }
+}
+
+extern "C" void aidyn_heap_zero(uint8_t* rdram, recomp_context* ctx, int memset_call) {
+    if (heap_trace_on()) {
+        heap_record(memset_call ? 'M' : 'Z', (uint32_t)ctx->r4, (uint32_t)(memset_call ? ctx->r6 : ctx->r5));
+    }
+}
+
+extern "C" void aidyn_heap_queued(uint8_t* rdram, recomp_context* ctx) {
+    if (heap_trace_on() && heap_pointer(ctx->r5)) {
+        const gpr item = MEM_W(0, ctx->r5);
+        if (heap_pointer(item)) {
+            heap_record('Q', (uint32_t)item - 4, (uint32_t)MEM_W(-4, item) & ~1u);
+        }
     }
 }

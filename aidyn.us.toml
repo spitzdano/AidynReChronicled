@@ -132,12 +132,13 @@ before_vram = 0x80030430
 text = "extern void aidyn_menu_drawn(void); aidyn_menu_drawn();"
 
 # Frame interpolation: BorgAnimDrawSceneRaw(Gfx*, SceneData*) draws every model; its node matrices get RT64 matrix
-# groups (src/game/patches.cpp, "Frame interpolation"). Entry (a0 = display list), before a node's gSPMatrix is
-# written at s4 (s7 = s4 + 8), and before the return (v0 = display list).
+# groups (src/game/patches.cpp, "Frame interpolation"). Entry (a0 = display list; a model whose memory was overwritten
+# is skipped there, "Heap trace"), before a node's gSPMatrix is written at s4 (s7 = s4 + 8), and before the return
+# (v0 = display list).
 [[patches.hook]]
 func = "BorgAnimDrawSceneRaw"
 before_vram = 0x80097A90
-text = "extern void aidyn_scene_draw_begin(uint8_t* rdram, recomp_context* ctx); aidyn_scene_draw_begin(rdram, ctx);"
+text = "extern int aidyn_scene_draw_begin(uint8_t* rdram, recomp_context* ctx); if (!aidyn_scene_draw_begin(rdram, ctx)) { ctx->r2 = ctx->r4; return; }"
 
 [[patches.hook]]
 func = "BorgAnimDrawSceneRaw"
@@ -622,3 +623,35 @@ text = "extern void aidyn_combat_message(uint8_t* rdram, recomp_context* ctx); a
 func = "getBorgItem"
 before_vram = 0x80099210
 text = "extern void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header); aidyn_borg_loaded(rdram, (uint32_t)ctx->r19, ctx->r2);"
+
+# Heap trace (src/game/patches.cpp, "Heap trace"; AIDYN_HEAP_TRACE=1): the game's allocations, frees, zero fills and
+# free-queue entries, recorded to find what overwrites a prop's model.
+[[patches.hook]]
+func = "HeapAlloc"
+before_vram = 0x8008E6B0
+text = "extern void aidyn_heap_alloc_begin(uint8_t* rdram, recomp_context* ctx); aidyn_heap_alloc_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "HeapAlloc"
+before_vram = 0x8008E7E4
+text = "extern void aidyn_heap_alloc_end(uint8_t* rdram, recomp_context* ctx); aidyn_heap_alloc_end(rdram, ctx);"
+
+[[patches.hook]]
+func = "HeapFree"
+before_vram = 0x8008E7EC
+text = "extern void aidyn_heap_free(uint8_t* rdram, recomp_context* ctx); aidyn_heap_free(rdram, ctx);"
+
+[[patches.hook]]
+func = "_bzero"
+before_vram = 0x800B4780
+text = "extern void aidyn_heap_zero(uint8_t* rdram, recomp_context* ctx, int memset_call); aidyn_heap_zero(rdram, ctx, 0);"
+
+[[patches.hook]]
+func = "memset_recomp"
+before_vram = 0x8008F380
+text = "extern void aidyn_heap_zero(uint8_t* rdram, recomp_context* ctx, int memset_call); aidyn_heap_zero(rdram, ctx, 1);"
+
+[[patches.hook]]
+func = "AllocFreeQueueItem"
+before_vram = 0x800CC120
+text = "extern void aidyn_heap_queued(uint8_t* rdram, recomp_context* ctx); aidyn_heap_queued(rdram, ctx);"
