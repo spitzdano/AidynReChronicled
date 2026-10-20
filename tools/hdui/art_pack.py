@@ -25,11 +25,11 @@ import redone  # noqa: E402
 import romimages  # noqa: E402
 
 
-# Textures the game draws whole although their palettes mark texels transparent: the starting forest's pine walls,
-# whose bottom rows are a fringe of transparent spikes that the game draws as dark foliage. RT64 cuts a replacement's
-# transparent texels out instead, so where a wall's foot stood clear of the ground (a corner on the night path in Dan's
-# first save) the sky showed through as a pale wedge. Their replacements are made fully opaque, as the game shows them.
-DRAWN_WHOLE = {3749, 3858, 3860, 3861}
+# The world textures (walls, floors, characters, items: drawn in 3D, filtered) are given RT64's "half" shift, as the
+# HD world pack's are: RT64 then samples a replacement half a source texel further on, where the game's own filtering
+# puts the texels. The pack's default stays "none", which its flat 2D pictures need (portraits, icons, words). Without
+# it every painted texture sat half a texel off: at the foot of the starting forest's pine walls (tex03860), whose
+# bottom row is a fringe of cut-out spikes, the cut-out rose above the ground and the sky showed as a pale wedge.
 
 
 def world_textures(rom_path, textures, out, tmemhash):
@@ -68,11 +68,8 @@ def world_textures(rom_path, textures, out, tmemhash):
             pic = box_down(img, lw * redone.SCALE, lh * redone.SCALE)
         else:
             continue
-        if index in DRAWN_WHOLE:
-            pic = pic.copy()
-            pic[..., 3] = 255
         write_png(out / f"{h_}.png", pic.shape[1], pic.shape[0], np.ascontiguousarray(pic).tobytes())
-        entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "stream"})
+        entries.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "stream", "shift": "half"})
     print(f"art_pack.py: {len(infos)} world textures, {len(entries)} replacements")
     return entries
 
