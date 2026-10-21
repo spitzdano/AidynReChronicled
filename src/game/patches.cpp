@@ -4637,7 +4637,7 @@ extern "C" void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header) {
     }
 }
 // ---- FPS counter ----
-// settings.json graphics.fps_counter (the Display page): the frames shown a second at the picture's top left corner,
+// settings.json graphics.fps_counter (the Display page): the frames shown a second at the picture's top right corner,
 // over everything (drawn last in Graphics::EndList), in the game's font with its HD letters and the combat log's soft
 // shadow. The number is RT64's present timing (aidyn::shown_fps, twice a second): the frames you see, above the game's
 // own 60 when RT64 draws in-between frames.
@@ -4650,9 +4650,15 @@ gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (!aidyn::settings::graphics().fps_counter || !heap_pointer(font)) {
         return g;
     }
-    constexpr float kX = 6.0f, kY = 4.0f, kScale = 0.7f;
+    // Top right (the controls card is at the top left while walking): its right end 6 texels from the edge, or left
+    // of the fast-forward marker (x 292..312) while that shows.
+    constexpr float kY = 9.0f, kScale = 0.7f;
     const std::string text = std::to_string((int)std::lround(aidyn::shown_fps())) + " FPS";
-    g = hud_begin(rdram, g, false);
+    put_text(rdram, text);
+    const float width = (float)(int32_t)call_game(rdram, ctx, Font__GetWidthScaled, (uint32_t)font, (uint32_t)kLogText,
+                                                  f32_bits(kScale));
+    const float kX = (aidyn::input::fast_forward() ? 288.0f : 314.0f) - width;
+    g = hud_begin(rdram, g, true);
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
     const FontState st = font_save(rdram, font);
@@ -4660,7 +4666,8 @@ gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
     for (int pass = 0; pass < 2; pass++) {
         GfxCommand a[2];
         const int d = pass == 0 ? 2 : 0;  // the shadow: the same text a little down and right
-        gEXSetRectAlign(&a[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, d, d, d, d);
+        const int off = -320 * 4;          // from the picture's right edge, as hud_begin(right)
+        gEXSetRectAlign(&a[0], G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT, off + d, d, off + d, d);
         g = put_cmds(rdram, g, a, 2);
         MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xF2E6C8FFu);  // ivory, as the page words
         put_text(rdram, text);
@@ -5054,6 +5061,38 @@ void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx) {
             MEM_W(0x14, kEnemyFrame) = (int32_t)kEnemyFramePixels;
             ctx->r5 = kEnemyFrame;
         }
+    }
+}
+
+// ---- Camera and walls ----
+// The walking camera (Camera::Mode0) never kept itself out of walls: it only used the map's collision to decide
+// when to swing back behind the player, and the right-stick camera (above) leaves it where it was turned, so it went
+// through walls and showed the outside of the level. Before Mode0's last Orient the line from the player's head (the
+// camera's aim, +0xC) to the camera (pos, +0x0) is checked with the game's own CheckCollision against the map
+// (borg_9, +0x88), as the game's other camera mode does for its own move (Camera::Mode1): a wall on it puts the
+// camera on the player's side of the wall, a little off it. Not while the camera is held (cutscenes: holdCamera).
+extern "C" void CheckCollision(uint8_t* rdram, recomp_context* ctx);  // (borg9, from, to, radius, outPos, outNormal, s16)
+
+namespace {
+    constexpr gpr kCamHit = (gpr)(int32_t)0x80F81480, kCamNormal = (gpr)(int32_t)0x80F8148C;  // vec3f each
+}
+
+extern "C" void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx) {
+    const gpr cam = ctx->r19;
+    if (!heap_pointer(cam) || MEM_HU(0x6A, cam) != 0) {
+        return;
+    }
+    const gpr borg = MEM_W(0x88, cam);
+    if (!heap_pointer(borg)) {
+        return;
+    }
+    const uint32_t hit = call_game_stack(rdram, ctx, CheckCollision, (uint32_t)borg, (uint32_t)(cam + 0xC), (uint32_t)cam,
+                                         f32_bits(0.25f), { (uint32_t)kCamHit, (uint32_t)kCamNormal, 1 }) & 0xFF;
+    if (hit == 0) {
+        return;
+    }
+    for (int k = 0; k < 3; k++) {
+        write_f32(rdram, cam + 4 * k, read_f32(rdram, kCamHit + 4 * k) + 0.3f * read_f32(rdram, kCamNormal + 4 * k));
     }
 }
 

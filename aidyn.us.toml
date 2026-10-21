@@ -662,3 +662,11 @@ text = "extern int aidyn_free_queued(uint8_t* rdram, recomp_context* ctx); if (a
 func = "Crash__ManualCrash"
 before_vram = 0x8008E4F4
 text = "extern void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx); aidyn_game_crash(rdram, ctx);"
+
+# The walking camera kept out of walls (src/game/patches.cpp, "Camera and walls"): Camera::Mode0 before its last
+# Orient (s3 the camera), so the camera, turned by the right stick or following, stops at a wall between it and the
+# player.
+[[patches.hook]]
+func = "ProcessGameCamera_mode0"
+before_vram = 0x800A7284
+text = "extern void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx); aidyn_camera_walls(rdram, ctx);"

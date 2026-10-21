@@ -185,7 +185,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "widescreen": true,
         "msaa": 4,
         "supersampling": 2,
-        "fps_limit": 120,
+        "fps_limit": 240,
         "draw_distance": 3.0,
         "fullscreen": false,
         "menus_4_3": true,
@@ -212,14 +212,14 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |
 | `widescreen` | `false`: 4:3, the N64's picture, whatever `aspect` says (the Display page's switch; turning it on with `"aspect": "4:3"` sets `"16:9"`) |
 | `fullscreen` | `true`: borderless fullscreen on the display the window is on (F11 or Alt+Enter switches while playing); with `"aspect": "window"` the picture takes that display's shape (21:9 on an ultrawide). `AIDYN_WINDOWED=1` starts in a window whatever this says (`tools/dev/pad.sh` uses it) |
-| `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate (and never above it). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
+| `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate; never above the display's rate (default 240: the display's own rate, up to 240). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
-| `fps_counter` | `true`: the frames shown a second at the top left, over everything, in the game's font (the Display page; default `false`) |
+| `fps_counter` | `true`: the frames shown a second at the top right (left of the fast-forward marker when that shows), over everything, in the game's font (the Display page; default `false`) |
 | `turn_order` | combat: the round's turn order across the top of the screen, then the next round's (see "Turn order" below; `false`: none, and the game's own order within each speed group) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
@@ -392,6 +392,11 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   with their call stacks, checks every prop model the maps point at each frame, and writes the first damaged one and
   everything that touched its memory to `heap-trace.txt` in the data folder (no measurable cost: 60 fps either way).
   `tools/dev/aidyn-steam.sh`, the PC's launcher, turns it on until the cause is found.
+- **The camera and walls.** The walking camera never kept itself out of walls (it only used the map's collision to
+  decide when to swing back behind the party), and the right-stick camera leaves it where it was turned, so it could
+  end up outside a wall showing the level's back side. Each frame (`aidyn_camera_walls`, before Camera::Mode0's last
+  Orient) the line from the party leader's head to the camera is checked with the game's own CheckCollision, as its
+  other camera mode does for its own moves: a wall on it puts the camera on the party's side, a little off the wall.
 - **The free queue.** The game frees models through a queue of 256 entries, a few frames late (a display list in
   flight may still use them); one more is the game's own crash, a black frozen screen. With `draw_distance` above 1
   many more prop models are loaded, and an area change (going into the hut by the first forest) freed them all at

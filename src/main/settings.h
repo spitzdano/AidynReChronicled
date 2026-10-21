@@ -35,7 +35,7 @@ namespace aidyn::settings {
         int msaa = 4;                // 0, 2, 4 or 8 (capped to what the GPU supports)
         float draw_distance = 3.0f; // field view: multiplies the far clip (and the fog with it); 1 = original, up to 3
         int supersampling = 2;       // 1 (off), 2, 3 or 4: render that many times render_height and scale down (smoother edges)
-        int fps_limit = 120;         // frames shown a second (RT64 interpolates between the game's 60); 0 = the display's rate
+        int fps_limit = 240;         // frames shown a second (RT64 interpolates between the game's 60), never above the display's rate; 0 = the display's rate
         bool fullscreen = false;
         bool menus_4_3 = true;       // with 16:9/window: show the pause menu, inventory and shops in 4:3 (their layouts break widened)
         bool right_stick_camera = true; // walking: right stick turns the camera (x) and raises/lowers it (y)
