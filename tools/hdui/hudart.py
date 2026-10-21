@@ -17,6 +17,9 @@ The pause pages' arrows (SliderArrowL 36x8, SliderArrowR 36x8, SliderArrowLR 47x
 from 8 texels they came out as blurred zigzags. Redrawn: a 1.1-texel shaft, a notched arrowhead 6.2 tall with a small
 cross-guard behind it, a ring at the tail; the double arrow has a head at each end and a ring in the middle.
 
+The journal's arrows (LongUpArrow, LongDownArrow, 8x36, the same design stood up) are SliderArrowL / R drawn 36x8 and
+turned clockwise.
+
 HealthBar (77x8 colour, drawn stretched to 80x10, cut from the left to show the hit points left): a twisted rope.
 Its original's faint middle stretch upscaled into a smear. Redrawn in the original's reddish browns: a strand every
 4.6 texels, each round and lit from the upper left with fine fibres and a little variety from strand to strand; the
@@ -27,7 +30,7 @@ import math
 import numpy as np
 
 NAMES = ({"SundailCross", "SundailSunSmall", "SundailSunBig"} | {f"SundailMoon{i}" for i in range(6)}
-         | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar"})
+         | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "LongUpArrow", "LongDownArrow"})
 SCALE = 8
 SS = 4  # supersampling
 
@@ -184,6 +187,8 @@ def redraw(name, w, h, rgba=None):
     if name.startswith("SliderArrow"):
         kind = name[len("SliderArrow"):]
         alpha = _arrow(w, h, "L" in kind, "R" in kind, kind == "LR")
+    elif name in ("LongUpArrow", "LongDownArrow"):  # the journal's: the page arrow stood up (8x36), turned clockwise
+        alpha = np.rot90(_arrow(h, w, name == "LongUpArrow", name == "LongDownArrow", False), -1)
     elif name == "SundailCross":
         alpha = _rays(w, h)
     elif name == "SundailSunBig":

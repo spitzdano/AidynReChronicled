@@ -2746,6 +2746,21 @@ namespace {
 // g b a).
 // The map page's arrow is painted into its background (PauseBGMap, 320x240 CI8: a left arrow at texels 142..177,
 // 196..203, told by those texels): noted at that place when the visible part of the picture includes it.
+// The journal (Camp > Journal on the map page) is a book over the map page, whose painted arrow is still drawn under
+// it: told by its own background (JournalBG, 320x240 CI8, the FNV hash of its rows 100..103), so that arrow gets no LB.
+static bool journal_frame = false;
+
+static void note_journal(uint8_t* rdram, gpr img) {
+    const gpr pixels = MEM_W(0x14, img);
+    uint64_t hash = 0xCBF29CE484222325ULL;
+    for (uint32_t i = 100 * 320; i < 104 * 320; i++) {
+        hash = (hash ^ MEM_BU(i, pixels)) * 0x100000001B3ULL;
+    }
+    if (hash == 0x5E583A6EAD9F819CULL) {
+        journal_frame = true;
+    }
+}
+
 static void note_map_page_arrow(uint8_t* rdram, recomp_context* ctx, gpr img) {
     constexpr uint32_t kX = 142, kY = 196, kW = 36, kH = 8;
     const gpr pixels = MEM_W(0x14, img);
@@ -2975,6 +2990,7 @@ void note_page_arrow(uint8_t* rdram, recomp_context* ctx) {
     if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 320 && MEM_HU(0x0C, img) == 240) {
         note_map_page_arrow(rdram, ctx, img);
         note_inventory_page(rdram, ctx, img);
+        note_journal(rdram, img);
         return;
     }
     if (img == 0 || MEM_HU(0x08, img) != 5 || MEM_HU(0x0C, img) != 8) {
@@ -3039,6 +3055,10 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     aidyn::input::set_card_mode(mode);
     combat_card_top = 240.0f;
     combat_log_frame = mode == 2 && !aidyn::input::start_held();
+    if (journal_frame) {
+        journal_frame = false;
+        page_arrows.clear();  // the map page's arrow, under the journal
+    }
     if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen && !combat_menu_box.seen) {
         return g;
     }

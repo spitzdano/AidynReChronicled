@@ -239,8 +239,20 @@ def frame_boxes(stats):
         ys, xs = [c[0] for c in comp], [c[1] for c in comp]
         bw, bh = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
         if len(comp) >= 30 and bw >= 8 and bh >= 8 and len(comp) >= 1.5 * (bw + bh):  # an outline, not a blob
-            boxes.append((min(xs), min(ys), max(xs), max(ys)))
+            boxes.append(snap(mask, min(xs), min(ys), max(xs), max(ys)))
     return boxes
+
+
+def snap(mask, x0, y0, x1, y1):
+    """Each edge of a detected frame moved to the column or row (within 2 texels inwards) where its line is: bright
+    speckle touching a frame (the boot's, beside the silhouette) made it a texel or two too wide."""
+    def best(cands, count):
+        return max(cands, key=lambda c: (count(c), -abs(c - cands[0])))
+    col = lambda x: int(mask[y0:y1 + 1, x].sum())
+    row = lambda y: int(mask[y, x0:x1 + 1].sum())
+    x0n, x1n = best([x0, x0 + 1, x0 + 2], col), best([x1, x1 - 1, x1 - 2], col)
+    y0n, y1n = best([y0, y0 + 1, y0 + 2], row), best([y1, y1 - 1, y1 - 2], row)
+    return (x0n, y0n, x1n, y1n)
 
 
 def draw_frames(rgba8, stats):
