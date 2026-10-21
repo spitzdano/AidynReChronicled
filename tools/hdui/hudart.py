@@ -30,7 +30,9 @@ import math
 import numpy as np
 
 NAMES = ({"SundailCross", "SundailSunSmall", "SundailSunBig"} | {f"SundailMoon{i}" for i in range(6)}
-         | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "LongUpArrow", "LongDownArrow"})
+         | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "LongUpArrow", "LongDownArrow"}
+         | {"CompassNorth", "CompassEast", "CompassSouth", "CompassWest"})
+LETTERS = {"CompassNorth": "N", "CompassEast": "E", "CompassSouth": "S", "CompassWest": "W"}
 SCALE = 8
 SS = 4  # supersampling
 
@@ -172,8 +174,43 @@ def _rope(w, h):
     return colour, alpha
 
 
+def _letter(text, w, h):
+    """A compass letter in the menus' font (Marcellus SC): white, capitals 8 texels tall, centred, with a soft dark
+    edge so it reads on grass and sky (the game tints it and fades the ones facing away)."""
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    from pngio import read_png
+    font = Path(__file__).resolve().parent / "fonts/MarcellusSC-Regular.ttf"
+    W, H = w * SCALE, h * SCALE
+    with tempfile.TemporaryDirectory() as t:
+        out = Path(t) / "l.png"
+        subprocess.run(["magick", "-background", "none", "-fill", "white", "-font", str(font), "-pointsize", "300",
+                        f"label:{text}", "-trim", "+repage", "-resize", f"x{8 * SCALE}", f"PNG32:{out}"],
+                       check=True, stdout=subprocess.DEVNULL)
+        lw, lh, l = read_png(out)
+    glyph = np.frombuffer(bytes(l), np.uint8).reshape(lh, lw, 4)[..., 3].astype(np.float32) / 255
+    a = np.zeros((H, W), np.float32)
+    x0, y0 = (W - lw) // 2, (H - lh) // 2
+    a[y0:y0 + lh, x0:x0 + lw] = glyph
+    # the edge: the glyph grown by about a texel, blurred
+    edge = a.copy()
+    for _ in range(SCALE):
+        edge = np.maximum.reduce([edge, np.roll(edge, 1, 0), np.roll(edge, -1, 0), np.roll(edge, 1, 1), np.roll(edge, -1, 1)])
+    k = SCALE // 2
+    for axis in (0, 1):
+        edge = sum(np.roll(edge, d, axis) for d in range(-k, k + 1)) / (2 * k + 1)
+    alpha = np.maximum(a, edge * 0.7)
+    out = np.zeros((H, W, 4), np.uint8)
+    out[..., :3] = np.clip(255 * a / np.maximum(alpha, 1e-6) + 0.5, 0, 255).astype(np.uint8)[..., None]
+    out[..., 3] = np.clip(alpha * 255 + 0.5, 0, 255).astype(np.uint8)
+    return W, H, bytearray(out.tobytes())
+
+
 def redraw(name, w, h, rgba=None):
     """(W, H, rgba bytes) at 8x for one of NAMES."""
+    if name in LETTERS:
+        return _letter(LETTERS[name], w, h)
     if name == "HealthBar":
         colour, alpha = _rope(w, h)
         n = SCALE

@@ -102,7 +102,8 @@ def borg8_names(decomp):
     """BORG8_* names from the decomp's include/Borgindecies.h: {index: name}."""
     names = {}
     for line in (Path(decomp) / "include/Borgindecies.h").read_text().splitlines():
-        m = re.match(r"#define\s+BORG8_(\w+)\s+(0x[0-9a-fA-F]+)", line)  # some have two spaces (PortraitBecan)
+        m = re.match(r"#define\s+BORG8_(\w+)\s+(0[xX][0-9a-fA-F]+)", line)  # some have two spaces (PortraitBecan),
+        # some 0X (the compass's)
         if m:
             names[int(m.group(2), 16)] = m.group(1)
     return names

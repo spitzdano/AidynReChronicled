@@ -85,7 +85,8 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, crop_scale, art=Non
     rom = romassets.Rom(rom_path)
     names = romassets.borg8_names(decomp)
     art = art or {}
-    portraits = {i: n for i, n in names.items() if n.startswith("Portrait") and (n in art or not only_art)}
+    portraits = {i: n for i, n in names.items() if n.startswith("Portrait") and n != "PortraitHighlight"
+                 and (n in art or not only_art)}  # (PortraitHighlight, the frame, is an image like any other: romimages)
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"

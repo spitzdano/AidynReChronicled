@@ -27,6 +27,9 @@ BPP = portraits.BPP
 FMT = portraits.FMT
 
 
+COPIES = {"PortraitHighlightEnemy": ("PortraitHighlight", 1)}
+
+
 def fits(fmt, w, h):
     if BPP[fmt] != 8:
         return False
@@ -71,7 +74,8 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
     labels = labels or {}
     images, label_of = {}, {}
     for index in range(rom.count):
-        if rom.entry(index)[0] != romassets.IMAGE or names.get(index, "").startswith("Portrait"):
+        if rom.entry(index)[0] != romassets.IMAGE or (names.get(index, "").startswith("Portrait")
+                                                        and names.get(index) != "PortraitHighlight"):
             continue
         if only_art and names.get(index) not in art and names.get(index) not in hudart.NAMES:
             continue  # only_art: the redrawn pictures, and the ones hudart.py draws (not from the ROM either)
@@ -81,6 +85,17 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         images[index] = img
         if key_of(*img) in labels:
             label_of[index] = labels[key_of(*img)]
+    # Copies the game never has but src/game/patches.cpp draws: a picture with its middle texel changed (XOR), so it
+    # is a texture of its own with its own replacement ("Portrait frames": the enemy's message-box frame).
+    by_name = {n: i for i, n in names.items()}
+    for k, (name, (base, xor)) in enumerate(COPIES.items()):
+        b = by_name.get(base)
+        if b in images and (name in art or not only_art):
+            fmt, w, h, pixels, palette = images[b]
+            p = bytearray(pixels)
+            p[(h // 2) * w + w // 2] ^= xor
+            images[0x100000 + k] = (fmt, w, h, bytes(p), palette)
+            names[0x100000 + k] = name
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"

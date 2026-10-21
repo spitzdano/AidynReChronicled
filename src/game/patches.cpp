@@ -142,7 +142,10 @@ void note_page_arrow(uint8_t* rdram, recomp_context* ctx);  // "Button prompts",
 void aidyn_save_picture_drawn(uint8_t* rdram, gpr img);  // src/game/save_pictures.cpp
 void aidyn_page_words_drawn(uint8_t* rdram, gpr img);    // src/game/page_words.cpp
 
+void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx);  // "Portrait frames", near the end
+
 extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
+    aidyn_hud_frames_image(rdram, ctx);
     note_page_arrow(rdram, ctx);
     if (ctx->r5 != 0) {
         aidyn_save_picture_drawn(rdram, ctx->r5);
@@ -2251,6 +2254,58 @@ namespace {
 
 extern "C" void borg8DlistInit(uint8_t* rdram, recomp_context* ctx);  // (g, flags, hres, vres): the 2D images' state
 
+// Portrait frames (combat columns): Dan's ornate frames over each portrait in the combat columns, gold for the party
+// and red and silver for enemies (branding images frame_party / frame_enemy, tools/branding/hud_frames.py), drawn
+// after the portrait (its widget's render, below) while the redrawn art shows. The game's own slot frame under it
+// (image 0x1C6) is hidden then (aidyn_hud_frames_image, below); its colour said something (in reach: green, the
+// spell's: red, targeted: brighter), which shows instead as a soft band of that colour round the frame (frame_glow).
+namespace {
+    int branding_index(const char* name);  // "Button prompts", below
+
+    gpr tinted_image_state(uint8_t* rdram, gpr g, uint32_t rgba) {
+        auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
+        cmd(0xE7000000, 0);                  // gDPPipeSync
+        cmd(0xE3000A01, 0x00000000);         // gDPSetCycleType(G_CYC_1CYCLE)
+        cmd(0xE3000C00, 0x00000000);         // gDPSetTexturePersp(G_TP_NONE)
+        cmd(0xE3001001, 0x00000000);         // gDPSetTextureLUT(G_TT_NONE)
+        cmd(0xE3001201, 0x00002000);         // gDPSetTextureFilter(G_TF_BILERP)
+        cmd(0xE2001E01, 0x00000000);         // gDPSetAlphaCompare(G_AC_NONE)
+        cmd(0xE200001C, 0x00504240);         // gDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2)
+        cmd(0xFC119623, 0xFF2FFFFF);         // gDPSetCombineMode(G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM)
+        cmd(0xFA000000, rgba);               // gDPSetPrimColor
+        return g;
+    }
+
+    // The frame (and the band, if the slot is coloured) round a column portrait's widget; p its CombatPortrait.
+    gpr column_frame(uint8_t* rdram, gpr g, gpr widget, gpr p) {
+        const int frame = branding_index(MEM_W(0x0C, p) != 0 ? "frame_party" : "frame_enemy");
+        const int glow = branding_index("frame_glow");
+        if (frame < 0 || glow < 0) {
+            return g;
+        }
+        copy_branding(rdram);
+        const float x = (int16_t)MEM_HU(kWidgetPosX, widget), y = (int16_t)MEM_HU(kWidgetPosX + 2, widget);
+        const float fx = MEM_HU(0x74, widget) / 23.0f, fy = MEM_HU(0x72, widget) / 23.0f;  // the portrait is 23x23
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        const gpr blips = MEM_W(0, kCombatRadarBlips);
+        const int blip = MEM_BU(0x10, p);
+        if (heap_pointer(blips) && blip != 0xFF) {
+            const gpr slot = MEM_W(0, blips + blip * 0x18);
+            if (heap_pointer(slot)) {
+                const uint32_t r = MEM_BU(0x58, slot), gr = MEM_BU(0x59, slot), b = MEM_BU(0x5A, slot), a = MEM_BU(0x5B, slot);
+                const bool plain = r < 40 && gr < 40;                                     // the usual black
+                const bool gold = r > 150 && gr > 120 && b < 60 && std::abs((int)r - (int)gr) < 60;  // an ally's
+                if (!plain && !gold && a != 0) {
+                    g = tinted_image_state(rdram, g, r << 24 | gr << 16 | b << 8 | std::min(255u, a + 60));
+                    g = draw_rgba16(rdram, g, glow, (x - 6.0f * fx) * hs, (y - 6.0f * fy) * vs, fx * hs, fy * vs);
+                }
+            }
+        }
+        g = tinted_image_state(rdram, g, 0xFFFFFFFFu);
+        return draw_rgba16(rdram, g, frame, (x - 4.0f * fx) * hs, (y - 4.0f * fy) * vs, fx * hs, fy * vs);
+    }
+}
+
 // WidgetBorg8Combat::Render(this, g, ...): this in a0, g in a1; returns g in v0. Only the outermost of nested renders
 // (a portrait and its crossbones) sets the alignment.
 extern "C" void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx) {
@@ -2273,6 +2328,11 @@ extern "C" void aidyn_combat_widget_end(uint8_t* rdram, recomp_context* ctx) {
         for (int i = 0; i < MEM_BU(0, kCombatPortraitCount); i++) {
             const gpr p = portraits + i * 0x18;
             if (MEM_W(0, p) == widget) {
+                if (redesigned_card() && MEM_HU(0x74, widget) != 0 && heap_pointer(MEM_W(0x6C, widget))) {  // (a spare slot has no picture)
+                    gpr g = column_frame(rdram, ctx->r2, widget, p);
+                    ctx->r2 = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6,
+                                                      MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
+                }
                 if (combat_targeted(rdram, combat, MEM_BU(0x0A, p))) {  // cEntIndex
                     const float x = (int16_t)MEM_HU(kWidgetPosX, widget), y = (int16_t)MEM_HU(kWidgetPosX + 2, widget);
                     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
@@ -4872,3 +4932,128 @@ extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
         std::fclose(f);
     }
 }
+
+// ---- Portrait frames (images) ----
+// While the redrawn art shows, three HUD pictures the art pack replaces with Dan's (art/hud, tools/branding/hud_frames.py)
+// are drawn opaque at N64BorgImageDraw's entry (aidyn_ui_image_seen): CompassRing (the time-of-day dial's, the compass's
+// and the combat radar's ring; the game draws it at 80 or 164 of 255, for a faint white ring) and PortraitHighlight
+// (the white frame of the field's party portraits, the dialogue's and the combat message box's; 128 in the field). On
+// an enemy's turn the message box's frame is drawn from a copy with its middle texel changed (a texture of its own,
+// art/hud/PortraitHighlightEnemy: red and silver). And the combat columns' slot frames (image 0x1C6) are hidden: the
+// ornate frames are drawn over the portraits ("Portrait frames (combat columns)"). Told by their size and pixels.
+namespace {
+    enum HudPic { kHudOther, kHudRing, kHudHighlight, kHudSlot, kHudLetter };
+    constexpr gpr kEnemyFrame = (gpr)(int32_t)0x80F81500;        // the copy's Borg8 header (0x20 bytes)
+    constexpr gpr kEnemyFramePixels = (gpr)(int32_t)0x80F81600;  // its 52x52 IA8 pixels (2704 bytes)
+
+    uint64_t fnv_bytes(uint8_t* rdram, gpr p, uint32_t n) {
+        uint64_t hash = 0xCBF29CE484222325ULL;
+        for (uint32_t i = 0; i < n; i++) {
+            hash = (hash ^ MEM_BU(i, p)) * 0x100000001B3ULL;
+        }
+        return hash;
+    }
+
+    HudPic hud_pic(uint8_t* rdram, gpr img) {
+        if (!heap_pointer(img)) {
+            return kHudOther;
+        }
+        const uint32_t fmt = MEM_HU(0x08, img), w = MEM_HU(0x0A, img), h = MEM_HU(0x0C, img);
+        const gpr pixels = MEM_W(0x14, img);
+        if (!heap_pointer(pixels)) {
+            return kHudOther;
+        }
+        if (fmt == 5 && w == 60 && h == 60) {
+            return fnv_bytes(rdram, pixels, 3600) == 0xA0FBA05E1D07A869ULL ? kHudRing : kHudOther;
+        }
+        if (fmt == 5 && w == 52 && h == 52) {
+            return fnv_bytes(rdram, pixels, 2704) == 0xD6E3E1DCCD1E5C9AULL ? kHudHighlight : kHudOther;
+        }
+        if (fmt == 5 && w == 16 && h == 16) {
+            const uint64_t f = fnv_bytes(rdram, pixels, 256);
+            return (f == 0x4D42E5B5A2318E1AULL || f == 0x446893E88652D64AULL || f == 0x3E72B8418DD7E999ULL
+                    || f == 0x25FB4DA75816DAD7ULL) ? kHudLetter : kHudOther;  // CompassWest, North, South, East
+        }
+        if (fmt == 4 && w == 28 && h == 26) {
+            return fnv_bytes(rdram, pixels, 728) == 0xDEAF4656D90F8425ULL ? kHudSlot : kHudOther;
+        }
+        return kHudOther;
+    }
+
+    // Whose turn the combat message box shows (CombatTextboxWidget_Tick: gCombatP->current_Ent's portrait): an enemy's?
+    bool speaker_enemy(uint8_t* rdram) {
+        const gpr combat = MEM_W(0, kCombatP);
+        const gpr ent = heap_pointer(combat) ? MEM_W(kCurrentEnt, combat) : 0;
+        const gpr sheet = heap_pointer(ent) ? MEM_W(kCharSheet, ent) : 0;
+        if (!heap_pointer(sheet)) {
+            return false;
+        }
+        const uint32_t id = MEM_HU(0, sheet);
+        const gpr portraits = MEM_W(0, kCombatPortraits);
+        for (int i = 0; heap_pointer(portraits) && i < MEM_BU(0, kCombatPortraitCount); i++) {
+            const gpr p = portraits + i * 0x18;
+            if (MEM_HU(8, p) == id) {
+                return MEM_W(0x0C, p) == 0;  // made for the enemies' column
+            }
+        }
+        return MEM_W(kAiP, ent) != 0;
+    }
+}
+
+void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx) {
+    if (!redesigned_card()) {
+        return;
+    }
+    const HudPic pic = hud_pic(rdram, ctx->r5);
+    if (pic == kHudOther) {
+        return;
+    }
+    const gpr sp = ctx->r29;
+    const uint32_t alpha = MEM_BU(0x37, sp);
+    if (pic == kHudSlot) {
+        MEM_W(0x34, sp) = 0;
+        return;
+    }
+    if (pic == kHudLetter) {
+        // Compass::Draw puts the 16x16 letters 25 units from the ring's middle (271, 199), on the ring: inside it here,
+        // at 15.5, and white rather than its blue (160, 160, 220).
+        float x, y;
+        uint32_t bits = (uint32_t)ctx->r6;
+        std::memcpy(&x, &bits, 4);
+        bits = (uint32_t)ctx->r7;
+        std::memcpy(&y, &bits, 4);
+        x = 271.0f + (x + 8.0f - 271.0f) * 0.62f - 8.0f;
+        y = 199.0f + (y + 8.0f - 199.0f) * 0.62f - 8.0f;
+        std::memcpy(&bits, &x, 4);
+        ctx->r6 = (gpr)(int32_t)bits;
+        std::memcpy(&bits, &y, 4);
+        ctx->r7 = (gpr)(int32_t)bits;
+        const uint32_t m = std::max({ MEM_BU(0x2B, sp), MEM_BU(0x2F, sp), MEM_BU(0x33, sp) });
+        const int32_t v = (int32_t)std::min(255u, m * 255 / 220);
+        MEM_W(0x28, sp) = v;
+        MEM_W(0x2C, sp) = v;
+        MEM_W(0x30, sp) = v;
+        return;
+    }
+    MEM_W(0x34, sp) = (int32_t)std::min(255u, pic == kHudRing ? alpha * 16 / 5 : alpha * 2);
+    if (pic == kHudHighlight && heap_pointer(MEM_W(0, kCombatP))) {
+        float x, y;
+        uint32_t bits = (uint32_t)ctx->r6;
+        std::memcpy(&x, &bits, 4);
+        bits = (uint32_t)ctx->r7;
+        std::memcpy(&y, &bits, 4);
+        if (std::abs(x - 20.0f) < 1.5f && std::abs(y - 174.0f) < 1.5f && speaker_enemy(rdram)) {  // the message box's
+            const gpr img = ctx->r5, pixels = MEM_W(0x14, img);
+            for (int k = 0; k < 0x20; k += 4) {
+                MEM_W(k, kEnemyFrame) = MEM_W(k, img);
+            }
+            for (int i = 0; i < 52 * 52; i++) {
+                MEM_B(i, kEnemyFramePixels) = MEM_B(i, pixels);
+            }
+            MEM_B(26 * 52 + 26, kEnemyFramePixels) ^= 1;  // tools/hdui/romimages.py COPIES
+            MEM_W(0x14, kEnemyFrame) = (int32_t)kEnemyFramePixels;
+            ctx->r5 = kEnemyFrame;
+        }
+    }
+}
+
