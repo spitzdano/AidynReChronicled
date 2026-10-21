@@ -305,22 +305,67 @@ def calendar_rings(mp):
         if len(comp) >= 12 and xs.max() - xs.min() >= 6 and ys.max() - ys.min() >= 6:
             cx, cy = (xs.min() + xs.max()) / 2 + 0.5, (ys.min() + ys.max()) / 2 + 0.5
             rings.append((cx, cy, float(np.hypot(xs + 0.5 - cx, ys + 0.5 - cy).mean())))
-    return rings
+    # all the same size (one moon, half lit and half outline, measured a texel small): their median radius
+    r = float(np.median([g[2] for g in rings])) if rings else 0.0
+    return [(cx, cy, r) for cx, cy, _ in rings]
 
 
-def draw_rings(page, rings):
-    """Each ring a soft cream circle a texel wide, with a faint glow, as the painting drew them."""
+def moon_lit(mp, cx, cy, r):
+    """The lit part of one calendar moon on the original page (texels, float 0..1, over its disc): the texels clearly
+    lighter than the parchment around the moon, and the number's ink where it lies inside the lit part (a closing)."""
+    px = np.frombuffer(mp["rgba"], np.uint8).reshape(240, 320, 4)
+    lum = px[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+    yy, xx = np.mgrid[0:240, 0:320].astype(np.float32) + 0.5
+    d = np.hypot(xx - cx, yy - cy)
+    paper = float(np.median(lum[(d > r + 1.5) & (d < r + 4)]))
+    lit = (lum > paper + 18) & (d < r + 0.8)
+    m = Image.fromarray(lit.astype(np.uint8) * 255)
+    lit = np.asarray(m.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))) > 0
+    return lit & (d < r + 0.8)
+
+
+def moon_phase(mp, cx, cy, r):
+    """(k, ux, uy) of one moon: the lit side's direction (ux, uy) and the terminator, lit = u > k sqrt(r^2 - v^2) in
+    coordinates along and across that direction (k = 1 new, 0 half, -1 full), from the original's lit texels: the
+    lit share of the disc's inside (its outline left out) gives k = 1 - 2 x share, their centroid the direction."""
+    lit = moon_lit(mp, cx, cy, r)
+    px = np.frombuffer(mp["rgba"], np.uint8).reshape(240, 320, 4)
+    lum = px[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+    yy, xx = np.mgrid[0:240, 0:320].astype(np.float32) + 0.5
+    d = np.hypot(xx - cx, yy - cy)
+    paper = float(np.median(lum[(d > r + 1.5) & (d < r + 4)]))
+    ink = lum < paper - 25  # the number's texels: neither lit nor unlit, left out of the count
+    inside = (d < r - 1.2) & ~ink
+    share = float(lit[inside].mean()) if inside.any() else 0.0
+    sel = lit & inside
+    if share < 0.08 or share > 0.92 or not sel.any():
+        return (1.0 if share < 0.5 else -1.0), 1.0, 0.0
+    dx, dy = float((xx[sel] - cx).mean()), float((yy[sel] - cy).mean())
+    n = max(np.hypot(dx, dy), 1e-6)
+    return 1.0 - 2.0 * share, dx / n, dy / n
+
+
+def draw_rings(page, rings, mp):
+    """Each moon (the calendar marks days by the moon's phase: full, gibbous, half, crescent, new) drawn smooth: its
+    lit part (moon_phase, measured on the original) filled in the painting's cream with a soft glow, and its outline a
+    soft cream circle a texel wide (the new moon is the outline alone)."""
     H, W = page.shape[:2]
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32) / S
+    cream = np.array([1.0, 0.98, 0.92], np.float32)
     for cx, cy, r in rings:
+        k, ux, uy = moon_phase(mp, cx, cy, r)
         x0, x1 = int((cx - r - 4) * S), int((cx + r + 4) * S)
         y0, y1 = int((cy - r - 4) * S), int((cy + r + 4) * S)
-        d = np.hypot(xx[y0:y1, x0:x1] - cx, yy[y0:y1, x0:x1] - cy)
-        line = np.clip(1 - np.abs(d - r) / 0.6, 0, 1)                   # the ring itself
-        glow = np.exp(-((d - r) / 1.6) ** 2) * 0.35 + np.clip(1 - d / r, 0, 1) * 0.12   # its glow, a little inside
-        a = np.clip(np.maximum(line * 0.85, glow), 0, 1)[..., None]
+        X, Y = xx[y0:y1, x0:x1] - cx, yy[y0:y1, x0:x1] - cy
+        d = np.hypot(X, Y)
+        u, v = X * ux + Y * uy, -X * uy + Y * ux
+        g = u - k * np.sqrt(np.maximum(r * r - v * v, 0.0))
+        fill = np.clip(g / 0.5 + 0.5, 0, 1) * np.clip((r + 0.2 - d) / 0.5, 0, 1)
+        line = np.clip(1 - np.abs(d - r) / 0.6, 0, 1)
+        glow = np.exp(-((d - r) / 1.6) ** 2) * 0.35
+        a = np.clip(np.maximum.reduce([fill * 0.92, line * 0.85, glow]), 0, 1)[..., None]
         region = page[y0:y1, x0:x1]
-        region[..., :3] = region[..., :3] * (1 - a) + np.array([1.0, 0.98, 0.92], np.float32) * a
+        region[..., :3] = region[..., :3] * (1 - a) + cream * a
 
 
 def composite(dst, src, x, y):
@@ -378,7 +423,7 @@ def main():
         y0 -= DETAILS_UP
         icon = as_float(bw * S, bh * S, buttons.icon_for(button, bw, bh, S))
         composite(pages[1], icon, x0 * S, y0 * S)
-    draw_rings(pages[2], calendar_rings(orig["PauseBGMap"]))
+    draw_rings(pages[2], calendar_rings(orig["PauseBGMap"]), orig["PauseBGMap"])
     _, numbers = repaint.clean(orig["PauseBGMap"], MAP_LABELS["numbers"])
     mp = bytearray((np.clip(pages[2], 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
     mp = repaint.draw(W, H, mp, numbers, FONT, S)
