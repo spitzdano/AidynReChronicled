@@ -625,7 +625,8 @@ before_vram = 0x80099210
 text = "extern void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header); aidyn_borg_loaded(rdram, (uint32_t)ctx->r19, ctx->r2);"
 
 # Heap trace (src/game/patches.cpp, "Heap trace"; AIDYN_HEAP_TRACE=1): the game's allocations, frees, zero fills and
-# free-queue entries, recorded to find what overwrites a prop's model.
+# free-queue entries, recorded to find what overwrites a prop's model. AllocFreeQueueItem's hook also keeps the queue
+# from overflowing (src/game/patches.cpp, "Free queue overflow": return when it took the item).
 [[patches.hook]]
 func = "HeapAlloc"
 before_vram = 0x8008E6B0
@@ -654,4 +655,10 @@ text = "extern void aidyn_heap_zero(uint8_t* rdram, recomp_context* ctx, int mem
 [[patches.hook]]
 func = "AllocFreeQueueItem"
 before_vram = 0x800CC120
-text = "extern void aidyn_heap_queued(uint8_t* rdram, recomp_context* ctx); aidyn_heap_queued(rdram, ctx);"
+text = "extern int aidyn_free_queued(uint8_t* rdram, recomp_context* ctx); if (aidyn_free_queued(rdram, ctx)) return;"
+
+# The game's crash (src/game/patches.cpp, "Game crash report"): Crash::ManualCrash's entry, ra = the caller.
+[[patches.hook]]
+func = "Crash__ManualCrash"
+before_vram = 0x8008E4F4
+text = "extern void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx); aidyn_game_crash(rdram, ctx);"

@@ -36,6 +36,7 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);
 gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
 void all_props_frame_end();  // "Every prop considered", below
 void heap_trace_frame(uint8_t* rdram);  // "Heap trace", below
+void free_spill_frame(uint8_t* rdram, recomp_context* ctx);  // "Free queue overflow", below
 void combat_log_new_battle();
 bool combat_log_frame = false;     // aidyn_prompts: in combat this frame, the log to be drawn
 float combat_card_top = 240.0f;    // the combat controls card's top this frame (240: not shown)
@@ -52,6 +53,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     g = aidyn_ff_marker(rdram, g);
     all_props_frame_end();
     heap_trace_frame(rdram);
+    free_spill_frame(rdram, ctx);
     g = aidyn_prompts(rdram, g);
     if (combat_log_frame) {
         g = draw_combat_log(rdram, ctx, g, combat_card_top);
@@ -4745,11 +4747,91 @@ extern "C" void aidyn_heap_zero(uint8_t* rdram, recomp_context* ctx, int memset_
     }
 }
 
-extern "C" void aidyn_heap_queued(uint8_t* rdram, recomp_context* ctx) {
+static void heap_queued(uint8_t* rdram, recomp_context* ctx) {
     if (heap_trace_on() && heap_pointer(ctx->r5)) {
         const gpr item = MEM_W(0, ctx->r5);
         if (heap_pointer(item)) {
             heap_record('Q', (uint32_t)item - 4, (uint32_t)MEM_W(-4, item) & ~1u);
         }
+    }
+}
+
+// ---- Free queue overflow ----
+// The game frees models through a queue of 256 entries (QueueA, its count at +0x800), a few frames late so a display
+// list still in flight can use them; one more is a crash (AllocFreeQueueItem calls Crash::ManualCrash: the black,
+// frozen screen). With draw_distance above 1 far more prop models are loaded (all props considered, far cells), and an
+// area change (into the hut by the first forest, 2026-10-21) frees every one at once. So past 240 entries an item
+// waits here instead, taken out of its slot as the game would (the slot is set to NULL), and goes into the queue at the
+// end of each frame while it has room (kept under 200). Each overflow is reported once on stdout.
+namespace {
+    struct SpilledFree { uint32_t queue, item; uint16_t type, pri; };
+    std::vector<SpilledFree> free_spill;
+    constexpr gpr kSpillSlot = (gpr)(int32_t)0x80F81400;  // the void* the game's function takes the item from
+    bool spilling = false;
+}
+
+extern "C" int aidyn_free_queued(uint8_t* rdram, recomp_context* ctx) {
+    heap_queued(rdram, ctx);
+    const gpr q = ctx->r4, slot = ctx->r5;
+    // (the slot may be outside the game's heap: the far cells' scene pointers live above its 15 MB, kFarTable)
+    const uint32_t us = (uint32_t)slot;
+    const bool slot_ok = us >= 0x80000400u && us < 0x81000000u && (us & 3) == 0;
+    if (spilling || !heap_pointer(q) || !slot_ok || MEM_HU(0x800, q) < 240) {
+        return 0;
+    }
+    free_spill.push_back({ (uint32_t)q, (uint32_t)MEM_W(0, slot), (uint16_t)ctx->r6, (uint16_t)ctx->r7 });
+    MEM_W(0, slot) = 0;
+    static size_t told = 0;
+    if (free_spill.size() > told + 50 || told == 0) {
+        told = free_spill.size();
+        std::fprintf(stdout, "Free queue full: %zu item(s) waiting to be freed\n", free_spill.size());
+        std::fflush(stdout);
+    }
+    return 1;
+}
+
+void free_spill_frame(uint8_t* rdram, recomp_context* ctx) {
+    spilling = true;
+    while (!free_spill.empty()) {
+        const SpilledFree f = free_spill.back();
+        if (MEM_HU(0x800, (gpr)(int32_t)f.queue) >= 200) {
+            break;
+        }
+        MEM_W(0, kSpillSlot) = (int32_t)f.item;
+        call_game(rdram, ctx, AllocFreeQueueItem, f.queue, (uint32_t)kSpillSlot, f.type, f.pri);
+        free_spill.pop_back();
+    }
+    spilling = false;
+}
+
+// ---- Game crash report ----
+// Crash::ManualCrash is the game's own "this must not happen" (heap exhausted or corrupt, free queue overflow, a bad
+// asset index...). The release build keeps no cause and shows a black, frozen screen. Its entry is hooked: the caller
+// (ra), the host call stack (the recompiled functions' names), the free queue's count and the heap's free bytes go to
+// stdout and game-crash.txt in the data folder.
+extern "C" void get_MemFree(uint8_t* rdram, recomp_context* ctx);
+#include <execinfo.h>
+
+extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
+    std::string out;
+    char line[256];
+    std::snprintf(line, sizeof line, "GAME CRASH (Crash::ManualCrash), called from %08x; free queue %u/256, %zu waiting; "
+                  "heap free %u bytes\n", (uint32_t)ctx->r31, (uint32_t)MEM_HU(0x800, (gpr)kQueueA), free_spill.size(),
+                  (uint32_t)MEM_W(0, (gpr)(int32_t)0x800E3D90 + 0x14));
+    out += line;
+    void* stack[24];
+    const int depth = backtrace(stack, 24);
+    char** names = backtrace_symbols(stack, depth);
+    for (int k = 1; names != nullptr && k < depth; k++) {
+        out += "    ";
+        out += names[k];
+        out += "\n";
+    }
+    std::free(names);
+    std::fputs(out.c_str(), stdout);
+    std::fflush(stdout);
+    if (FILE* f = std::fopen((aidyn::settings::folder() / "game-crash.txt").string().c_str(), "w")) {
+        std::fputs(out.c_str(), f);
+        std::fclose(f);
     }
 }

@@ -392,6 +392,12 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   with their call stacks, checks every prop model the maps point at each frame, and writes the first damaged one and
   everything that touched its memory to `heap-trace.txt` in the data folder (no measurable cost: 60 fps either way).
   `tools/dev/aidyn-steam.sh`, the PC's launcher, turns it on until the cause is found.
+- **The free queue.** The game frees models through a queue of 256 entries, a few frames late (a display list in
+  flight may still use them); one more is the game's own crash, a black frozen screen. With `draw_distance` above 1
+  many more prop models are loaded, and an area change (going into the hut by the first forest) freed them all at
+  once. Past 240 entries an item now waits and goes into the queue at the end of each frame while it has room
+  (`Free queue full` in the log). And the game's crash (`Crash::ManualCrash`) is reported: its caller, the call
+  stack, the queue and the heap go to the log and `game-crash.txt` in the data folder.
 - **The Buckler.** Its model was exported with every texture coordinate inside a patch of about 5x5 of its texture's
   32x32 texels, so its face showed a flat dark red-brown (on the N64 too) and never its red studded leather and gold
   bands. As the model loads (`getBorgItem`, BORG2 asset 0x3520) its coordinates are projected flat across the shield,
