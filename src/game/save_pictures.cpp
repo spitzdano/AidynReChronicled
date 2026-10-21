@@ -342,3 +342,26 @@ bool aidyn::save_picture_for_texture(uint32_t address, uint16_t width, uint16_t 
     }
     return false;
 }
+
+// Problem reports (src/game/patches.cpp, "Report a problem"): the full-resolution copy of the picture
+// gQuestdataSnapshot holds (the pause menu's, of the screen as it opened) as a JPEG. False if there is none.
+bool aidyn_save_picture_jpeg(uint8_t* rdram, std::vector<uint8_t>& jpeg) {
+    const gpr snapshot = MEM_W(0, kSnapshotPointer);
+    if (snapshot == 0) {
+        return false;
+    }
+    const uint64_t key = picture_key(rdram, snapshot);
+    std::shared_ptr<const Picture> picture;
+    {
+        std::lock_guard lock(g_mutex);
+        picture = find_locked(key);
+    }
+    if (picture == nullptr) {
+        return false;
+    }
+    jpeg.clear();
+    return stbi_write_jpg_to_func([](void* out, void* data, int size) {
+        auto* v = static_cast<std::vector<uint8_t>*>(out);
+        v->insert(v->end(), static_cast<uint8_t*>(data), static_cast<uint8_t*>(data) + size);
+    }, &jpeg, (int)picture->width, (int)picture->height, 4, picture->rgba.data(), 90) != 0;
+}

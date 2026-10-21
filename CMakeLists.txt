@@ -75,6 +75,7 @@ add_executable(AidynReChronicled
     src/main/rt64_context.cpp
     src/main/settings.cpp
     src/main/register_overlays.cpp
+    src/main/report.cpp
     src/game/pak.cpp
     src/game/page_words.cpp
     src/game/patches.cpp
@@ -89,7 +90,7 @@ set(AIDYN_VERSION "" CACHE STRING "The release version shown on the title screen
 add_custom_target(aidyn_version
     COMMAND ${CMAKE_COMMAND} -DOUT=${CMAKE_BINARY_DIR}/generated/aidyn_version.h -DSRC=${CMAKE_SOURCE_DIR}
             -DFIXED=${AIDYN_VERSION} -P ${CMAKE_SOURCE_DIR}/tools/version.cmake
-    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/aidyn_version.h)
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/aidyn_version.h ${CMAKE_BINARY_DIR}/generated/aidyn_build.h)
 add_dependencies(AidynReChronicled aidyn_version)
 target_include_directories(AidynReChronicled PRIVATE
     ${CMAKE_BINARY_DIR}/generated

@@ -62,7 +62,12 @@ All in `~/.local/share/AidynReChronicled`:
   `camera_invert_x` invert the camera.
 - `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's. `backups/` keeps its last
   20 states (at each start and before each save).
+- `aidyn-patch-quicksave.sav`, `-autosave-1.sav`, `-autosave-2.sav`, `-lastsave.sav`: the quicksave (View while
+  walking about), the two newest autosaves and a copy of the last save made on the pak, for Quick Load and Continue.
 - `logs/last-run.log`: what the last start printed. Look there if something goes wrong.
+- `reports/`: problem reports, one `.zip` each with the logs, settings and saves: written by the game when it
+  crashes, or by **Report a problem** on the pause menu's ReChronicled page. Send the newest with a few words on what
+  happened.
 - `texture-packs/`: HD texture packs. This release includes, next to the game, newly painted art
   (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
   the first world textures: Alaron, the starting forest, part of Gwernia Castle), the HD letters and Xbox button

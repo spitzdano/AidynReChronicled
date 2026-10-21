@@ -606,6 +606,25 @@ func = "processIntroMenu"
 before_vram = 0x80043C44
 text = "extern int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx); if (aidyn_title_choice(rdram, ctx)) return;"
 
+# The camera never on its aim (src/game/patches.cpp, "The camera and walls"): handleZoneEngineFrame before its
+# "Focus, and Camera at same Spot!" check (s1 + 0x134 the camera's pos, aim after it).
+[[patches.hook]]
+func = "handleZoneEngineFrame"
+before_vram = 0x8000EA44
+text = "extern void aidyn_camera_apart(uint8_t* rdram, gpr pos); aidyn_camera_apart(rdram, ctx->r17 + 0x134);"
+
+# Walk speed (src/game/patches.cpp, "Walk speed"): ProcessPlayers' loop over a character's animation steps, at its
+# start (its count fp; s1 the character) and its end.
+[[patches.hook]]
+func = "ProcessPlayers"
+before_vram = 0x800130E4
+text = "extern void aidyn_walk_steps(uint8_t* rdram, recomp_context* ctx); aidyn_walk_steps(rdram, ctx);"
+
+[[patches.hook]]
+func = "ProcessPlayers"
+before_vram = 0x8001343C
+text = "extern void aidyn_walk_steps_end(uint8_t* rdram, recomp_context* ctx); aidyn_walk_steps_end(rdram, ctx);"
+
 # The outdoor sky's fill below the horizon (RenderSky's DrawRectangle at 0x8001DD50: a2 = the horizon row, colour
 # bytes on the stack at sp + 0x14..0x20): src/game/patches.cpp "Below the horizon".
 [[patches.hook]]

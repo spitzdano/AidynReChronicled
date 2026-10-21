@@ -187,6 +187,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
         "supersampling": 2,
         "fps_limit": 240,
         "draw_distance": 3.0,
+        "walk_speed": 1.5,
         "fullscreen": false,
         "menus_4_3": true,
         "right_stick_camera": true,
@@ -216,6 +217,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
+| `walk_speed` | 1 (original) to 2: in the field Alaron's walk and run cycles play this many times faster, and as the game moves him by them, his pace with them; nothing else is sped up (`1.5`) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); LB shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
@@ -233,7 +235,8 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, last), each a page of the
 switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `hud_at_edges`,
-`draw_distance` from 1 to 3 in halves) and **ReChronicled** (`turn_order`, `controls_card`, `button_prompts`,
+`draw_distance` from 1 to 3 in halves) and **ReChronicled** (`turn_order`, `walk_speed` from 1 to 2 in quarters,
+`controls_card`, `button_prompts`,
 `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, `combat_log`).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
@@ -292,6 +295,22 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Save backups.** The Controller Pak is copied to `backups/` when the game starts and before each save (the first
   write after 30 s without writes), unless the copy would be the same as the newest one; the newest `save_backups`
   copies of each pak are kept.
+- **Walk speed.** The game moves a character by its walk or run cycle (each animation step moves it as far as the
+  cycle's root moves), stepping each one's animation once per game tick in ProcessPlayers. For Alaron walking or
+  running while walking about, that loop is run `walk_speed` times the frame's ticks (the fraction carried over), so
+  legs and pace quicken together and the clock, monsters and camera don't.
+- **Problem reports.** `reports/report-<date>-<time>.zip` in the settings folder (`src/main/report.cpp`, miniz): a
+  `report.txt` (why, when, the exact build from `git describe` in `aidyn_build.h`, the game's version, the system),
+  `game-crash.txt`, both run logs, `settings.json`, the pak and the quick, auto and last saves, with the home folder's
+  path written `~`; the newest 10 kept. Three ways: the game's own crash check (`aidyn_game_crash`) writes one, shows a
+  message saying where and ends the program (it used to sit frozen); the launchers (`tools/ally/aidyn-rechronicled.sh`,
+  `tools/dev/aidyn-steam.sh`) run `AidynReChronicled --report "<why>"` when the game died of a crash signal (132, 134,
+  135, 136, 139) without one; and **Report a problem** on the ReChronicled page adds `screen.jpg` (the pause menu's
+  picture in full resolution) and, paused from walking about, `saves/this-moment.sav` (put it in place of a
+  `-quicksave.sav` and use Quick Load to play from there). `AIDYN_CRASH_TEST=1` sets off the game's crash check after
+  10 seconds of walking about, to try the whole way. `make_release.sh` keeps each release's binary before strip in
+  `build/release/symbols/` for reading a report's addresses (`addr2line -f -C -e <it> <offset>`). Testers send
+  reports through the Problem report issue form (`.github/ISSUE_TEMPLATE/problem-report.yml`).
 - **Quicksaves and autosaves.** Files of their own beside the pak, named after it (`aidyn-patch-quicksave.sav`,
   `-autosave-1.sav`, `-autosave-2.sav`), each the 7 KB `SaveDatStruct` the game writes to the pak. View while walking
   quicksaves; an autosave is made on arriving in another area (a map other than before after a screen fade: doors are
@@ -408,12 +427,16 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   end up outside a wall showing the level's back side. Each frame (`aidyn_camera_walls`, before Camera::Mode0's last
   Orient) the line from the party leader's head to the camera is checked with the game's own CheckCollision, as its
   other camera mode does for its own moves: a wall on it puts the camera on the party's side, a little off the wall.
+  Not when that spot would be within half a unit of the aim (backed against a wall): the game takes a camera on its
+  aim for a crash and freezes, so the camera then stays where the game put it; and just before that check a camera
+  within 0.06 of its aim is lifted above it, whatever brought them together.
 - **The free queue.** The game frees models through a queue of 256 entries, a few frames late (a display list in
   flight may still use them); one more is the game's own crash, a black frozen screen. With `draw_distance` above 1
   many more prop models are loaded, and an area change (going into the hut by the first forest) freed them all at
   once. Past 240 entries an item now waits and goes into the queue at the end of each frame while it has room
   (`Free queue full` in the log). And the game's crash (`Crash::ManualCrash`) is reported: its caller, the call
-  stack, the queue and the heap go to the log and `game-crash.txt` in the data folder.
+  stack, the queue and the heap go to the log and `game-crash.txt` in the data folder; then a problem report is written
+  (see Problem reports) and the game closes with a message saying where, rather than sit frozen.
 - **The Buckler.** Its model was exported with every texture coordinate inside a patch of about 5x5 of its texture's
   32x32 texels, so its face showed a flat dark red-brown (on the N64 too) and never its red studded leather and gold
   bands. As the model loads (`getBorgItem`, BORG2 asset 0x3520) its coordinates are projected flat across the shield,

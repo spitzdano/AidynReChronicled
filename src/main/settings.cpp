@@ -95,6 +95,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["supersampling"] = g_graphics.supersampling;
         j["graphics"]["fps_limit"] = g_graphics.fps_limit;
         j["graphics"]["draw_distance"] = g_graphics.draw_distance;
+        j["graphics"]["walk_speed"] = g_graphics.walk_speed;
         j["graphics"]["fullscreen"] = g_graphics.fullscreen;
         j["graphics"]["menus_4_3"] = g_graphics.menus_4_3;
         j["graphics"]["right_stick_camera"] = g_graphics.right_stick_camera;
@@ -139,6 +140,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.supersampling = gfx.value("supersampling", g_graphics.supersampling);
         g_graphics.fps_limit = gfx.value("fps_limit", g_graphics.fps_limit);
         g_graphics.draw_distance = gfx.value("draw_distance", g_graphics.draw_distance);
+        g_graphics.walk_speed = gfx.value("walk_speed", g_graphics.walk_speed);
         g_graphics.fullscreen = gfx.value("fullscreen", g_graphics.fullscreen);
         g_graphics.menus_4_3 = gfx.value("menus_4_3", g_graphics.menus_4_3);
         g_graphics.right_stick_camera = gfx.value("right_stick_camera", g_graphics.right_stick_camera);
@@ -228,6 +230,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     }
     if (!(g_graphics.draw_distance >= 1.0f && g_graphics.draw_distance <= 3.0f)) {
         bad(path, "graphics.draw_distance must be 1 (original) to 3");
+    }
+    if (!(g_graphics.walk_speed >= 1.0f && g_graphics.walk_speed <= 2.0f)) {
+        bad(path, "graphics.walk_speed must be 1 (original) to 2");
     }
 }
 

@@ -3800,6 +3800,8 @@ namespace aidyn {
     void refresh_aspect();
 }
 
+void report_problem(uint8_t* rdram, recomp_context* ctx);  // "Report a problem", below
+
 namespace {
     // Our entries' ids (the game's are 0xA0..0x17A and 9999), their texts and their pages' titles.
     constexpr uint16_t kRcId = 0x7A11, kDisplayId = 0x7A12;
@@ -3814,19 +3816,33 @@ namespace {
     constexpr uint32_t kMenuInk = 0x825050, kMenuHighlight0 = 0x442A22, kMenuHighlight1 = 0x978DBF;
     constexpr float kRowsLeft = 76.0f, kRowsRight = 286.0f, kRowsTop = 54.0f, kRowStep = 16.0f;  // N64 pixels, 4:3
 
+    // A row of steps (the draw distance, the walk speed): the setting, its steps and their words.
+    struct RcSteps {
+        float* value;
+        const float* steps;
+        const char* const* words;
+        int n;
+    };
+
     struct RcRow {
         const char* label;
-        bool* flag;           // a switch; nullptr: the draw distance
+        bool* flag;           // a switch; nullptr: steps
         const char* key;      // in settings.json's "graphics"
         void (*applied)(uint8_t* rdram);
         bool (*shown)() = nullptr;  // what the row shows when not just *flag (Widescreen: the picture really wide)
+        const RcSteps* steps = nullptr;
+        void (*action)(uint8_t* rdram, recomp_context* ctx) = nullptr;  // a row that does something (A), no value
     };
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
     constexpr const char* kDistanceWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_25", "rc_dd_3" };
+    constexpr float kWalkSpeeds[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+    constexpr const char* kWalkWords[] = { "rc_dd_1", "rc_ws_125", "rc_dd_15", "rc_ws_175", "rc_dd_2" };
 
     std::vector<RcRow> rc_rows(int kind) {
         auto& gfx = aidyn::settings::graphics_rw();
+        static const RcSteps distance = { &gfx.draw_distance, kDistances, kDistanceWords, (int)std::size(kDistances) };
+        static const RcSteps walk = { &gfx.walk_speed, kWalkSpeeds, kWalkWords, (int)std::size(kWalkSpeeds) };
         if (kind == kRcDisplay) {
             return {
                 { "rc_widescreen", &gfx.widescreen, "widescreen",
@@ -3836,11 +3852,12 @@ namespace {
                 { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
                 { "rc_fps", &gfx.fps_counter, "fps_counter", nullptr },
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
-                { "rc_draw_distance", nullptr, "draw_distance", nullptr },
+                { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
             };
         }
         return {
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
+            { "rc_walk_speed", nullptr, "walk_speed", nullptr, nullptr, &walk },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
             { "rc_combat_log", &gfx.combat_log, "combat_log", nullptr },
@@ -3848,6 +3865,7 @@ namespace {
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
+            { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
     }
 
@@ -3855,11 +3873,10 @@ namespace {
         return r.shown != nullptr ? r.shown() : *r.flag;
     }
 
-    int distance_index() {
-        const float dd = aidyn::settings::graphics().draw_distance;
+    int step_index(const RcSteps& s) {
         int best = 0;
-        for (int i = 0; i < (int)std::size(kDistances); i++) {
-            if (std::fabs(kDistances[i] - dd) < std::fabs(kDistances[best] - dd)) best = i;
+        for (int i = 0; i < s.n; i++) {
+            if (std::fabs(s.steps[i] - *s.value) < std::fabs(s.steps[best] - *s.value)) best = i;
         }
         return best;
     }
@@ -3900,9 +3917,9 @@ namespace {
                 aidyn::settings::save_bool("graphics", r.key, *r.flag);
             }
         } else {
-            const int n = (int)std::size(kDistances);
-            gfx.draw_distance = kDistances[(distance_index() + step + n) % n];
-            aidyn::settings::save_number("graphics", r.key, gfx.draw_distance);
+            const RcSteps& s = *r.steps;
+            *s.value = s.steps[(step_index(s) + step + s.n) % s.n];
+            aidyn::settings::save_number("graphics", r.key, *s.value);
         }
         if (r.applied != nullptr) {
             r.applied(rdram);
@@ -4008,7 +4025,10 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (!rc.closing && rc.fade == 255) {
         if (act & 0x0800) { row = (row + (int)rows.size() - 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0400) { row = (row + 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
-        if (act & 0x8000) { rc_change(rdram, rows[row], 1); rc_sound(rdram, ctx, 0x740, 60); }
+        if (rows[row].action != nullptr) {
+            if (pressed & 0x8000) rows[row].action(rdram, ctx);
+        }
+        else if (act & 0x8000) { rc_change(rdram, rows[row], 1); rc_sound(rdram, ctx, 0x740, 60); }
         else if (act & 0x0300) { rc_change(rdram, rows[row], (act & 0x0200) ? -1 : 1); rc_sound(rdram, ctx, 0x740, 60); }
         if (pressed & (0x4000 | 0x1000)) {  // B, Start: back to the list
             rc.closing = true;
@@ -4056,18 +4076,21 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             word("rc_title_r", x + w, kRowsTop - 31.0f, false);
         }
     }
+    const float row_step = rows.size() > 9 ? 14.5f : kRowStep;  // ten rows: closer, to stay on the parchment
     for (int k = 0; k < (int)rows.size(); k++) {
         const RcRow& r = rows[k];
-        const float y = kRowsTop + kRowStep * k;
+        const float y = kRowsTop + row_step * k;
         ink(k == row ? rc_highlight() : kMenuInk);
         word(r.label, kRowsLeft, y, false);
-        word(r.flag != nullptr ? (rc_on(r) ? "rc_on" : "rc_off") : kDistanceWords[distance_index()], kRowsRight, y, true);
+        if (r.action == nullptr) {
+            word(r.flag != nullptr ? (rc_on(r) ? "rc_on" : "rc_off") : r.steps->words[step_index(*r.steps)], kRowsRight, y, true);
+        }
     }
     g = prompt_state(rdram, g, (uint8_t)rc.fade);
     const int change = branding_index("rc_hint_change"), back = branding_index("rc_hint_back");
     if (change >= 0 && back >= 0) {
         const float gap = 24.0f, x = centre - (ink_width(change) + gap + ink_width(back)) / 2.0f;
-        const float y = kRowsTop + kRowStep * rows.size() + 6.0f;
+        const float y = kRowsTop + row_step * rows.size() + 6.0f;
         word("rc_hint_change", x, y, false);
         word("rc_hint_back", x + ink_width(change) + gap, y, false);
     }
@@ -4927,7 +4950,9 @@ void free_spill_frame(uint8_t* rdram, recomp_context* ctx) {
 // Crash::ManualCrash is the game's own "this must not happen" (heap exhausted or corrupt, free queue overflow, a bad
 // asset index...). The release build keeps no cause and shows a black, frozen screen. Its entry is hooked: the caller
 // (ra), the host call stack (the recompiled functions' names), the free queue's count and the heap's free bytes go to
-// stdout and game-crash.txt in the data folder.
+// stdout and game-crash.txt in the data folder; then a problem report is written (src/main/report.cpp), a message
+// says where, and the program ends rather than sit frozen.
+#include "report.h"
 extern "C" void get_MemFree(uint8_t* rdram, recomp_context* ctx);
 #include <execinfo.h>
 
@@ -4953,6 +4978,7 @@ extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
         std::fputs(out.c_str(), f);
         std::fclose(f);
     }
+    aidyn::report::game_crashed("The game stopped at its own crash check (game-crash.txt)");
 }
 
 // ---- Portrait frames (images) ----
@@ -5106,8 +5132,36 @@ extern "C" void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx) {
     if (hit == 0) {
         return;
     }
+    // A wall right behind the head (backed against it) would put the camera on the aim itself, which the game takes
+    // for a crash (handleZoneEngineFrame: "Focus, and Camera at same Spot!", under 0.05 apart; Dan's game froze so,
+    // 2026-10-21): then the camera stays where the game put it.
+    float to[3], d2 = 0.0f;
     for (int k = 0; k < 3; k++) {
-        write_f32(rdram, cam + 4 * k, read_f32(rdram, kCamHit + 4 * k) + 0.3f * read_f32(rdram, kCamNormal + 4 * k));
+        to[k] = read_f32(rdram, kCamHit + 4 * k) + 0.3f * read_f32(rdram, kCamNormal + 4 * k);
+        const float d = to[k] - read_f32(rdram, cam + 0xC + 4 * k);
+        d2 += d * d;
+    }
+    if (!(d2 >= 0.5f * 0.5f)) {
+        return;
+    }
+    for (int k = 0; k < 3; k++) {
+        write_f32(rdram, cam + 4 * k, to[k]);
+    }
+}
+
+// And whatever else might bring them together: handleZoneEngineFrame before that check (0x8000EA44; the camera's pos
+// and aim at s1 + 0x134 and + 0x140) lifts a camera within 0.06 of its aim half a unit above it, rather than
+// the game freezing.
+extern "C" void aidyn_camera_apart(uint8_t* rdram, gpr pos) {
+    const gpr aim = pos + 0xC;
+    float d2 = 0.0f;
+    for (int k = 0; k < 3; k++) {
+        const float d = read_f32(rdram, pos + 4 * k) - read_f32(rdram, aim + 4 * k);
+        d2 += d * d;
+    }
+    if (d2 < 0.06f * 0.06f) {
+        fprintf(stderr, "Camera: on its aim, lifted (the game would crash)\n");
+        write_f32(rdram, pos + 4, read_f32(rdram, aim + 4) + 0.5f);
     }
 }
 
@@ -5134,6 +5188,7 @@ extern "C" void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx) {
 //    out, start). A damaged file (its checksum, QuestData::VerifyChecksum) is passed over for the next newest.
 // A short notice at the top of the screen says what happened. AIDYN_SAVE_LOG=1 prints each step.
 extern "C" void QuestData__TakeSnapshot(uint8_t* rdram, recomp_context* ctx);
+extern "C" void Crash__ManualCrash(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_8001A448(uint8_t* rdram, recomp_context* ctx);  // QuestData::FreeSnapshot
 extern "C" void func_8001A08C(uint8_t* rdram, recomp_context* ctx);  // QuestData::InitSaveFile(SaveDatStruct*)
 extern "C" void func_80019ED4(uint8_t* rdram, recomp_context* ctx);  // QuestData::VerifyChecksum(SaveDatStruct*)
@@ -5380,6 +5435,13 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
     }
     saves.safe_for += dt;
     saves.explored += dt;
+    // AIDYN_CRASH_TEST=1: after 10 seconds of walking about, the game's own crash check, to try the problem report's
+    // way end to end (Steam launch options: AIDYN_CRASH_TEST=1 %command%).
+    static const bool crash_test = std::getenv("AIDYN_CRASH_TEST") != nullptr;
+    static double crash_test_time = 0.0;
+    if (crash_test && (crash_test_time += dt) >= 10.0) {
+        call_game(rdram, ctx, Crash__ManualCrash);
+    }
     const int area[3] = { MEM_HU(0, kMapDatA), MEM_H(0, kMapShort1), MEM_H(0, kMapShort1 + 2) };
     const bool same = std::equal(area, area + 3, saves.area);
     if (!saves.area_known || saves.save_loaded) {
@@ -5555,4 +5617,68 @@ gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = hud_end(rdram, g);
     return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                    MEM_HU(kVres1, (gpr)gGfxManager));
+}
+// ---- Walk speed ----
+// settings.json graphics.walk_speed (the ReChronicled page): the party walks faster in the field. The game moves a
+// character by its walk or run cycle itself: ProcessPlayers steps each one's animation once per game tick, moving it
+// forward by what the cycle's root moves that step (playerData's borg7, +0x2C), so there is no speed to change. For
+// Alaron (the party's leader, the only one shown) walking or running (ani_type +0x14: 2, 3; not sneaking) while
+// walking about (gameStateA 1, gameStateB 3), the loop is given walk_speed times the frame's ticks (fp), the fraction
+// carried to the next frame, and fp put back after it: legs and pace quicken together, as with fast-forward, and
+// nothing else does (the day's clock, the monsters, the camera). aidyn.us.toml hooks the loop's start (0x800130E4,
+// s1 the character) and its end (0x8001343C).
+namespace {
+    int walk_saved_ticks = -1;
+    double walk_carry = 0.0;
+}
+
+extern "C" void aidyn_walk_steps(uint8_t* rdram, recomp_context* ctx) {
+    walk_saved_ticks = -1;
+    const double k = aidyn::settings::graphics().walk_speed;
+    const gpr p = ctx->r17;
+    const int ticks = (int)(int32_t)ctx->r30, type = MEM_H(0x14, p);
+    if (k <= 1.0 || ticks <= 0 || p != MEM_W(0, kPlayer) || MEM_BU(0, kTrekState) != 1 || MEM_BU(0, kGameStateB) != 3 ||
+        (type != 2 && type != 3)) {
+        return;
+    }
+    walk_carry += (k - 1.0) * ticks;
+    const int extra = (int)walk_carry;
+    walk_carry -= extra;
+    if (extra > 0) {
+        walk_saved_ticks = ticks;
+        ctx->r30 = (gpr)(ticks + extra);
+    }
+}
+
+extern "C" void aidyn_walk_steps_end(uint8_t* rdram, recomp_context* ctx) {
+    if (walk_saved_ticks >= 0) {
+        ctx->r30 = (gpr)walk_saved_ticks;
+        walk_saved_ticks = -1;
+    }
+}
+
+// ---- Report a problem ----
+// The ReChronicled page's last row (Dan, 2026-10-21, for playtesting): a problem report (src/main/report.cpp: the logs,
+// settings and saves in one .zip in reports/) with the screen as the pause menu opened (its picture, full resolution:
+// save_pictures.cpp) and, paused from walking about (not a fight: the game's own Save isn't offered there), a save of
+// this moment made as Save Game makes one.
+bool aidyn_save_picture_jpeg(uint8_t* rdram, std::vector<uint8_t>& jpeg);  // src/game/save_pictures.cpp
+
+void report_problem(uint8_t* rdram, recomp_context* ctx) {
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> extra;
+    std::vector<uint8_t> jpeg;
+    if (aidyn_save_picture_jpeg(rdram, jpeg)) {
+        extra.emplace_back("screen.jpg", std::move(jpeg));
+    }
+    if (MEM_BU(0, kTrekState) != 3 && heap_pointer(MEM_W(0, kPlayer))) {  // 3: a fight's pause
+        with_crc_table(rdram, ctx, [&] { return call_game(rdram, ctx, func_8001A08C, (uint32_t)kSaveBuffer); });
+        std::vector<uint8_t> save(kSaveSize);
+        for (uint32_t i = 0; i < kSaveSize; i++) {
+            save[i] = MEM_BU(i, kSaveBuffer);
+        }
+        extra.emplace_back("saves/this-moment.sav", std::move(save));
+    }
+    const std::filesystem::path made = aidyn::report::make("Report a problem (the pause menu)", extra);
+    notice(made.empty() ? "Could not write the report" : "Report saved in the reports folder");
+    rc_sound(rdram, ctx, made.empty() ? 0x741 : 0x740, 60);
 }

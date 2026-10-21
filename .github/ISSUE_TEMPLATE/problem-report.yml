@@ -1,0 +1,64 @@
+name: Problem report
+description: Something went wrong while playing (a crash, a freeze, a glitch, something that looks off).
+title: "[Problem] "
+labels: ["playtest"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for playing and for taking the time. The game makes a **problem report** (a `.zip`) that holds what's
+        needed to look into it: the logs, your settings and your saves.
+
+        - **If the game crashed**, it made one on its own and said where.
+        - **Otherwise**, pause the game and choose **Report a problem** at the bottom of the **ReChronicled** page
+          (on the pause menu's Menu page) as close as you can to where it happened: it also keeps a picture of the
+          screen and a save of that moment.
+
+        Reports are in the `reports` folder of the game's data folder: `~/.local/share/AidynReChronicled/reports`
+        (on a Steam Deck or an Ally, switch to Desktop Mode to reach it). They hold nothing from the game's ROM.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What went wrong, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doing
+    attributes:
+      label: What were you doing?
+      description: Where you were in the game and what you did just before (talking to someone, walking into a town, in a fight...).
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: The report
+      description: Drag the report's `.zip` (the newest in the reports folder) into this box. Screenshots or a short video help too.
+      placeholder: Drop the report-....zip here
+  - type: dropdown
+    id: device
+    attributes:
+      label: Played on
+      options:
+        - A Linux PC
+        - Steam Deck
+        - ROG Ally / Xbox Ally (Bazzite, SteamOS)
+        - Other (say which in the description)
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Which version of the game
+      options:
+        - The original
+        - Aidyn Patch
+        - Aidyn Plus
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Aidyn ReChronicled version
+      description: Shown at the bottom right of the title screen, e.g. v0.5.0.

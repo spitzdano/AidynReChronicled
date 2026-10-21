@@ -34,6 +34,10 @@ fi
 
 echo "== portable build"
 AIDYN_VERSION=$version tools/ally/build_portable.sh  # the title screen shows it
+# The binary before strip, kept here and never shipped, to read testers' problem reports: the offsets in a report's
+# game-crash.txt (AidynReChronicled(+0x2be600)) are its functions: addr2line -f -C -e $out/symbols/AidynReChronicled-<version> 0x2be600
+mkdir -p "$out/symbols"
+cp build/portable/AidynReChronicled "$out/symbols/AidynReChronicled-$version"
 if [[ ! -f $pack/rt64.json ]]; then
     echo "== title branding pack"
     python3 tools/branding/make_branding.py

@@ -4,6 +4,7 @@
 // an SDL window for RT64, SDL audio, SDL input, and the recompiled audio microcode. No launcher
 // UI, no mods, no patches. The player's own ROM is given with --rom (or remembered from the
 // last run, since librecomp stores a copy of a validated ROM in the config folder).
+#include "report.h"
 #include "settings.h"
 #include "version.h"
 #include <atomic>
@@ -332,12 +333,16 @@ int main(int argc, char** argv) {
     g_args.assign(argv, argv + argc);
     std::filesystem::path rom_path;
     int version_flag = -1;  // --original 0, --patch 1, --plus 2: this run only (a launcher can start any)
+    std::string report_reason;  // --report <why>: make a problem report and stop (src/main/report.cpp)
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--rom") == 0 && i + 1 < argc) {
             rom_path = argv[++i];
         }
         else if (strcmp(argv[i], "--patch") == 0) {
             version_flag = 1;
+        }
+        else if (strcmp(argv[i], "--report") == 0 && i + 1 < argc) {
+            report_reason = argv[++i];
         }
         else if (strcmp(argv[i], "--plus") == 0) {
             version_flag = 2;
@@ -346,11 +351,13 @@ int main(int argc, char** argv) {
             version_flag = 0;
         }
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("usage: %s [--rom <ROM>] [--original | --patch | --plus]\n"
+            printf("usage: %s [--rom <ROM>] [--original | --patch | --plus] [--report <why>]\n"
                    "  --rom       your NTSC-U 1.0 Aidyn Chronicles ROM, or that ROM with Aidyn Patch or Aidyn Plus applied\n"
                    "              (by you): checked by its hash and remembered; give each one once\n"
                    "  --original, --patch, --plus   play that version this time (otherwise settings.json game.rom_patch;\n"
                    "              on the title screen X and Y switch to the other two and remember)\n"
+                   "  --report    don't play: write a problem report (reports/ in the data folder) giving <why>, and\n"
+                   "              print where (the launcher does this when the game ended without closing properly)\n"
                    "  F1: the manual   F2: redrawn art off / on   F11 or Alt+Enter: fullscreen   Shift+Esc: quit\n", argv[0]);
             return 0;
         }
@@ -383,6 +390,15 @@ int main(int argc, char** argv) {
     aidyn_pak_set_path(pak);
     aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");
     aidyn_quick_saves_set_pak(pak);  // quick and auto saves: beside it, named after it
+    aidyn::report::set_paths(data_folder(), pak);
+    if (!report_reason.empty()) {
+        const std::filesystem::path made = aidyn::report::make(report_reason);
+        if (made.empty()) {
+            return 1;
+        }
+        printf("%s\n", made.string().c_str());
+        return 0;
+    }
 
     recomp::GameEntry entry{
         .rom_hash = 0x79127D0E9CAF38BCULL, // XXH3-64 of the big-endian NTSC-U 1.0 ROM (SHA-1 47ae795a...)

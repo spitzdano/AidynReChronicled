@@ -16,4 +16,21 @@ logs=${XDG_DATA_HOME:-$HOME/.local/share}/AidynReChronicled/logs
 mkdir -p "$logs"
 [[ -f $logs/last-run.log ]] && mv -f "$logs/last-run.log" "$logs/previous-run.log"
 echo "== $(date '+%F %T') $PWD/build/cmake/AidynReChronicled $*${SteamGameId:+ (Steam)}, heap trace $AIDYN_HEAP_TRACE" >"$logs/last-run.log"
-exec build/cmake/AidynReChronicled "$@" >>"$logs/last-run.log" 2>&1
+GAME=$PWD/build/cmake/AidynReChronicled
+# The game's output goes to the log; if it died of a crash signal (segfault, abort, bus error, illegal instruction,
+# arithmetic) without having written a problem report itself (it does for its own crash check), the game is run once
+# more with --report to write one (reports/ in the data folder: the logs, settings and saves in one .zip to send).
+start=$(date +%s)
+"$GAME" "$@" >>"$logs/last-run.log" 2>&1
+status=$?
+case $status in
+    132|134|135|136|139)
+        reports=${XDG_DATA_HOME:-$HOME/.local/share}/AidynReChronicled/reports
+        newest=$(ls -t "$reports"/report-*.zip 2>/dev/null | head -1)
+        if [[ -z $newest || $(stat -c %Y "$newest") -lt $start ]]; then
+            echo "== the game ended with status $status (signal $((status - 128))): writing a problem report" >>"$logs/last-run.log"
+            "$GAME" --report "The game ended without closing properly (signal $((status - 128)))" "$@" >>"$logs/last-run.log" 2>&1
+        fi
+        ;;
+esac
+exit $status
