@@ -143,10 +143,10 @@ Switching versions:
 | B | B | X | back, cancel; walking: show the party's portraits; title menu: back to the title card |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
 | C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one); title screen: switch to the version marked Y |
-| C-left | View | J | walking and in combat: show / hide the controls card (not passed to the game there); pause menu: previous party member |
+| C-left | View | J | walking: quicksave; in combat: nothing (not passed to the game in either); pause menu: previous party member |
 | C-right | RT | L | pause menu: next party member |
 | Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu: previous page |
-| L | LB | Q | combat: end the turn; pause menu: previous page |
+| L | LB | Q | walking and in combat: show / hide the controls card (not passed to the game there; in combat it was a second End turn); pause menu: previous page |
 | R | RB | E | pause menu: next page; hold + stick: the game's own camera control |
 | Start | Menu | Enter | pause menu; back to the game |
 | D-pad | D-pad | keypad 8 4 5 6 | menus |
@@ -216,7 +216,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
-| `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
+| `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); LB shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
 | `fps_counter` | `true`: the frames shown a second at the top right (left of the fast-forward marker when that shows), over everything, in the game's font (the Display page; default `false`) |
@@ -254,8 +254,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
 - **Help book.** The pause menu's Help (a dialogue, `BORG13_HelpMenu`) is copied as it loads with its words fitted to
   this edition: the BUTTON after each button icon dropped (they're Xbox icons now), "the left stick" for the Control
-  Stick, RT (not View, which shows the controls card) to pick a target. A **ReChronicled** topic is added before Exit
-  Help: the camera, fast-forward, the controls card, the menus, combat (turn order, hold menus, D-pad targeting) and the
+  Stick, RT (not View, which quicksaves) to pick a target. A **ReChronicled** topic is added before Exit
+  Help: the camera, fast-forward, the controls card, the menus, saving, combat (turn order, hold menus, D-pad targeting) and the
   keyboard and PC keys.
 - **Pause scroll ends.** The pause pages are one long parchment drawn through a clip, and the scroll's rollers are a
   3D model moved sideways per page. On the Menu page the parchment ran on past the left roller to the screen's edge
@@ -292,6 +292,17 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Save backups.** The Controller Pak is copied to `backups/` when the game starts and before each save (the first
   write after 30 s without writes), unless the copy would be the same as the newest one; the newest `save_backups`
   copies of each pak are kept.
+- **Quicksaves and autosaves.** Files of their own beside the pak, named after it (`aidyn-patch-quicksave.sav`,
+  `-autosave-1.sav`, `-autosave-2.sav`), each the 7 KB `SaveDatStruct` the game writes to the pak. View while walking
+  quicksaves; an autosave is made on arriving in another area (a map other than before after a screen fade: doors are
+  a fade with the map changed between; not cells crossed outdoors) and after every 10 minutes of walking about
+  (`AIDYN_AUTOSAVE_EVERY=<seconds>` for tests), into the older of the two. Only while really walking about (Trek,
+  gameStateB 3, no fade, no state change waiting). They are made as the pause menu's Save makes one: QuestData::TakeSnapshot
+  (the picture, and its full-resolution copy), a few frames later QuestData::InitSaveFile (with the checksum's table,
+  which the pak screens keep only while open). The pause menu gets **Quick Load** after Load Game (the newest quick or
+  autosave: QuestData::LoadFromMemPak, then the pause menu's own after-load callback), the title menu **Continue**
+  first (the newest of those and `-lastsave.sav`, a copy of each save made to the pak; then the title's after-load
+  callback). A damaged file (its checksum) is passed over. `AIDYN_SAVE_LOG=1` prints each step and the walk's states.
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.
@@ -438,8 +449,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   `src/game/branding_images.h` (the N64-size copies the game draws) and the `rechronicled` texture pack (their full-resolution
   versions). The title card's own TM is redrawn in the text font by the HD UI pack (`labels.json` "marks").
 - **Button prompts.** While walking and in combat a see-through card at the left edge lists what the buttons do there
-  (`controls_card`; View shows and hides it: in those two modes View is not passed to the game, where it only cycled
-  combat targets, which the stick and RT still do). In combat it sits in the bottom left corner when the picture is
+  (`controls_card`; LB shows and hides it: in those two modes LB is not passed to the game, where it only turned the
+  pause menu's pages and was a second End turn in combat; nor is View, which only cycled combat targets, which the
+  stick and RT still do, and which quicksaves while walking). In combat it sits in the bottom left corner when the picture is
   wide enough to leave room beside the message box, else above it; it is left out while Menu is held, as pausing
   keeps a picture of the screen for the pause menu's background. The pause pages' arrows get LB and RB at the ends they point to
   (the arrows are told apart by their pixels; the Controller Pak screens' arrows on save slots get none). The card's

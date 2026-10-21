@@ -336,7 +336,8 @@ have, turns the camera.</p>
 <tr><td><kbd class="pad">≡</kbd> Menu</td><td><kbd>Enter</kbd></td><td>Pause the game (the pause menu)</td></tr>
 <tr><td><kbd class="pad">LT</kbd> + left stick</td><td><kbd>C</kbd> + arrows</td><td>Sneak</td></tr>
 <tr><td><kbd class="pad">RB</kbd> + left stick</td><td><kbd>E</kbd> + arrows</td><td>The game's own camera control</td></tr>
-<tr><td><kbd class="pad">View</kbd></td><td><kbd>J</kbd></td><td>Show or hide the controls card (top left: what the buttons do)</td></tr>
+<tr><td><kbd class="pad">View</kbd></td><td><kbd>J</kbd></td><td>Quicksave (see <a href="#quicksaves">Quicksaves and Autosaves</a>)</td></tr>
+<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Show or hide the controls card (top left: what the buttons do)</td></tr>
 </tbody></table>
 
 <h3>Combat Mode</h3>
@@ -346,9 +347,9 @@ have, turns the camera.</p>
 <tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Attack in close combat (then choose a target)</td></tr>
 <tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Cast a spell: hold to list the spells, pick one with the stick and let go</td></tr>
 <tr><td><kbd class="pad y">Y</kbd></td><td><kbd>I</kbd></td><td>Use an item or potion: hold to list them, pick one with the stick and let go</td></tr>
-<tr><td><kbd class="pad">LT</kbd> or <kbd class="pad">LB</kbd></td><td><kbd>C</kbd> or <kbd>Q</kbd></td><td>End this character's turn</td></tr>
+<tr><td><kbd class="pad">LT</kbd></td><td><kbd>C</kbd></td><td>End this character's turn</td></tr>
 <tr><td><kbd class="pad">RB</kbd> + left stick</td><td><kbd>E</kbd> + arrows</td><td>Camera control</td></tr>
-<tr><td><kbd class="pad">View</kbd></td><td><kbd>J</kbd></td><td>Show or hide the controls card (bottom left)</td></tr>
+<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Show or hide the controls card (bottom left)</td></tr>
 </tbody></table>
 <h4>Choosing a target</h4>
 <table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
@@ -385,6 +386,8 @@ the item there.</p>
 <h2>Main Menu</h2>
 <figure data-shot="main-menu"><img alt="The main menu"></figure>
 <dl>
+  <dt>Continue</dt><dd>Carry on from your newest save, whichever kind it is: a quicksave, an autosave or one made with
+  Save Game. Shown once there is one.</dd>
   <dt>New Game</dt><dd>Start a new adventure.</dd>
   <dt>Load Game</dt><dd>Carry on from a save (see <a href="#saving">Saving and Loading</a>).</dd>
   <dt>Options</dt><dd>Sound and graphics settings.</dd>
@@ -434,6 +437,17 @@ load from the main menu or the pause menu.</p>
   <p>The game keeps copies of it in <code>backups/</code> in the data folder: one each time the game starts and one
   before each save, the newest 20. If a save goes wrong, or Alaron falls, copy one back over <code>aidyn.mpk</code>
   while the game is closed.</p>
+</div>
+<h4 id="quicksaves">Quicksaves and Autosaves</h4>
+<p>Press <kbd class="pad">View</kbd> (<kbd>J</kbd>) while walking about to quicksave; "Quicksaved" shows at the top of
+the screen. During a fight, a conversation or a scene there is nothing to save, and it says so. The game also saves by
+itself when you arrive in another area (through a door, into a town) and after every ten minutes of walking about
+("Autosaved"), keeping the last two of these. <strong>Quick Load</strong> on the pause menu loads the newest quicksave
+or autosave, and <strong>Continue</strong> on the main menu your newest save of any kind.</p>
+<div class="port">
+  <p>These saves are files of their own beside the Controller Pak, named after it
+  (<code>aidyn-patch-quicksave.sav</code>, <code>-autosave-1.sav</code>, <code>-autosave-2.sav</code>), so they never
+  take a slot on the pak. Each save made with Save Game is also copied to <code>-lastsave.sav</code> for Continue.</p>
 </div>
 
 <h3>The Display</h3>
@@ -535,6 +549,7 @@ to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the in
 <figure data-shot="pause"><img alt="The pause menu"></figure>
 <dl>
   <dt>Load Game</dt><dd>Load a save from the Controller Pak.</dd>
+  <dt>Quick Load</dt><dd>Load the newest quicksave or autosave. Shown once there is one.</dd>
   <dt>Save Game</dt><dd>Save your progress at any time.</dd>
   <dt>Options</dt><dd>Sound, graphics and renaming Alaron (see <a href="#options">Options</a>).</dd>
   <dt>Theater</dt><dd>Watch the story scenes you have already seen.</dd>

@@ -4,6 +4,7 @@
 //
 // Pad:       A/B/X/Y -> A/B/Z/(unused)   right stick -> C buttons   triggers -> L/R, Z
 //            left stick, D-pad, Start as expected; right shoulder -> R, left shoulder -> L
+//            (in the field and in combat LB shows / hides the controls card, and in the field View quicksaves: get())
 // Keyboard:  arrows = stick, Z = A, X = B, C = Z, Enter = Start, WASD-less on purpose
 //            IJKL = C buttons, Q = L, E = R, 8456 = D-pad
 #include <algorithm>
@@ -43,6 +44,7 @@ namespace {
     std::atomic<float> captured_x{ 0.0f }, captured_y{ 0.0f };
     std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
     std::atomic_bool start{ false };
+    std::atomic_bool quicksave_pressed{ false };  // View pressed in the field: aidyn::input::quicksave_asked
     std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
 
     bool card_visible() {
@@ -209,19 +211,25 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     c_down.store((b & CD) != 0, std::memory_order_relaxed);
     c_up.store((b & CU) != 0, std::memory_order_relaxed);
     start.store((b & START) != 0, std::memory_order_relaxed);
-    // In the field and in combat View shows or hides the controls card (src/game/patches.cpp, "Button prompts") and
-    // doesn't reach the game.
-    static bool view_was_down = false;
-    const bool view = (b & CL) != 0;
-    if (card_mode.load(std::memory_order_relaxed) != 0) {
-        if (view && !view_was_down) {
+    // In the field and in combat LB shows or hides the controls card (src/game/patches.cpp, "Button prompts"), and in
+    // the field View quicksaves ("Quick and auto saves"); there neither reaches the game (LB only turns the pause
+    // menu's pages; in combat it was a second End turn).
+    static bool view_was_down = false, lb_was_down = false;
+    const bool view = (b & CL) != 0, lb = (b & L) != 0;
+    const int mode = card_mode.load(std::memory_order_relaxed);
+    if (mode != 0) {
+        if (lb && !lb_was_down) {
             const bool shown = !card_visible();
             card_state.store(shown ? 1 : 0, std::memory_order_relaxed);
             aidyn::settings::save_controls_card(shown);
         }
-        b &= ~CL;
+        if (mode == 1 && view && !view_was_down) {
+            quicksave_pressed.store(true, std::memory_order_relaxed);
+        }
+        b &= ~(CL | L);
     }
     view_was_down = view;
+    lb_was_down = lb;
 
     captured_buttons.store(b, std::memory_order_relaxed);
     captured_x.store(sx, std::memory_order_relaxed);
@@ -238,6 +246,10 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
 
 void aidyn::input::set_card_mode(int mode) {
     card_mode.store(mode, std::memory_order_relaxed);
+}
+
+bool aidyn::input::quicksave_asked() {
+    return quicksave_pressed.exchange(false, std::memory_order_relaxed);
 }
 
 bool aidyn::input::start_held() {

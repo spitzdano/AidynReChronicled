@@ -570,6 +570,42 @@ func = "func_80019EF0"
 before_vram = 0x80019EF0
 text = "extern void aidyn_save_picture_saved(uint8_t* rdram, recomp_context* ctx); aidyn_save_picture_saved(rdram, ctx);"
 
+# Quick and auto saves (src/game/patches.cpp, "Quick and auto saves"): Trek_GameState's entry (quicksave, autosaves);
+# QuestData::LoadFromMemPak's entry (func_8001A20C: a save being loaded); WidgetContPakDataSave::WriteSaveFile
+# (func_8007EE34) where the pak took the save (s0 the widget: a copy for Continue); the pause menu's list
+# (func_8003F8C4) just after Load Game is appended (Quick Load; s1 the substruct); the title screen's menu
+# (IntroMenu::StartGameMenu, func_80043AE8) before its first entry is made (Continue; s1 the list) and
+# IntroMenu::ProcessIntroMenu's entry (processIntroMenu: Continue chosen).
+[[patches.hook]]
+func = "Trek_GameState"
+before_vram = 0x8001FFD8
+text = "extern void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx); aidyn_trek_tick(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8001A20C"
+before_vram = 0x8001A20C
+text = "extern void aidyn_save_loading(uint8_t* rdram, recomp_context* ctx); aidyn_save_loading(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8007EE34"
+before_vram = 0x8007EEA8
+text = "extern void aidyn_pak_saved(uint8_t* rdram, recomp_context* ctx); aidyn_pak_saved(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8003F8C4"
+before_vram = 0x8003FA64
+text = "extern void aidyn_quick_load_entry(uint8_t* rdram, recomp_context* ctx); aidyn_quick_load_entry(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80043AE8"
+before_vram = 0x80043B9C
+text = "extern void aidyn_continue_entry(uint8_t* rdram, recomp_context* ctx); aidyn_continue_entry(rdram, ctx);"
+
+[[patches.hook]]
+func = "processIntroMenu"
+before_vram = 0x80043C44
+text = "extern int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx); if (aidyn_title_choice(rdram, ctx)) return;"
+
 # The outdoor sky's fill below the horizon (RenderSky's DrawRectangle at 0x8001DD50: a2 = the horizon row, colour
 # bytes on the stack at sp + 0x14..0x20): src/game/patches.cpp "Below the horizon".
 [[patches.hook]]

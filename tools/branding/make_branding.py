@@ -339,13 +339,14 @@ CONTROLS = [
     ("ctl_party", (("B",), "Party")),
     ("ctl_sneak", (("Z", "+", "LS"), "Sneak")),
     ("ctl_ff", (("L3",), "Fast-forward")),
-    ("ctl_menu", (("START",), "Pause menu"), (("CL",), "Hide this")),
+    ("ctl_quicksave", (("CL",), "Quicksave")),
+    ("ctl_menu", (("START",), "Pause menu"), (("L",), "Hide this")),
     ("ctl_move", (("LS",), "Move")),
     ("ctl_attack", (("A",), "Attack")),
     ("ctl_magic", (("CD",), "Spells"), (("CU",), "Items")),
-    ("ctl_endturn", (("Z",), "or"), (("L",), "End turn")),
+    ("ctl_endturn", (("Z",), "End turn")),
     ("ctl_combatcam", (("R", "+", "LS"), "Camera")),
-    ("ctl_hide", (("CL",), "Hide this")),
+    ("ctl_hide", (("L",), "Hide this")),
 ]
 
 TURN_INK = [(0.0, "#fff6e0"), (0.55, "#f1dcb2"), (1.0, "#c9a066")]

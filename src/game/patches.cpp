@@ -34,6 +34,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
 gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
+gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Quick and auto saves", below
 void all_props_frame_end();  // "Every prop considered", below
 void heap_trace_frame(uint8_t* rdram);  // "Heap trace", below
 void free_spill_frame(uint8_t* rdram, recomp_context* ctx);  // "Free queue overflow", below
@@ -60,6 +61,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     }
     g = aidyn_rc_page(rdram, ctx, g);
     g = draw_fps_counter(rdram, ctx, g);
+    g = draw_save_notice(rdram, ctx, g);
     if (aidyn::settings::graphics().overscan_borders) {
         const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager);
         const uint32_t v = MEM_HU(kVres1, (gpr)gGfxManager);
@@ -2622,8 +2624,9 @@ extern "C" void aidyn_sfx_attack_pick(uint8_t* rdram, recomp_context* ctx) {
 // ---- Button prompts ----
 // Controls card: while walking the field (gGlobals.gameStateA 1) or in combat (2), a see-through dark card at the left
 // edge lists what the buttons do there (top left in the field; bottom left in combat, clear of the enemies' column).
-// View (N64 C-left; keyboard J) shows and hides it in those two modes and isn't passed to the game there (it only
-// cycled combat targets, which the stick and RT still do); src/main/input.cpp, saved as settings.json
+// LB (N64 L; keyboard Q) shows and hides it in those two modes and isn't passed to the game there (it only turns the
+// pause menu's pages; in combat it was a second End turn), nor is View (C-left: there it only cycled combat targets,
+// which the stick and RT still do; in the field it quicksaves); src/main/input.cpp, saved as settings.json
 // graphics.controls_card. Page prompts: the pause pages' arrows (SliderArrowL / LR / R, told apart by their pixels,
 // at the bottom of the page, and the one painted into the map page's background) get LB and RB at the ends they
 // point to. Both are drawn at the end of the frame (Graphics__EndList) with their own
@@ -2755,17 +2758,18 @@ namespace {
     }
 
     struct Card {
-        const char* rows[8];
+        const char* rows[9];
         bool bottom;
     };
-    const Card kFieldCard = { { "ctl_walk", "ctl_camera", "ctl_talk", "ctl_party", "ctl_sneak", "ctl_ff", "ctl_menu", nullptr },
+    const Card kFieldCard = { { "ctl_walk", "ctl_camera", "ctl_talk", "ctl_party", "ctl_sneak", "ctl_ff", "ctl_quicksave",
+                              "ctl_menu", nullptr },
                               false };
     const Card kCombatCard = { { "ctl_move", "ctl_attack", "ctl_magic", "ctl_endturn", "ctl_combatcam", "ctl_ff",
                                  "ctl_hide", nullptr }, true };
 
     gpr draw_card(uint8_t* rdram, gpr g, const Card& card) {
         constexpr float kMargin = 6.0f, kPad = 2.0f, kMessagePortraitX = 25.0f, kMessageTop = 178.0f;
-        int rows[8], n = 0;
+        int rows[9], n = 0;
         uint32_t width = 0, height = 0;
         for (const char* name : card.rows) {
             if (name == nullptr) {
@@ -2986,8 +2990,8 @@ extern "C" void aidyn_combat_menu_drawn(uint8_t* rdram) {
 // aidyn.us.toml hooks the function's entry (the controller sample, a0) and its Vec2Scale call (the step, a1): a third
 // of it, times how far the stick is pushed (at least a fifth), so a light push aims finely. In state 18 the D-pad's
 // left / right also jump to the previous / next target, as C-left / C-right do there (combat_control_case_0x12,
-// func_80084BA0, a0 = the sample, pressed at +8; RT is C-right, and View, the C-left, shows and hides the controls
-// card in combat).
+// func_80084BA0, a0 = the sample, pressed at +8; RT is C-right, and View, the C-left, doesn't reach the game in
+// combat).
 namespace {
     gpr marker_input = 0;
 }
@@ -3953,8 +3957,13 @@ extern "C" void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // PauseMenuSelectCallback, the Menu page's entry chosen: v1 its id, s0 the substruct, s2 the WidgetOptionsMenu.
+bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id);  // "Quick and auto saves", below
+
 extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t id = ctx->r3 & 0xFFFF;
+    if (!rc.open && quick_load_chosen(rdram, ctx, id)) {
+        return 1;
+    }
     if ((id != kRcId && id != kDisplayId) || rc.open) {
         return 0;
     }
@@ -4133,10 +4142,10 @@ extern "C" void aidyn_pause_clip(uint8_t* rdram, recomp_context* ctx) {
 // with its own index at +0x30; +0x31 0x8 for a menu, 0x1 otherwise; ops at +0: {u16 value, u8 command}, 2 = go to
 // command `value`, 34 = end). Its words were written for the N64: "the \x7F BUTTON" (the text's escapes become the
 // button icons, now the Xbox ones: the BUTTON after them is dropped), "the Control Stick" (the left stick here), and
-// C-left to pick a target (View shows / hides the controls card here: RT does it). The L and R icons (\x88, \x89)
+// C-left to pick a target (View quicksaves here: RT does it). The L and R icons (\x88, \x89)
 // don't show in the book's text, so LB and RB are written as words. get_borg13 is hooked as it returns
 // the loaded book: its commands and text are copied above the game's 15 MB with those words changed and a
-// ReChronicled topic added before Exit Help (this edition's camera, fast-forward, controls card, menus, combat and
+// ReChronicled topic added before Exit Help (this edition's camera, fast-forward, controls card, menus, saving, combat and
 // keyboard), and the book points at the copies. Only the book as the 1.0 ROM has it (229 commands) is changed.
 namespace {
     constexpr gpr kHelpCmds = (gpr)(int32_t)0x80F90000;  // up to 255 commands
@@ -4185,7 +4194,7 @@ namespace {
             "your next turn." } },
         { "Controls Card", {
             "While you walk and in combat, a card at the left edge of the screen lists what the buttons do there. "
-            "Press \\x82 to hide it or show it again; your choice is remembered.",
+            "Press LB to hide it or show it again; your choice is remembered.",
             "The menus also show button hints, such as \\x7F Equip or Lists. The card and the hints can each be "
             "turned off on the ReChronicled page of the Menu." } },
         { "Menus", {
@@ -4193,12 +4202,18 @@ namespace {
             "\\x82 and \\x81 choose the previous or next member of your party.",
             "The Menu page's Display and ReChronicled entries hold this edition's options: widescreen, the new "
             "textures, the draw distance, the turn order and more. Each change takes effect at once." } },
+        { "Saving", {
+            "Press \\x82 while walking about to quicksave. The game also saves by itself when you arrive in another "
+            "area and after every ten minutes of walking about, keeping the last two of these autosaves.",
+            "Quick Load on the Menu page loads the newest quicksave or autosave; Continue on the title screen loads "
+            "your newest save of any kind. They are kept apart from the Controller Pak, which still holds the saves "
+            "made with Save Game." } },
         { "Combat", {
             "A strip across the top of the screen shows the order of the round's turns, from whoever acts now, then "
             "the next round, dimmed. Quick fighters act two or three times a round. Whoever you are targeting flashes "
             "on their portrait and in the strip.",
             "Hold \\x84 for spells and skills, or \\x83 for items, choose with the left stick and let go to use it; a "
-            "quick tap uses the last one again. \\x87 or LB ends a character's turn.",
+            "quick tap uses the last one again. \\x87 ends a character's turn.",
             "With a bow or a thrown weapon, \\x86 left and right step through the targets in reach, and the aiming "
             "marker follows how far you push the left stick, so a light push aims finely." } },
         { "Keyboard and PC", {
@@ -5096,3 +5111,448 @@ extern "C" void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// ---- Quick and auto saves ----
+// Saves of their own beside the Controller Pak (Dan, 2026-10-21), which keeps the game's manual saves: files next to
+// the pak, named after it (aidyn-patch.mpk: aidyn-patch-quicksave.sav, -autosave-1.sav, -autosave-2.sav), each the
+// 7 KB SaveDatStruct the game writes to the pak, byte for byte.
+//  - View in the field quicksaves (src/main/input.cpp). Autosaves are made on arriving in another area (through a door
+//    or any other map load; not walking from cell to cell outdoors) and after every 10 minutes of walking about, into
+//    the older of the two files. Only while really walking about: gameStateA 1 (Trek), gameStateB 3, no screen fade,
+//    no state change waiting (some_toggle), the walk set up (gTrekUninitted clear), a player. A door is only a screen
+//    fade out and in with the map changed between (gameStateB stays 3): a map other than before after a fade (or
+//    gameStateB 15, the game's teleport, or the walk set up again) is an arrival; mapLoadBool is no use (it stays
+//    set), and walking from cell to cell outdoors changes the map's cell with no fade. Made as the pause menu's Save makes one:
+//    QuestData::TakeSnapshot (the picture; save_pictures.cpp has RT64 copy it in full resolution, which it does
+//    before the next frame, so the save is made a few frames later), then QuestData::InitSaveFile into a buffer above
+//    the game's 15 MB (its checksum's table made for it: the pak screens keep one only while open), then the picture
+//    freed again. Trek_GameState's entry (aidyn_trek_tick) runs all this.
+//  - The pause menu's Menu page gets Quick Load after Load Game when there is a quicksave or an autosave: the newest
+//    one, loaded as the Load screen loads (QuestData::LoadFromMemPak, then the pause menu's after-load callback,
+//    func_80048E18: the menu closes and the game reloads).
+//  - The title screen's menu gets Continue first when there is any: the newest quicksave, autosave or manual save
+//    (every pak save is also written as -lastsave.sav), then the title's after-load callback (func_80043958: fade
+//    out, start). A damaged file (its checksum, QuestData::VerifyChecksum) is passed over for the next newest.
+// A short notice at the top of the screen says what happened. AIDYN_SAVE_LOG=1 prints each step.
+extern "C" void QuestData__TakeSnapshot(uint8_t* rdram, recomp_context* ctx);
+extern "C" void func_8001A448(uint8_t* rdram, recomp_context* ctx);  // QuestData::FreeSnapshot
+extern "C" void func_8001A08C(uint8_t* rdram, recomp_context* ctx);  // QuestData::InitSaveFile(SaveDatStruct*)
+extern "C" void func_80019ED4(uint8_t* rdram, recomp_context* ctx);  // QuestData::VerifyChecksum(SaveDatStruct*)
+extern "C" void func_8001A20C(uint8_t* rdram, recomp_context* ctx);  // QuestData::LoadFromMemPak(SaveDatStruct*)
+extern "C" void func_80048E18(uint8_t* rdram, recomp_context* ctx);  // the pause menu's Load callback
+extern "C" void func_80043958(uint8_t* rdram, recomp_context* ctx);  // the title's Load callback
+extern "C" void WidgetText__WidgetText(uint8_t* rdram, recomp_context* ctx);
+extern "C" void func_800CBC94(uint8_t* rdram, recomp_context* ctx);  // CRC table: made (if not there)
+extern "C" void func_800CBD28(uint8_t* rdram, recomp_context* ctx);  // CRC table: freed
+
+namespace {
+    constexpr gpr kSaveBuffer = (gpr)(int32_t)0x80F84000;  // a SaveDatStruct (free up to 0x80F8FFFF)
+    constexpr uint32_t kSaveSize = 0x1C00;
+    constexpr gpr kPlayer = (gpr)(int32_t)0x800D8130;         // gGlobals.playerCharStruct.playerDat
+    constexpr gpr kGameStateB = (gpr)(int32_t)0x800D8164;     // gGlobals.playerCharStruct.gameStateB
+    constexpr gpr kTrekState = (gpr)(int32_t)0x800D80C8;      // gGlobals.gameStateA
+    constexpr gpr kScreenFade = (gpr)(int32_t)0x800DA0D4;     // gGlobals.screenFadeMode
+    constexpr gpr kSomeToggle = (gpr)(int32_t)0x800DB064;     // some_toggle: a state change after the fade, or -1
+    constexpr gpr kTrekUninit = (gpr)(int32_t)0x800DB066;     // gTrekUninitted
+    constexpr gpr kSnapshot = (gpr)(int32_t)0x800DA4F0;       // gQuestdataSnapshot
+    constexpr gpr kCrcTable = (gpr)(int32_t)0x800E6560;       // the checksum's table: only while a pak screen is open
+    constexpr gpr kMapShort1 = (gpr)(int32_t)0x800D83FC;      // gGlobals.gameVars.mapShort1, mapShort2 (the cell)
+    constexpr gpr kMapDatA = (gpr)(int32_t)0x800D8414;        // gGlobals.gameVars.mapDatA (the map)
+    constexpr uint16_t kQuickLoadId = 0x7A13;
+    constexpr gpr kQuickLoadText = kRcText + 0x40, kContinueText = kRcText + 0x60;
+    // Seconds of walking about between autosaves: 10 minutes (AIDYN_AUTOSAVE_EVERY=<seconds> for tests).
+    const double kAutosaveEvery = [] {
+        const char* v = std::getenv("AIDYN_AUTOSAVE_EVERY");
+        return v != nullptr && std::atof(v) > 0.0 ? std::atof(v) : 600.0;
+    }();
+    constexpr double kArrived = 1.5;          // seconds walking about in a new area before its autosave
+
+    enum SaveFile { kQuickFile, kAutoFile1, kAutoFile2, kLastFile };
+    std::filesystem::path save_dir;
+    std::string save_stem;
+
+    struct SaveState {
+        int pending = 0;            // 1 a quicksave, 2 an autosave, being made
+        int wait = 0;               // frames until it is made
+        bool own_snapshot = false;  // the picture is ours to free
+        double explored = 0.0;      // seconds of walking about since the last save or load
+        double safe_for = 0.0;      // seconds of walking about in a row
+        std::chrono::steady_clock::time_point last{};
+        int area[3] = { 0, 0, 0 };
+        bool area_known = false;
+        bool map_loaded = false;    // a map load since the last walking about
+        bool save_loaded = false;   // a save loaded: its area is no new arrival
+        bool continuing = false;    // Continue chosen on the title screen
+    } saves;
+
+    std::string notice_text;
+    std::chrono::steady_clock::time_point notice_until{};
+
+    // The game's checksum needs its table, which the Load and Save screens make and free: made for f if it isn't
+    // there, then freed again.
+    template <typename F>
+    auto with_crc_table(uint8_t* rdram, recomp_context* ctx, F f) {
+        const bool made = MEM_W(0, kCrcTable) == 0;
+        if (made) {
+            call_game(rdram, ctx, func_800CBC94);
+        }
+        auto result = f();
+        if (made) {
+            call_game(rdram, ctx, func_800CBD28);
+        }
+        return result;
+    }
+
+    bool save_log() {
+        static const bool on = std::getenv("AIDYN_SAVE_LOG") != nullptr;
+        return on;
+    }
+
+    std::filesystem::path save_path(SaveFile f) {
+        static const char* const kSuffix[] = { "-quicksave.sav", "-autosave-1.sav", "-autosave-2.sav", "-lastsave.sav" };
+        return save_dir / (save_stem + kSuffix[f]);
+    }
+
+    bool save_exists(SaveFile f) {
+        std::error_code ec;
+        return !save_dir.empty() && std::filesystem::file_size(save_path(f), ec) == kSaveSize && !ec;
+    }
+
+    void notice(const char* text) {
+        notice_text = text;
+        notice_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(2500);
+    }
+
+    bool walking_about(uint8_t* rdram) {
+        return MEM_BU(0, kTrekState) == 1 && MEM_BU(0, kGameStateB) == 3 && MEM_HU(0, kScreenFade) == 0 &&
+               MEM_H(0, kSomeToggle) == -1 && MEM_BU(0, kTrekUninit) == 0 &&
+               heap_pointer(MEM_W(0, kPlayer));
+    }
+
+    bool write_save(uint8_t* rdram, gpr buffer, SaveFile f) {
+        std::vector<char> bytes(kSaveSize);
+        for (uint32_t i = 0; i < kSaveSize; i++) {
+            bytes[i] = (char)MEM_BU(i, buffer);
+        }
+        const std::filesystem::path path = save_path(f), tmp = path.string() + ".tmp";
+        std::error_code ec;
+        std::filesystem::create_directories(save_dir, ec);
+        {
+            std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+            out.write(bytes.data(), (std::streamsize)bytes.size());
+            if (!out) {
+                fprintf(stderr, "Saves: could not write %s\n", tmp.string().c_str());
+                return false;
+            }
+        }
+        std::filesystem::rename(tmp, path, ec);
+        if (ec) {
+            fprintf(stderr, "Saves: could not replace %s: %s\n", path.string().c_str(), ec.message().c_str());
+            return false;
+        }
+        if (save_log()) {
+            fprintf(stdout, "Saves: wrote %s\n", path.string().c_str());
+            fflush(stdout);
+        }
+        return true;
+    }
+
+    // The newest of these files whose save is whole, read into kSaveBuffer: false if none.
+    bool read_newest(uint8_t* rdram, recomp_context* ctx, std::initializer_list<SaveFile> files) {
+        std::vector<std::pair<std::filesystem::file_time_type, SaveFile>> found;
+        for (SaveFile f : files) {
+            std::error_code ec;
+            if (save_exists(f)) {
+                found.emplace_back(std::filesystem::last_write_time(save_path(f), ec), f);
+            }
+        }
+        std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (const auto& [time, f] : found) {
+            std::ifstream in(save_path(f), std::ios::binary);
+            std::vector<char> bytes(kSaveSize);
+            if (!in.read(bytes.data(), (std::streamsize)bytes.size())) {
+                continue;
+            }
+            for (uint32_t i = 0; i < kSaveSize; i++) {
+                MEM_B(i, kSaveBuffer) = (int8_t)bytes[i];
+            }
+            if (with_crc_table(rdram, ctx, [&] { return call_game(rdram, ctx, func_80019ED4, (uint32_t)kSaveBuffer) & 0xFF; }) != 0) {
+                if (save_log()) {
+                    fprintf(stdout, "Saves: loading %s\n", save_path(f).string().c_str());
+                }
+                return true;
+            }
+            fprintf(stderr, "Saves: %s is damaged (its checksum), passed over\n", save_path(f).string().c_str());
+        }
+        return false;
+    }
+
+    void drop_snapshot(uint8_t* rdram, recomp_context* ctx) {
+        if (saves.own_snapshot) {
+            call_game(rdram, ctx, func_8001A448);
+            saves.own_snapshot = false;
+        }
+    }
+
+    void start_save(uint8_t* rdram, recomp_context* ctx, int kind) {
+        if (saves.pending != 0) {
+            saves.pending = std::min(saves.pending, kind);  // a quicksave asked while an autosave is on its way
+            return;
+        }
+        saves.pending = kind;
+        saves.wait = 3;
+        saves.own_snapshot = MEM_W(0, kSnapshot) == 0;
+        if (saves.own_snapshot) {
+            call_game(rdram, ctx, QuestData__TakeSnapshot);
+        }
+    }
+
+    void finish_save(uint8_t* rdram, recomp_context* ctx) {
+        const bool quick = saves.pending == 1;
+        saves.pending = 0;
+        with_crc_table(rdram, ctx, [&] { return call_game(rdram, ctx, func_8001A08C, (uint32_t)kSaveBuffer); });
+        drop_snapshot(rdram, ctx);
+        SaveFile f = kQuickFile;
+        if (!quick) {  // the older autosave (a missing one first)
+            std::error_code e1, e2;
+            const bool has1 = save_exists(kAutoFile1), has2 = save_exists(kAutoFile2);
+            f = !has1 ? kAutoFile1 : !has2 ? kAutoFile2
+                : std::filesystem::last_write_time(save_path(kAutoFile1), e1) <= std::filesystem::last_write_time(save_path(kAutoFile2), e2)
+                    ? kAutoFile1 : kAutoFile2;
+        }
+        if (!write_save(rdram, kSaveBuffer, f)) {
+            notice("Could not save");
+            return;
+        }
+        saves.explored = 0.0;
+        notice(quick ? "Quicksaved" : "Autosaved");
+        if (quick) {
+            rc_sound(rdram, ctx, 0x740, 60);
+        }
+    }
+}
+
+void aidyn_quick_saves_set_pak(const std::filesystem::path& pak) {
+    save_dir = pak.parent_path();
+    save_stem = pak.stem().string();
+}
+
+// Trek_GameState's entry: the game walking about (or about to stop: a door, a fight, a menu), once a frame.
+extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = std::clamp(std::chrono::duration<double>(now - saves.last).count(), 0.0, 0.25);
+    saves.last = now;
+    saves.continuing = false;
+    const bool asked = aidyn::input::quicksave_asked();
+    if (save_log()) {  // each change of the walk's states, for finding what a door or a fight looks like
+        static uint32_t last = 0xFFFFFFFF;
+        const uint32_t now_states = (uint32_t)MEM_BU(0, kGameStateB) | (uint32_t)MEM_BU(0, kTrekUninit) << 8 |
+                                    (uint32_t)(MEM_HU(0, kScreenFade) & 0xFF) << 16 | (uint32_t)(MEM_BU(0, kSomeToggle) << 24);
+        if (now_states != last) {
+            fprintf(stdout, "Saves: walk state B %u, set up %u, fade %u, toggle %d; map %u cell %d,%d\n",
+                    MEM_BU(0, kGameStateB), MEM_BU(0, kTrekUninit), MEM_HU(0, kScreenFade), MEM_H(0, kSomeToggle),
+                    MEM_HU(0, kMapDatA), MEM_H(0, kMapShort1), MEM_H(0, kMapShort1 + 2));
+            fflush(stdout);
+            last = now_states;
+        }
+    }
+    if (!walking_about(rdram)) {
+        if (MEM_HU(0, kScreenFade) != 0 || MEM_BU(0, kGameStateB) == 15 || MEM_BU(0, kTrekUninit) != 0) {
+            saves.map_loaded = true;
+        }
+        saves.safe_for = 0.0;
+        if (saves.pending != 0) {
+            if (saves.pending == 1) {
+                notice("Can't save now");
+            }
+            saves.pending = 0;
+            drop_snapshot(rdram, ctx);
+        }
+        if (asked) {
+            notice("Can't save now");
+            if (save_log()) {
+                fprintf(stdout, "Saves: not walking about: state %u/%u fade %u toggle %d trek init %u player %08x\n",
+                        MEM_BU(0, kTrekState), MEM_BU(0, kGameStateB), MEM_HU(0, kScreenFade), MEM_H(0, kSomeToggle),
+                        MEM_BU(0, kTrekUninit), (uint32_t)MEM_W(0, kPlayer));
+                fflush(stdout);
+            }
+        }
+        return;
+    }
+    saves.safe_for += dt;
+    saves.explored += dt;
+    const int area[3] = { MEM_HU(0, kMapDatA), MEM_H(0, kMapShort1), MEM_H(0, kMapShort1 + 2) };
+    const bool same = std::equal(area, area + 3, saves.area);
+    if (!saves.area_known || saves.save_loaded) {
+        std::copy(area, area + 3, saves.area);
+        saves.area_known = true;
+        saves.save_loaded = saves.map_loaded = false;
+    }
+    else if (!saves.map_loaded) {
+        std::copy(area, area + 3, saves.area);  // outdoors, from cell to cell
+    }
+    else if (saves.safe_for >= kArrived) {
+        saves.map_loaded = false;
+        if (!same) {
+            if (save_log()) {
+                fprintf(stdout, "Saves: arrived in map %d cell %d,%d (from %d %d,%d)\n", area[0], area[1], area[2],
+                        saves.area[0], saves.area[1], saves.area[2]);
+                fflush(stdout);
+            }
+            std::copy(area, area + 3, saves.area);
+            start_save(rdram, ctx, 2);
+        }
+    }
+    if (saves.explored >= kAutosaveEvery) {
+        start_save(rdram, ctx, 2);
+    }
+    if (asked) {
+        start_save(rdram, ctx, 1);
+    }
+    if (saves.pending != 0 && --saves.wait <= 0) {
+        finish_save(rdram, ctx);
+    }
+}
+
+// QuestData::LoadFromMemPak's entry: a save is being loaded (the Load screens', Quick Load, Continue).
+extern "C" void aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
+    saves.save_loaded = true;
+    saves.explored = 0.0;
+    saves.pending = 0;
+    drop_snapshot(rdram, ctx);
+}
+
+// WidgetContPakDataSave::WriteSaveFile (func_8007EE34) once the pak took the save (s0 the widget, its buffer at +0x2C4):
+// the newest manual save, for Continue.
+extern "C" void aidyn_pak_saved(uint8_t* rdram, recomp_context* ctx) {
+    const gpr buffer = MEM_W(0x2C4, ctx->r16);
+    if (heap_pointer(buffer)) {
+        write_save(rdram, buffer, kLastFile);
+    }
+    saves.explored = 0.0;
+}
+
+namespace {
+    gpr put_menu_text(uint8_t* rdram, gpr at, const char* text) {
+        for (size_t i = 0; i <= std::strlen(text); i++) {
+            MEM_B(i, at) = (int8_t)text[i];
+        }
+        return at;
+    }
+}
+
+// The pause menu's list (MakeScrollList) just after Load Game is appended (s1 the substruct, its list at +0): Quick Load.
+extern "C" void aidyn_quick_load_entry(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = MEM_W(0, ctx->r17);
+    if (!heap_pointer(list) || (!save_exists(kQuickFile) && !save_exists(kAutoFile1) && !save_exists(kAutoFile2))) {
+        return;
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory,
+                                              (uint32_t)put_menu_text(rdram, kQuickLoadText, "Quick Load"), 400);
+    MEM_H(0x5E, entry) = (int16_t)kQuickLoadId;
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+}
+
+// aidyn_rc_select: Quick Load chosen (its id): true if it was.
+bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
+    if (id != kQuickLoadId) {
+        return false;
+    }
+    if (!read_newest(rdram, ctx, { kQuickFile, kAutoFile1, kAutoFile2 })) {
+        notice("No save to load");
+        rc_sound(rdram, ctx, 0x741, 60);
+        return true;
+    }
+    call_game(rdram, ctx, func_8001A20C, (uint32_t)kSaveBuffer);
+    call_game(rdram, ctx, func_80048E18);
+    return true;
+}
+
+// The title screen's menu (IntroMenu::StartGameMenu, func_80043AE8) before its first entry is made (s1 the list; v0
+// the first entry's memory, kept by call_game): Continue.
+extern "C" void aidyn_continue_entry(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = ctx->r17;
+    if (!heap_pointer(list) || (!save_exists(kQuickFile) && !save_exists(kAutoFile1) && !save_exists(kAutoFile2) &&
+                                !save_exists(kLastFile))) {
+        return;
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory,
+                                              (uint32_t)put_menu_text(rdram, kContinueText, "Continue"), 400);
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+}
+
+// IntroMenu::ProcessIntroMenu's entry (processIntroMenu: a1 the chosen text widget, its substruct at +0x40 with the
+// string at +0): Continue, and nothing else once it is on its way. True: the game's own is skipped.
+extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
+    if (saves.continuing) {
+        return 1;
+    }
+    const gpr sub = heap_pointer(ctx->r5) ? MEM_W(0x40, ctx->r5) : 0;
+    const gpr str = heap_pointer(sub) ? MEM_W(0, sub) : 0;
+    if (str == 0) {
+        return 0;
+    }
+    std::string text;
+    for (int i = 0; i < 16 && MEM_B(i, str) != 0; i++) {
+        text += (char)MEM_B(i, str);
+    }
+    if (text != "Continue") {
+        return 0;
+    }
+    if (!read_newest(rdram, ctx, { kQuickFile, kAutoFile1, kAutoFile2, kLastFile })) {
+        notice("No save to load");
+        rc_sound(rdram, ctx, 0x741, 60);
+        return 1;
+    }
+    saves.continuing = true;
+    call_game(rdram, ctx, func_8001A20C, (uint32_t)kSaveBuffer);
+    call_game(rdram, ctx, func_80043958);
+    rc_sound(rdram, ctx, 0x740, 60);
+    return 1;
+}
+
+// Graphics::EndList: the notice, centred at the top, fading out over its last half second (not while Menu is held:
+// the pause menu keeps a picture of the screen).
+gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    const gpr font = MEM_W(0, kFontPtr);
+    const auto now = std::chrono::steady_clock::now();
+    if (notice_text.empty() || now >= notice_until || !heap_pointer(font) || aidyn::input::start_held()) {
+        return g;
+    }
+    const double left = std::chrono::duration<double>(notice_until - now).count();
+    const uint32_t alpha = (uint32_t)std::lround(255.0 * std::min(1.0, left / 0.5));
+    constexpr float kY = 9.0f, kScale = 0.8f;
+    put_text(rdram, notice_text);
+    const float width = (float)(int32_t)call_game(rdram, ctx, Font__GetWidthScaled, (uint32_t)font, (uint32_t)kLogText,
+                                                  f32_bits(kScale));
+    const float x = 160.0f - width / 2.0f;
+    g = hud_begin(rdram, g, false);
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    for (int pass = 0; pass < 2; pass++) {
+        GfxCommand a[2];
+        const int d = pass == 0 ? 2 : 0;  // the shadow: the same text a little down and right
+        const int off = -160 * 4;          // CENTER adds half the frame width to x
+        gEXSetRectAlign(&a[0], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, off + d, d, off + d, d);
+        g = put_cmds(rdram, g, a, 2);
+        MEM_W(0x1C, font) = (int32_t)(pass == 0 ? (alpha * 7 / 8) : (0xF2E6C800u | alpha));  // ivory, as the page words
+        put_text(rdram, notice_text);
+        MEM_W(0, kLogGfx) = (int32_t)g;
+        call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                        (uint32_t)(int)x, { (uint32_t)(int)kY, f32_bits(kScale), f32_bits(kScale) });
+        g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+    }
+    font_restore(rdram, font, st);
+    g = hud_end(rdram, g);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
+}

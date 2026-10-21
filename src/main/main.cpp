@@ -184,6 +184,7 @@ static std::filesystem::path data_folder() {
 
 void aidyn_pak_set_path(const std::filesystem::path& path); // src/game/pak.cpp
 void aidyn_save_pictures_set_dir(const std::filesystem::path& dir); // src/game/save_pictures.cpp
+void aidyn_quick_saves_set_pak(const std::filesystem::path& pak); // src/game/patches.cpp
 
 // The three ROMs the port runs, each the player's own: the 1.0 release, or it with halibabica's (u/halibabica) community
 // Aidyn Patch or Aidyn Plus applied by the player. Nothing of either is in this project: a ROM given with
@@ -381,6 +382,7 @@ int main(int argc, char** argv) {
                                                                                                            : "aidyn.mpk");
     aidyn_pak_set_path(pak);
     aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");
+    aidyn_quick_saves_set_pak(pak);  // quick and auto saves: beside it, named after it
 
     recomp::GameEntry entry{
         .rom_hash = 0x79127D0E9CAF38BCULL, // XXH3-64 of the big-endian NTSC-U 1.0 ROM (SHA-1 47ae795a...)
