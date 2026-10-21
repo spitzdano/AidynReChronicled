@@ -664,6 +664,11 @@ namespace {
     float actor_farthest = 0.0f;
 }
 
+// A pathlight: a scene object whose second model is BORG5_OrianaLight (RenderVoxelScenes' own test).
+static bool pathlight(uint8_t* rdram, gpr voxel) {
+    return MEM_HU(0x68, voxel) >= 2 && (uint32_t)MEM_W(0x28 + 12 + 4, voxel) == 0x374A;
+}
+
 extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
     const float scale = aidyn::settings::graphics().draw_distance;
     float prox;
@@ -691,6 +696,16 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
                                                        : (nearer + own) * 0.5f;
         }
         items_now += prox < own;
+    } else if (pathlight(rdram, prop)) {
+        // Oriana's pathlights (the glowing lights through the first forest): the game turns one off for good (and
+        // notes it in the save's voxel chart) once its nearer model is chosen, at 5 units. Scaled like the other
+        // props that happened at 5 x draw_distance, so they went out while still far off. Within 23 units they get
+        // the real distance; beyond, out to 24 x draw_distance, a distance in the unit where the light fades.
+        const float far_lod = read_f32(rdram, prop + 0x28 + 12);  // 24
+        if (prox >= far_lod - 1.0f) {
+            const float r = far_lod * scale;
+            prox = prox >= r ? r : far_lod - 1.0f + (prox - (far_lod - 1.0f)) / std::max(r - (far_lod - 1.0f), 1.0f);
+        }
     } else {
         prox /= scale;
         // Fading in over the last 20% of the range instead of the game's last unit, which at draw_distance's longer
@@ -1002,7 +1017,9 @@ namespace {
         for (int i = 0; heap_pointer(voxels) && i < count; i++) {
             const gpr v = voxels + kVoxelSize * i;
             uint16_t bits = MEM_HU(kVoxelBits, v);
-            const bool active = MEM_HU(kVoxelType, v) == 0 && !(bits & 0x20);  // a scene, not "only without the pak"
+            // a scene, not "only without the pak", and not a pathlight: one turned off here would be noted in the
+            // voxel chart against the map the party is on (RenderVoxelScenes uses the current map's ids)
+            const bool active = MEM_HU(kVoxelType, v) == 0 && !(bits & 0x20) && !pathlight(rdram, v);
             bits = active ? (bits | 0x8000) : (bits & ~0x8000);
             MEM_H(kVoxelBits, v) = (int16_t)bits;
         }
