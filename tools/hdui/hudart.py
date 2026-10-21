@@ -175,7 +175,7 @@ def _rope(w, h):
 
 
 def _letter(text, w, h):
-    """A compass letter in the menus' font (Marcellus SC): white, capitals 8 texels tall, centred, with a soft dark
+    """A compass letter in the menus' font (Marcellus SC): white, capitals 5.5 texels tall, centred, with a soft dark
     edge so it reads on grass and sky (the game tints it and fades the ones facing away)."""
     import subprocess
     import tempfile
@@ -186,7 +186,7 @@ def _letter(text, w, h):
     with tempfile.TemporaryDirectory() as t:
         out = Path(t) / "l.png"
         subprocess.run(["magick", "-background", "none", "-fill", "white", "-font", str(font), "-pointsize", "300",
-                        f"label:{text}", "-trim", "+repage", "-resize", f"x{8 * SCALE}", f"PNG32:{out}"],
+                        f"label:{text}", "-trim", "+repage", "-resize", f"x{int(5.5 * SCALE)}", f"PNG32:{out}"],
                        check=True, stdout=subprocess.DEVNULL)
         lw, lh, l = read_png(out)
     glyph = np.frombuffer(bytes(l), np.uint8).reshape(lh, lw, 4)[..., 3].astype(np.float32) / 255
