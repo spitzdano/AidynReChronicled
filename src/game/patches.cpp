@@ -5015,15 +5015,15 @@ void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     if (pic == kHudLetter) {
-        // Compass::Draw puts the 16x16 letters 25 units from the ring's middle (271, 199), on the ring: inside it here,
-        // at 15.5, and white rather than its blue (160, 160, 220).
+        // Compass::Draw's letters, drawn after the ring (in front of it), 25 units from its middle (271, 199): on the
+        // gold ring's line here (22), and white rather than its blue (160, 160, 220).
         float x, y;
         uint32_t bits = (uint32_t)ctx->r6;
         std::memcpy(&x, &bits, 4);
         bits = (uint32_t)ctx->r7;
         std::memcpy(&y, &bits, 4);
-        x = 271.0f + (x + 8.0f - 271.0f) * 0.62f - 8.0f;
-        y = 199.0f + (y + 8.0f - 199.0f) * 0.62f - 8.0f;
+        x = 271.0f + (x + 8.0f - 271.0f) * 0.88f - 8.0f;
+        y = 199.0f + (y + 8.0f - 199.0f) * 0.88f - 8.0f;
         std::memcpy(&bits, &x, 4);
         ctx->r6 = (gpr)(int32_t)bits;
         std::memcpy(&bits, &y, 4);
