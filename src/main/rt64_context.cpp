@@ -442,9 +442,27 @@ void aidyn::capture_framebuffer(uint32_t address, float left, float top, float r
     shared.framebufferCaptures.push_back({ address, left, top, right, bottom, std::move(done) });
 }
 
+// The frames shown a second, for the FPS counter (settings.json graphics.fps_counter, the Display page): the present
+// thread's own timing, read twice a second.
+static std::atomic<float> shown_fps_now{ 0.0f };
+
+float aidyn::shown_fps() {
+    return shown_fps_now.load(std::memory_order_relaxed);
+}
+
 // AIDYN_FPS=1 prints how many frames the game submits per second (one graphics task per game frame), how many are
 // shown, and how many game ticks pass (60 a second, more under fast-forward).
 static void count_game_frame(RT64::Application* app, const OSTask* task) {
+    {
+        using clock = std::chrono::steady_clock;
+        static clock::time_point last = clock::now();
+        const auto now = clock::now();
+        if (now - last >= std::chrono::milliseconds(500)) {
+            last = now;
+            const double present_ms = app->presentQueue->presentProfiler.average();
+            shown_fps_now.store(present_ms > 0.0 ? (float)(1000.0 / present_ms) : 0.0f, std::memory_order_relaxed);
+        }
+    }
     static const bool enabled = [] { const char* v = std::getenv("AIDYN_FPS"); return v != nullptr && *v != '\0' && *v != '0'; }();
     if (!enabled) {
         return;

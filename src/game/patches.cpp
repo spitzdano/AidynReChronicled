@@ -33,6 +33,7 @@ gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
+gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
 void all_props_frame_end();  // "Every prop considered", below
 void heap_trace_frame(uint8_t* rdram);  // "Heap trace", below
 void combat_log_new_battle();
@@ -56,6 +57,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
         g = draw_combat_log(rdram, ctx, g, combat_card_top);
     }
     g = aidyn_rc_page(rdram, ctx, g);
+    g = draw_fps_counter(rdram, ctx, g);
     if (aidyn::settings::graphics().overscan_borders) {
         const uint32_t h = MEM_HU(kHres1, (gpr)gGfxManager);
         const uint32_t v = MEM_HU(kVres1, (gpr)gGfxManager);
@@ -3728,6 +3730,7 @@ namespace {
                   [] { return aidyn::settings::graphics().aspect != aidyn::settings::Aspect::Original; } },
                 { "rc_textures", &gfx.textures, "textures", [](uint8_t* rdram) { aidyn::refresh_textures(); apply_font_widths(rdram); } },
                 { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
+                { "rc_fps", &gfx.fps_counter, "fps_counter", nullptr },
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr },
             };
@@ -4533,6 +4536,45 @@ extern "C" void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header) {
         MEM_H(10, v) = (int16_t)std::lround(w * 32.0f * kPerTexel);
     }
 }
+// ---- FPS counter ----
+// settings.json graphics.fps_counter (the Display page): the frames shown a second at the picture's top left corner,
+// over everything (drawn last in Graphics::EndList), in the game's font with its HD letters and the combat log's soft
+// shadow. The number is RT64's present timing (aidyn::shown_fps, twice a second): the frames you see, above the game's
+// own 60 when RT64 draws in-between frames.
+namespace aidyn {
+    float shown_fps();  // src/main/rt64_context.cpp
+}
+
+gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!aidyn::settings::graphics().fps_counter || !heap_pointer(font)) {
+        return g;
+    }
+    constexpr float kX = 6.0f, kY = 4.0f, kScale = 0.7f;
+    const std::string text = std::to_string((int)std::lround(aidyn::shown_fps())) + " FPS";
+    g = hud_begin(rdram, g, false);
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    for (int pass = 0; pass < 2; pass++) {
+        GfxCommand a[2];
+        const int d = pass == 0 ? 2 : 0;  // the shadow: the same text a little down and right
+        gEXSetRectAlign(&a[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, d, d, d, d);
+        g = put_cmds(rdram, g, a, 2);
+        MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xF2E6C8FFu);  // ivory, as the page words
+        put_text(rdram, text);
+        MEM_W(0, kLogGfx) = (int32_t)g;
+        call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                        (uint32_t)(int)kX, { (uint32_t)(int)kY, f32_bits(kScale), f32_bits(kScale) });
+        g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+    }
+    font_restore(rdram, font, st);
+    g = hud_end(rdram, g);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
+}
+
 // ---- Heap trace ----
 // Dan's game crashed at draw distance 3 near the hut by the first forest (2026-10-19): a prop's model (a SceneData
 // one of the game's own cells still pointed at, its second detail level) had been overwritten with zeros, and

@@ -41,6 +41,7 @@ namespace aidyn {
     // The pause menu's ReChronicled page changed settings.json graphics.textures / vsync: apply on the next frame.
     void refresh_textures();
     void refresh_vsync();
+    float shown_fps();       // the frames shown a second (the FPS counter), measured twice a second
     void refresh_aspect();   // the Display page's Widescreen: picture shape again on the next frame
     bool redrawn_art();
 

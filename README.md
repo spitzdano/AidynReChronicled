@@ -219,6 +219,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
+| `fps_counter` | `true`: the frames shown a second at the top left, over everything, in the game's font (the Display page; default `false`) |
 | `turn_order` | combat: the round's turn order across the top of the screen, then the next round's (see "Turn order" below; `false`: none, and the game's own order within each speed group) |
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
