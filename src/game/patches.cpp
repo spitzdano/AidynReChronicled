@@ -3105,11 +3105,12 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             g = draw_hint_row(rdram, g, inventory_page, row, 2, 80.0f, 174.0f, true);
         }
         else {
-            // On the row of the page arrow (y 207): A at the bottom left, under the paper doll and clear of the LB
-            // prompt (x 114 on); the lists between the RB prompt (to x 185) and DETAILS (x 242 on).
+            // Near the row of the page arrow (y 207), 4 texels higher, with the repainted page's DETAILS (art/pages):
+            // at y 208 they hung off its torn bottom edge. A at the bottom left, under the paper doll and clear of the
+            // LB prompt (x 114 on); the lists between the RB prompt (to x 185) and DETAILS (x 242 on).
             const int a = shown != 0 && shown == inventory && heap_pointer(inventory) ? inventory_a_hint(rdram, inventory) : -1;
-            g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 208.0f, false);
-            g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 208.0f, false);
+            g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false);
+            g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 204.0f, false);
         }
         // The party switch beside the portraits (their frames span x 21..150, y 25..66).
         const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party

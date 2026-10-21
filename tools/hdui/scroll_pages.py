@@ -45,6 +45,7 @@ OUT = PROJECT / "art/pages"
 FONT = Path(__file__).resolve().parent / "fonts/MarcellusSC-Regular.ttf"
 # The painting (as delivered, 2185x720) on the strip at 4 px a texel: x' = KX[0] x + KX[1], y' = KY[0] y + KY[1].
 KX, KY = (1.7613, -7.5), (1.7008, -154.8)
+INK = (0.42, 0.22, 0.17)               # the painting's dark red-brown ink (its ruled lines)
 BACKDROP = (29, 40, 30)                # the painting's dark green around the paper
 BOTTOM = (205, 222, 226)               # below texel 205, texel 222 of the painting goes to 226 (see placed())
 LABELS = json.loads((Path(__file__).resolve().parent / "labels.json").read_text())
@@ -52,9 +53,19 @@ STATS_LABELS, MAP_LABELS = LABELS["99a10b42821b0510"], LABELS["8bd29ae433464ad6"
 # Texel boxes on a page (x0, y0, x1, y1) where the painting's own frames, words, numbers and marks are erased: a little
 # larger than the game's, the painting's may sit a few texels off.
 STATS_FRAMES = (14, 2, 152, 238)      # where the game's frames are looked for
-STATS_FRAME_ERASE = [(14, 2, 152, 90), (14, 90, 141, 238)]  # the painting's frames (not its braid, x 142..156)
+STATS_FRAME_ERASE = [(14, 18, 152, 90), (14, 90, 141, 214)]  # the painting's frames (not its braid, x 142..156)
 STATS_WORDS = [(150, 26, 222, 47), (176, 47, 222, 66), (176, 62, 222, 81), (226, 194, 300, 216)]
 MAP_NUMBERS = (156, 44, 306, 140)
+# The painted cords are left out: the HP rope (the game draws its own, HealthBar, over it) and the braid down the
+# middle of the equipment page.
+STATS_CORDS = [(218, 22, 304, 36), (134, 92, 163, 214)]
+# The two lines around the game's INVENTORY title: erased from the painting (it has them 2 texels high) and drawn at
+# the game's rows.
+STATS_LINES_ERASE = (156, 80, 320, 101)
+STATS_LINES = [(86, 161, 318), (97, 171, 308)]     # (row, x0, x1) in texels
+# The page's bottom row (the hints along it hung off the torn edge): DETAILS and its button 4 texels higher than the
+# game's own (the port's Unequip and Lists hints move with them, src/game/patches.cpp "Inventory page hints").
+DETAILS_UP = 4
 MAP_ARROW = (136, 190, 184, 210)
 
 
@@ -111,6 +122,27 @@ def blur_f(a, sigma):
     return out
 
 
+def pull_push(rgb, keep):
+    """Fills the pixels not kept from those around them, from the hole's own edges inwards: the kept pixels averaged
+    down a pyramid (halving) until nothing is missing, then each level's holes taken from the coarser level on the way
+    back up, smoothed."""
+    levels = [(rgb * keep[..., None], keep.astype(np.float32))]
+    while levels[-1][1].min() <= 0 and min(levels[-1][1].shape) > 2:
+        c, w = levels[-1]
+        h2, w2 = (c.shape[0] + 1) // 2, (c.shape[1] + 1) // 2
+        c = np.pad(c, ((0, h2 * 2 - c.shape[0]), (0, w2 * 2 - c.shape[1]), (0, 0)))
+        w = np.pad(w, ((0, h2 * 2 - w.shape[0]), (0, w2 * 2 - w.shape[1])))
+        levels.append((c.reshape(h2, 2, w2, 2, 3).sum(axis=(1, 3)), w.reshape(h2, 2, w2, 2).sum(axis=(1, 3))))
+    c, w = levels[-1]
+    col = c / np.maximum(w, 1e-6)[..., None]
+    for c, w in reversed(levels[:-1]):
+        up = np.repeat(np.repeat(col, 2, 0), 2, 1)[:c.shape[0], :c.shape[1]]
+        up = blur_f(up, 1.0)
+        a = np.clip(w, 0, 1)[..., None]
+        col = (c / np.maximum(w, 1e-6)[..., None]) * a + up * (1 - a)
+    return col
+
+
 def local_paper(rgb, keep, sigma):
     """Normalized convolution: the parchment colour around each pixel, from the pixels kept."""
     def blur(a):
@@ -148,17 +180,27 @@ def erase(rgb, box, page, kind, alpha=None, size=None):
     inner[sl[0].start - big[0].start:sl[0].stop - big[0].start, sl[1].start - big[1].start:sl[1].stop - big[1].start] = True
     mark &= inner
     paper_px = np.ones(mark.shape, bool) if alpha is None else alpha[big] > 0.6
+    if alpha is not None:  # the parchment to fill from: not its darker burnt rim (5 texels in from the torn edge)
+        solid = Image.fromarray(((alpha[big] > 0.98) * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(9))
+        sample_px = (np.asarray(solid.filter(ImageFilter.MinFilter(9)).filter(ImageFilter.MinFilter(9))
+                                .filter(ImageFilter.MinFilter(9)).filter(ImageFilter.MinFilter(9))) > 0)
+    else:
+        sample_px = paper_px
     mark &= paper_px
     mark = np.asarray(Image.fromarray(mark.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(grow))) > 0
     # (a whole box needs a reach of about its half height, or its middle has no paper to draw from)
     reach = 3 * S if kind != "box" else max(3, (y1 - y0) // 2 + 2) * S
-    fill = local_paper(region, ~mark & paper_px, reach)
+    fill = pull_push(region, ~mark & sample_px) if kind == "box" else local_paper(region, ~mark & sample_px, reach)
+    if kind == "box":  # only its large shading: the grain comes from the blank page below
+        fill = blur_f(fill, 4 * S)
     # keep the paper's grain: the fill plus the fine detail of the blank Menu page, from its middle (texels 80..300,
     # clear of the painting's rolled end)
     # (one piece, not wrapped: a box is narrower than those 220 texels); a whole box takes its mottling too, not only
     # the fine grain, and blends in over 3 texels
-    cols = np.arange(big[1].stop - big[1].start) + 100 * S
-    blank = rgb[big[0]][:, cols]
+    # (and from its middle rows, 50..170: the same rows near the top or bottom run into its burnt rim)
+    cols = np.arange(region.shape[1]) + 100 * S
+    rows = ((np.arange(region.shape[0]) + big[0].start) % (120 * S)) + 50 * S
+    blank = rgb[rows][:, cols]
     grain = blank - blur_f(blank, (8 if kind == "box" else 2) * S)
     edge = 3 * S if kind == "box" else 2
     soft = np.asarray(Image.fromarray(mark.astype(np.uint8) * 255).filter(ImageFilter.GaussianBlur(edge))) / 255.0
@@ -293,9 +335,12 @@ def main():
     rgb, alpha = placed(args.source)
     # 3. erase the painting's exact parts
     for box in STATS_FRAME_ERASE:
-        erase(rgb, box, 1, "light")
-    for box in STATS_WORDS:
+        erase(rgb, box, 1, "light", alpha)
+    for box in STATS_WORDS[:3] + STATS_CORDS:
         erase(rgb, box, 1, "box", alpha)
+    x0, y0, x1, y1 = STATS_WORDS[3]
+    erase(rgb, (x0, y0 - DETAILS_UP, x1, y1), 1, "box", alpha)
+    erase(rgb, STATS_LINES_ERASE, 1, "dark")
     erase(rgb, MAP_NUMBERS, 2, "light", size=41)    # the glowing rings (wider than the frame lines), first:
     erase(rgb, MAP_NUMBERS, 2, "dark")              # the numbers inside them show against the paper only then
     erase(rgb, MAP_ARROW, 2, "dark")
@@ -304,12 +349,21 @@ def main():
     draw_frames(rgba, orig["PauseBGStats"])
     W, H = 320 * S, 240 * S
     pages = [np.ascontiguousarray(rgba[:, k * W:(k + 1) * W]) for k in range(3)]
+    for (row, lx0, lx1) in STATS_LINES:
+        line = np.zeros((H, W), np.float32)
+        line[row * S + 2:row * S + 6, lx0 * S:(lx1 + 1) * S] = 1
+        ends = np.clip(np.minimum(np.arange(W) - lx0 * S, (lx1 + 1) * S - np.arange(W)) / (3 * S), 0, 1)
+        line = blur_f(line * ends[None, :], 0.8)[..., None]
+        pages[1][..., :3] = pages[1][..., :3] * (1 - 0.9 * line) + np.array(INK, np.float32) * 0.9 * line
     stats = bytearray((np.clip(pages[1], 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
     for x0, y0, bw, bh, text in STATS_LABELS["words"]:
         colour = repaint.word_colour(orig["PauseBGStats"], (x0, y0, bw, bh))
+        if text == "DETAILS":
+            y0 -= DETAILS_UP
         stats = repaint.draw_word(W, H, stats, (x0, y0, bw, bh), text, colour, FONT, S)
     pages[1] = as_float(W, H, stats)
     for x0, y0, bw, bh, button in STATS_LABELS["buttons"]:
+        y0 -= DETAILS_UP
         icon = as_float(bw * S, bh * S, buttons.icon_for(button, bw, bh, S))
         composite(pages[1], icon, x0 * S, y0 * S)
     draw_rings(pages[2], calendar_rings(orig["PauseBGMap"]))
