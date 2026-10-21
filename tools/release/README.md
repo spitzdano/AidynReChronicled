@@ -1,8 +1,8 @@
 # Aidyn ReChronicled
 
 *Aidyn Chronicles: The First Mage* (Nintendo 64, 2001) as a native Linux game, enhanced: high resolution, widescreen,
-up to 120 fps, a free camera, further draw distance, and the community rebalances Aidyn Patch and Aidyn Plus a button
-away.
+up to 240 fps, a free camera, further draw distance, quicksaves and autosaves, a faster walk, and the community
+rebalances Aidyn Patch and Aidyn Plus a button away.
 
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
 `47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Nothing from the game is in this download.
@@ -45,9 +45,10 @@ An Xbox-style controller, or the keyboard:
 | Right stick (click: recentre) | | Camera |
 | A / B | Z / X | Confirm, talk, attack / back, cancel |
 | X / Y | K / I | Details, spells / items; switch versions (title screen) |
-| View | J | Show / hide the controls card (walking, combat); previous party member (pause menu) |
+| View | J | Quicksave (walking about); previous party member (pause menu) |
 | RT | L | Next party member (pause menu) |
-| LT / LB / RB | C / Q / E | Sneak, end turn, previous / next page |
+| LB | Q | Show / hide the controls card (walking, combat); previous page (pause menu) |
+| LT / RB | C / E | Sneak, end turn, previous page / next page |
 | Menu | Enter | Pause menu |
 | Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
 | | F2 | The newly painted art off / on, to compare with what was there before |
