@@ -149,10 +149,10 @@ def main():
                 tree = parse(data)
             except (ValueError, IndexError) as e:
                 sys.exit(f"steam_shortcut.py: can't read {vdf} ({e}); nothing changed. Add the game by hand "
-                         "(HANDOFF.md, 'By hand').")
+                         "(the README, 'Adding it to Steam by hand').")
             if dump(tree) != data:
                 sys.exit(f"steam_shortcut.py: {vdf} doesn't round-trip; nothing changed. Add the game by hand "
-                         "(HANDOFF.md, 'By hand').")
+                         "(the README, 'Adding it to Steam by hand').")
         else:
             data, tree = None, [[MAP, b"shortcuts", []]]
         shortcuts = get(tree, b"shortcuts")

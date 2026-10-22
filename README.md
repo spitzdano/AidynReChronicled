@@ -171,8 +171,8 @@ These are the game's own controls (from its 2001 instruction booklet) on the por
 screen.
 
 **Handheld (Bazzite, ROG Xbox Ally X).** `tools/ally/` builds a copy that runs on other Linux systems (in a container,
-glibc 2.38, its own SDL2), Steam art, and a one-file package for a USB stick with an installer that adds the game to
-Steam: see `tools/ally/HANDOFF.md`.
+glibc 2.38, its own SDL2), Steam art, and the installer that adds the game to Steam (the release README has the
+steps, and how to add it by hand).
 
 **Manual.** `tools/manual/build_manual.py` builds a PC edition of the instruction booklet (HTML and an A5 PDF) into
 `~/.local/share/AidynReChronicled/manual`: new text following the original booklet's chapters, with the spell list,
