@@ -1,8 +1,8 @@
 # Aidyn ReChronicled
 
-*Aidyn Chronicles: The First Mage* (Nintendo 64, 2001) as a native Linux game, enhanced: high resolution, widescreen,
-up to 240 fps, a free camera, further draw distance, quicksaves and autosaves, a faster walk, and the community
-rebalances Aidyn Patch and Aidyn Plus a button away.
+*Aidyn Chronicles: The First Mage* (Nintendo 64, 2001) as a native game for Linux and Windows, enhanced: high
+resolution, widescreen, up to 240 fps, a free camera, further draw distance, quicksaves and autosaves, a faster walk,
+and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 
 > **Work in progress.** This is a hobby project I'm making for myself, in my own time. Expect rough edges, unfinished
 > parts and changes between releases, and no schedule. For lack of time I haven't played very far into the game yet,
@@ -11,8 +11,8 @@ rebalances Aidyn Patch and Aidyn Plus a button away.
 
 ## Features
 
-- **A native Linux game**, not an emulator: one download for any current distribution, with an installer that adds
-  it to the app menu and to Steam (Steam Deck and ROG Ally friendly).
+- **A native game**, not an emulator: for Linux, one download for any current distribution, with an installer that
+  adds it to the app menu and to Steam (Steam Deck and ROG Ally friendly); for Windows, a folder to unpack and play.
 - **Aidyn Patch and Aidyn Plus**: halibabica's community rebalances play as two more versions next to the original.
   Bring your own patched ROM (checked by its hash; nothing of either patch ships here), switch on the title screen, and
   each version keeps its own saves.
@@ -36,9 +36,9 @@ rebalances Aidyn Patch and Aidyn Plus a button away.
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
 `47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Nothing from the game is in this download.
 
-## Play
+## Play on Linux
 
-Unpack the download, then either:
+Unpack the download (`…-linux-x86_64.tar.gz`), then either:
 
 - **Install** (recommended): `bash install.sh`. It puts the game in `~/Games/AidynReChronicled`, adds "Aidyn
   ReChronicled", "Aidyn ReChronicled (Aidyn Patch)" and "Aidyn ReChronicled (Aidyn Plus)" to the app menu and, if you
@@ -53,11 +53,33 @@ it `Aidyn ReChronicled` and pick `~/Games/AidynReChronicled/icon.png` as its ico
 right-click the banner: `hero.png` and `logo.png`). It's a native Linux game: under
 Properties › Compatibility, "Force the use of a specific Steam Play compatibility tool" must stay **unchecked**.
 
-The first start asks for your ROM in a file dialog (or start it with `--rom /path/to/game.z64`). It is checked, kept
-in `~/.local/share/AidynReChronicled`, and never asked for again. A zipped ROM has to be unzipped first.
-
 Needs: Linux on x86_64 with glibc 2.38 or newer (any current distribution: Bazzite, Fedora, Ubuntu 24.04, Arch…), a
 Vulkan graphics driver, and libdbus (every desktop has it). Everything else is in `game/lib`.
+
+## Play on Windows
+
+Unpack the download (`…-windows-x86_64.zip`) wherever you like (Documents\Games, say) and run
+`AidynReChronicled.exe`. The game isn't signed, so the first time Windows may say "Windows protected your PC": choose
+**More info** › **Run anyway**.
+
+Needs: Windows 10 or 11 (64-bit), a graphics driver with Vulkan (any current NVIDIA, AMD or Intel driver), and the
+Microsoft Visual C++ Redistributable 2015-2022 (x64), which most PCs already have (if the game says
+`MSVCP140.dll` or `VCRUNTIME140.dll` is missing, get it from https://aka.ms/vs/17/release/vc_redist.x64.exe).
+
+**Adding it to Steam:** Steam › Games › **Add a Non-Steam Game to My Library** › Browse › `AidynReChronicled.exe` ›
+Add Selected Programs, then right-click it › **Properties** and name it `Aidyn ReChronicled`. Its library art is in the
+`steam-art` folder (right-click it › Manage › Set custom artwork: `capsule.png`; on its page, right-click the banner:
+`hero.png` and `logo.png`).
+
+## Your ROM and the data folder
+
+The first start asks for your ROM in a file dialog (or start the game with `--rom` and the path to it). It is checked,
+kept in the data folder, and never asked for again. A zipped ROM has to be unzipped first.
+
+The **data folder** holds the ROMs, saves, settings, logs and problem reports:
+
+- Linux: `~/.local/share/AidynReChronicled`
+- Windows: `%APPDATA%\AidynReChronicled` (type that into File Explorer's address bar)
 
 ## Found a problem?
 
@@ -67,7 +89,7 @@ Please report it: a crash, a freeze, a glitch, a wrong picture, anything that lo
    can to the problem and choose **Report a problem** at the bottom of the **ReChronicled** page (on the pause
    menu's Menu page): it also keeps a picture of the screen and a save of that moment.
 2. **Open an issue** with the [Problem report form](https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml) and drag in the newest `.zip` from
-   `~/.local/share/AidynReChronicled/reports` (on a Steam Deck or an Ally, switch to Desktop Mode to reach it).
+   `reports` in the data folder (on a Steam Deck or an Ally, switch to Desktop Mode to reach it).
 3. **Say what happened** and what you were doing just before.
 
 A report holds the game's logs, your settings and your saves, nothing from the game's ROM, and your home folder's
@@ -78,7 +100,8 @@ name is left out of it.
 Two community rebalances by halibabica (u/halibabica) can be played instead of the original: Aidyn Patch and the bigger
 Aidyn Plus (read its FAQ). Neither is in this download: get the patch yourself and apply it to your own 1.0 dump (Aidyn Plus is
 a `.bps` patch: apply it with Flips or another BPS patcher), then start "Aidyn ReChronicled (Aidyn Patch)" or "(Aidyn
-Plus)" (or `--patch` / `--plus`) and choose the patched file when asked, or start with `--rom /path/to/it.z64`. It is
+Plus)" from the app menu on Linux (or start the game with `--patch` / `--plus`; on Windows, switch on the title
+screen) and choose the patched file when asked, or start with `--rom` and its path. It is
 checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e`, Aidyn Plus
 `d57f9459a77c66490ff09b3d9d97545c7a65fad2`) and kept. You can have none, one or both.
 
@@ -107,7 +130,7 @@ An Xbox-style controller, or the keyboard:
 
 ## Settings, saves, logs
 
-All in `~/.local/share/AidynReChronicled`:
+All in the data folder (see "Your ROM and the data folder"):
 
 - `settings.json`: resolution, aspect (`"16:9"`, `"21:9"`, `"4:3"`…), frame rate, anti-aliasing, draw distance and
   more, written with defaults on the first start. Edit it while the game is closed. `camera_invert_y` /
@@ -120,8 +143,8 @@ All in `~/.local/share/AidynReChronicled`:
 - `reports/`: problem reports, one `.zip` each with the logs, settings and saves: written by the game when it
   crashes, or by **Report a problem** on the pause menu's ReChronicled page. Send the newest with a few words on what
   happened.
-- `texture-packs/`: HD texture packs. This release includes, next to the game, newly painted art
-  (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
+- `texture-packs/`: HD texture packs of your own. This release includes, next to the game (in its own
+  `texture-packs`), newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
   the first world textures: Alaron, the starting forest, part of Gwernia Castle), the HD letters and Xbox button
   icons for all the game's text and the redrawn menu titles and inventory words (`rechronicled-text`, drawn from fonts;
   they win over any HD menu pack's, so the text always matches this version's spacing and lettering) and the title-screen branding (`rechronicled`); the HD menu and world

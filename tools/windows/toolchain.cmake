@@ -32,8 +32,11 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 # SDL2 for Windows comes with RT64 (src/contrib/mupen64plus-win32-deps).
 set(SDL2_DIR "${_root}/lib/rt64/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/cmake" CACHE PATH "")
 
-# xwin brings the release C runtime only (no msvcrtd.lib): every configuration, CMake's own checks included, uses it.
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+# The C and C++ runtimes linked in (/MT), so the exe works with whichever Visual C++ Redistributable is installed
+# (MSVCP140_ATOMIC_WAIT.dll is only in recent ones; dxcompiler.dll needs any); the Universal CRT it calls is part of
+# Windows 10 and later. xwin brings the release runtimes only
+# (no debug ones): every configuration, CMake's own checks included, uses this one.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
 set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
 # RT64's Windows SDL2 package (and some bundled libraries) declare CMake versions current CMake no longer accepts.
