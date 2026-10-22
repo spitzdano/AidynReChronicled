@@ -6,8 +6,11 @@
 #                               Steam shortcut; with a data/ folder (the handheld package) also the data
 #   bash install.sh --no-steam  without the Steam step
 #
-# The data folder (~/.local/share/AidynReChronicled) is only touched when this folder has a data/ folder, and never
-# overwrites what is yours: an existing settings.json or save (*.mpk) that differs stays, and the package's copy is
+# Your settings, saves, quicksaves, logs and stored ROMs are in the data folder (~/.local/share/AidynReChronicled), which
+# a GitHub release's install never touches: an update replaces only the game. The game's ROMs folder
+# (~/Games/AidynReChronicled/ROMs, where the game looks for your ROMs) is kept, and the ROMs in this folder's ROMs/
+# are added to it. The data folder is only touched when this folder has a data/ folder, and never overwrites what is
+# yours: an existing settings.json or save (*.mpk) that differs stays, and the package's copy is
 # put next to it as <name>.from-pc. Safe to run again (an update: the same command with a newer download).
 set -euo pipefail
 src=$(dirname "$(readlink -f "$0")")
@@ -31,9 +34,19 @@ if [[ $(readlink -f "$src/game") != $(readlink -f "$game" 2>/dev/null || true) ]
     mkdir -p "$(dirname "$game")"
     rm -rf "$game.new"
     cp -a "$src/game" "$game.new"
+    if [[ -d $game/ROMs ]]; then
+        mv "$game/ROMs" "$game.new/ROMs"  # yours: kept through an update
+    fi
     rm -rf "$game"
     mv "$game.new" "$game"
 fi
+mkdir -p "$game/ROMs"
+for rom in "$src"/ROMs/*; do
+    if [[ -f $rom && ! -e $game/ROMs/$(basename "$rom") ]]; then
+        cp "$rom" "$game/ROMs/"
+        echo "ROM $(basename "$rom")"
+    fi
+done
 chmod +x "$game/AidynReChronicled" "$game/aidyn-rechronicled.sh"
 
 say "Checking that it runs here"
@@ -125,6 +138,7 @@ cat <<EOF
 Game:   $game  (start it from the app menu, Steam, or $game/aidyn-rechronicled.sh)
 Data:   $data  (settings.json, saves, the stored ROM, texture packs)
 Logs:   $data/logs/last-run.log
-First start: the game asks for your ROM (NTSC-U 1.0 .z64) once, then keeps it.
+ROMs:   $game/ROMs  (put your 1.0 ROM there, and the Aidyn Patch / Aidyn Plus ones if you have them: they're
+        found at the next start; without one the first start asks for it)
 This folder ($src) isn't needed any more and can be deleted.
 EOF

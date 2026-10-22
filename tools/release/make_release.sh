@@ -71,6 +71,8 @@ cp -a "$pack" "$out/$name/game/texture-packs/rechronicled"
 cp -a "$packs/rechronicled-art" "$out/$name/game/texture-packs/rechronicled-art"
 cp -a "$packs/rechronicled-text" "$out/$name/game/texture-packs/rechronicled-text"
 cp tools/ally/install.sh tools/release/README.md LICENSE "$out/$name/"
+mkdir -p "$out/$name/ROMs"  # the player's ROMs go here (src/main/main.cpp, store_roms_from_folders)
+cp tools/release/ROMs-README.txt "$out/$name/ROMs/README.txt"
 chmod +x "$out/$name/install.sh" "$out/$name/game/aidyn-rechronicled.sh" "$out/$name/game/steam_shortcut.py"
 # Nothing ROM-derived may ship: the only pictures are the icon, the branding pack and the redrawn art.
 stray=$(find "$out/$name" -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.mpk' \) | head -1)
@@ -98,6 +100,8 @@ if (( windows )); then
         cp -a "$out/$name/game/texture-packs/$p" "$out/$wname/texture-packs/$p"
     done
     cp tools/release/README.md LICENSE "$out/$wname/"
+    mkdir -p "$out/$wname/ROMs"
+    sed 's/$/\r/' tools/release/ROMs-README.txt >"$out/$wname/ROMs/README.txt"
     stray=$(find "$out/$wname" -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.mpk' \) | head -1)
     [[ -z $stray ]] || die "a ROM or save got into the Windows release: $stray"
     (cd "$out" && python3 -c 'import os, sys, zipfile

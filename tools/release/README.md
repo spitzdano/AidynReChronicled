@@ -73,8 +73,12 @@ Add Selected Programs, then right-click it › **Properties** and name it `Aidyn
 
 ## Your ROM and the data folder
 
-The first start asks for your ROM in a file dialog (or start the game with `--rom` and the path to it). It is checked,
-kept in the data folder, and never asked for again. A zipped ROM has to be unzipped first.
+**Your ROMs go in the `ROMs` folder** of the download: the 1.0 ROM, and if you have them, the same with Aidyn Patch
+or Aidyn Plus applied. Any file names: the game recognises each by its contents when it starts, keeps a copy in the
+data folder, and lists the versions it found on the title screen. (On Linux, `install.sh` copies them to the installed
+game's `ROMs` folder, `~/Games/AidynReChronicled/ROMs`, and an update keeps that folder.) Without a ROM there, the
+first start asks for it in a file dialog (or start the game with `--rom` and the path to it). A zipped ROM has to be
+unzipped first.
 
 The **data folder** holds the ROMs, saves, settings, logs and problem reports:
 
@@ -99,14 +103,14 @@ name is left out of it.
 
 Two community rebalances by halibabica (u/halibabica) can be played instead of the original: Aidyn Patch and the bigger
 Aidyn Plus (read its FAQ). Neither is in this download: get the patch yourself and apply it to your own 1.0 dump (Aidyn Plus is
-a `.bps` patch: apply it with Flips or another BPS patcher), then start "Aidyn ReChronicled (Aidyn Patch)" or "(Aidyn
-Plus)" from the app menu on Linux (or start the game with `--patch` / `--plus`; on Windows, switch on the title
-screen) and choose the patched file when asked, or start with `--rom` and its path. It is
-checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e`, Aidyn Plus
+a `.bps` patch: apply it with Flips or another BPS patcher), then put the patched file in the `ROMs` folder and
+switch to it on the title screen (on Linux, the app menu's "Aidyn ReChronicled (Aidyn Patch)" and "(Aidyn Plus)"
+entries, or `--patch` / `--plus`, also ask for it when it's missing). It is checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e`, Aidyn Plus
 `d57f9459a77c66490ff09b3d9d97545c7a65fad2`) and kept. You can have none, one or both.
 
 On the title screen the bottom left lists Original, Aidyn Patch and Aidyn Plus, the one you're playing lit; X and Y
-(keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*. From the
+(keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*: put its
+ROM in the `ROMs` folder and start the game again. From the
 menu (New Game, Load Game, Options), B goes back to the title. Each version keeps its own saves.
 
 ## Controls

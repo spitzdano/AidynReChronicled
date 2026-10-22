@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -290,6 +291,71 @@ void aidyn::switch_version(aidyn::settings::RomPatch version) {
     aidyn::platform::restart(args);
 }
 
+// The ROMs folder: the player's ROMs, put in ROMs beside the game (the Windows download, the installed Linux game) or one
+// level up (the unpacked Linux download, which keeps the game in game/). At every start, each version (the 1.0 release,
+// Aidyn Patch, Aidyn Plus) whose ROM isn't stored yet is looked for there and stored when found, whatever the files
+// are called: they're told apart by their hash. Only 32 MiB files with "AIDYN" in the cartridge header (in any of the
+// three byte orders) are read in full, so a folder of other games costs next to nothing.
+static void store_roms_from_folders() {
+    const std::pair<const char8_t*, const char*> versions[] = { { game_id, "the NTSC-U 1.0 ROM" },
+                                                               { game_id_aidyn_patch, "the Aidyn Patch ROM" },
+                                                               { game_id_aidyn_plus, "the Aidyn Plus ROM" } };
+    const auto missing = [&] {
+        for (const auto& [id, name] : versions) {
+            if (!recomp::is_rom_valid(id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (!missing()) {
+        return;
+    }
+    const std::filesystem::path here = aidyn::platform::exe_path().parent_path();
+    std::error_code ec;
+    for (const std::filesystem::path& dir : { here / "ROMs", here.parent_path() / "ROMs" }) {
+        if (!std::filesystem::is_directory(dir, ec)) {
+            continue;
+        }
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+            if (!entry.is_regular_file(ec) || entry.file_size(ec) != 32 * 1024 * 1024) {
+                continue;
+            }
+            // The header's name at 0x20, put in the .z64 (big-endian) order by the first word's order.
+            unsigned char head[0x40]{};
+            std::ifstream in(entry.path(), std::ios::binary);
+            if (!in.read(reinterpret_cast<char*>(head), sizeof head)) {
+                continue;
+            }
+            if (head[0] == 0x37 && head[1] == 0x80) {  // .v64: 16-bit words swapped
+                for (size_t i = 0; i + 1 < sizeof head; i += 2) {
+                    std::swap(head[i], head[i + 1]);
+                }
+            }
+            else if (head[0] == 0x40 && head[1] == 0x12) {  // .n64: 32-bit words little-endian
+                for (size_t i = 0; i + 3 < sizeof head; i += 4) {
+                    std::swap(head[i], head[i + 3]);
+                    std::swap(head[i + 1], head[i + 2]);
+                }
+            }
+            if (std::memcmp(head + 0x20, "AIDYN", 5) != 0) {
+                continue;
+            }
+            for (const auto& [id, name] : versions) {
+                if (!recomp::is_rom_valid(id) && recomp::select_rom(entry.path(), id) == recomp::RomValidationError::Good) {
+                    printf("Stored %s from %s\n", name, entry.path().string().c_str());
+                    fflush(stdout);
+                    recomp::check_all_stored_roms();
+                    break;
+                }
+            }
+            if (!missing()) {
+                return;
+            }
+        }
+    }
+}
+
 // Checks a ROM the player gave and stores it in the data folder (librecomp keeps a copy): the 1.0 release, or it with
 // Aidyn Patch or Aidyn Plus applied, whichever its hash says it is. Stops with the reason when it is none of them.
 static void store_rom(const std::filesystem::path& rom_path) {
@@ -328,7 +394,7 @@ static std::filesystem::path pick_rom(aidyn::settings::RomPatch version) {
             ? "Choose your Aidyn Chronicles ROM with Aidyn Patch applied (.z64).\n\nIt is checked and kept, so this is only asked once."
         : version == aidyn::settings::RomPatch::AidynPlus
             ? "Choose your Aidyn Chronicles ROM with Aidyn Plus applied (.z64).\n\nIt is checked and kept, so this is only asked once."
-            : "Choose your Aidyn Chronicles ROM: the North American 1.0 cartridge (.z64).\n\nIt is checked and kept, so this is only asked once.";
+            : "Choose your Aidyn Chronicles ROM: the North American 1.0 cartridge (.z64).\n\nIt is checked and kept, so this is only asked once. (Or put your ROMs in the ROMs folder next to the game: they're found by themselves.)";
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Aidyn ReChronicled", text, nullptr);
     if (NFD_Init() != NFD_OKAY) {
         fprintf(stderr, "No file picker: %s\n", NFD_GetError());
@@ -451,6 +517,7 @@ int main(int argc, char** argv) {
         store_rom(rom_path);
     }
     recomp::check_all_stored_roms();
+    store_roms_from_folders();
     if (!recomp::is_rom_valid(chosen_id) && rom_path.empty()) {
         // First start without --rom: ask for the ROM with a file picker (RT64's nativefiledialog: the desktop portal in
         // the portable build, GTK otherwise).
