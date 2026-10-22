@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install.sh: install Aidyn ReChronicled from this folder: a GitHub release, or the handheld package
-# (tools/ally/package.sh), unpacked.
+# (made by a local packaging script, not in the repository), unpacked.
 #
 #   bash install.sh             game -> ~/Games/AidynReChronicled, app-launcher entries, then (after asking) the
 #                               Steam shortcut; with a data/ folder (the handheld package) also the data
