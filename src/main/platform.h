@@ -19,6 +19,9 @@ namespace aidyn::platform {
     // Windows: the program's output goes to dir/last-run.log (the run before: previous-run.log), as the Linux launcher
     // (tools/ally/aidyn-rechronicled.sh) arranges there; a windowed program has nowhere else to write. Linux: nothing.
     void start_log(const std::filesystem::path& dir, const std::vector<std::string>& args);
+    // "Start: <what> at <ms>" in the log: how long since the process began (on Windows from its creation, DLL loading
+    // included), to see where a slow start goes.
+    void startup_mark(const char* what);
     // The same in two steps, for keeping the frames now and describing them later (the heap tracer).
     int capture_stack(void** frames, int max_frames);
     std::vector<std::string> describe_stack(void* const* frames, int count);

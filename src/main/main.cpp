@@ -79,6 +79,7 @@ static ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
         fatal("Failed to initialize SDL2: %s", SDL_GetError());
     }
     fprintf(stdout, "SDL video driver: %s\n", SDL_GetCurrentVideoDriver());
+    aidyn::platform::startup_mark("SDL ready");
     return {};
 }
 

@@ -192,6 +192,42 @@ std::vector<std::string> aidyn::platform::describe_stack(void* const* frames, in
 
 #endif
 
+void aidyn::platform::startup_mark(const char* what) {
+#ifdef _WIN32
+    FILETIME created, exited, kernel, user, now;
+    GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
+    GetSystemTimePreciseAsFileTime(&now);
+    const auto ticks = [](FILETIME t) { return (static_cast<uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+    const long long ms = static_cast<long long>((ticks(now) - ticks(created)) / 10000);  // 100 ns ticks
+#else
+    // The process's start in clock ticks since boot (/proc/self/stat, field 22), against the time since boot.
+    long long ms = -1;
+    if (std::FILE* f = std::fopen("/proc/self/stat", "r")) {
+        char buf[1024];
+        const size_t n = std::fread(buf, 1, sizeof buf - 1, f);
+        std::fclose(f);
+        buf[n] = '\0';
+        if (const char* p = std::strrchr(buf, ')')) {  // the name in parentheses may hold spaces
+            unsigned long long start = 0;
+            int field = 2;
+            for (p++; *p != '\0' && field < 22; p++) {
+                if (*p == ' ') {
+                    field++;
+                }
+            }
+            if (std::sscanf(p, "%llu", &start) == 1) {
+                timespec boot{};
+                clock_gettime(CLOCK_BOOTTIME, &boot);
+                const double hz = static_cast<double>(sysconf(_SC_CLK_TCK));
+                ms = static_cast<long long>(boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6 - start * 1000.0 / hz);
+            }
+        }
+    }
+#endif
+    std::fprintf(stdout, "Start: %s at %lld ms\n", what, ms);
+    std::fflush(stdout);
+}
+
 void aidyn::platform::start_log(const fs::path& dir, const std::vector<std::string>& args) {
 #ifdef _WIN32
     std::error_code ec;
@@ -200,7 +236,10 @@ void aidyn::platform::start_log(const fs::path& dir, const std::vector<std::stri
     if (fs::exists(log, ec)) {
         fs::rename(log, dir / "previous-run.log", ec);
     }
-    if (std::freopen(log.string().c_str(), "w", stdout) == nullptr) {
+    // Emptied, then both streams append (each write at the end): opened "w" and "a" they'd keep separate positions,
+    // and stdout's lines would overwrite stderr's.
+    std::fclose(std::fopen(log.string().c_str(), "w"));
+    if (std::freopen(log.string().c_str(), "a", stdout) == nullptr) {
         return;
     }
     std::freopen(log.string().c_str(), "a", stderr);

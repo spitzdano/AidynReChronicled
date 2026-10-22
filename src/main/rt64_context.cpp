@@ -357,7 +357,9 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
 #ifdef _WIN32
     thread_id = window_handle.thread_id;
 #endif
+    aidyn::platform::startup_mark("renderer setting up");
     setup_result = map_setup_result(app->setup(thread_id));
+    aidyn::platform::startup_mark("renderer ready");
     // Get the API that RT64 chose.
     chosen_api = map_graphics_api(app->chosenGraphicsAPI);
     if (setup_result != ultramodern::renderer::SetupResult::Success) {
@@ -395,6 +397,7 @@ aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHan
     if (!packs.empty() && !app->textureCache->loadReplacementDirectories(packs)) {
         fprintf(stderr, "Texture packs failed to load (see above)\n");
     }
+    aidyn::platform::startup_mark("texture packs loaded");
 
     // Textures made while the game runs: save pictures in full resolution (src/game/save_pictures.cpp) and the
     // inventory page with its words redrawn (src/game/page_words.cpp).
@@ -454,6 +457,11 @@ float aidyn::shown_fps() {
 // AIDYN_FPS=1 prints how many frames the game submits per second (one graphics task per game frame), how many are
 // shown, and how many game ticks pass (60 a second, more under fast-forward).
 static void count_game_frame(RT64::Application* app, const OSTask* task) {
+    static bool first = true;
+    if (first) {
+        first = false;
+        aidyn::platform::startup_mark("first game frame");
+    }
     {
         using clock = std::chrono::steady_clock;
         static clock::time_point last = clock::now();
