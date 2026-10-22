@@ -132,6 +132,20 @@ if (WIN32)  # RT64's Windows SDL2 keeps its headers in include/, where "SDL2/SDL
     # A windowed program (no console): SDL2main gives it WinMain, which calls main().
     set_target_properties(AidynReChronicled PROPERTIES WIN32_EXECUTABLE TRUE)
     target_link_libraries(AidynReChronicled PRIVATE SDL2::SDL2main)
+    # The function names in a .pdb beside the .exe (public symbols only: small), for reading crash reports'
+    # addresses (llvm-symbolizer --obj=AidynReChronicled.exe 0x...). Never shipped.
+    target_link_options(AidynReChronicled PRIVATE /DEBUG:FULL /OPT:REF /OPT:ICF)
+    # The icon (Explorer, the taskbar, shortcuts): the swordsman, art/steam/icon.png from the art repository, as a
+    # multi-size .ico in a resource (left out without the art).
+    if (EXISTS ${CMAKE_SOURCE_DIR}/art/steam/icon.png)
+        add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/aidyn.ico
+            COMMAND magick ${CMAKE_SOURCE_DIR}/art/steam/icon.png -background none
+                    -define icon:auto-resize=256,128,64,48,32,16 ${CMAKE_BINARY_DIR}/aidyn.ico
+            DEPENDS ${CMAKE_SOURCE_DIR}/art/steam/icon.png VERBATIM)
+        file(WRITE ${CMAKE_BINARY_DIR}/aidyn.rc "1 ICON \"aidyn.ico\"\n")
+        set_source_files_properties(${CMAKE_BINARY_DIR}/aidyn.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/aidyn.ico)
+        target_sources(AidynReChronicled PRIVATE ${CMAKE_BINARY_DIR}/aidyn.rc)
+    endif()
 endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
