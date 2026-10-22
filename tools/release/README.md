@@ -4,6 +4,35 @@
 up to 240 fps, a free camera, further draw distance, quicksaves and autosaves, a faster walk, and the community
 rebalances Aidyn Patch and Aidyn Plus a button away.
 
+> **Work in progress.** This is a hobby project I'm making for myself, in my own time. Expect rough edges, unfinished
+> parts and changes between releases, and no schedule. For lack of time I haven't played very far into the game yet,
+> so playtests and problem reports from further along are very welcome (see "Found a problem?" below);
+> I'll work on them when I can.
+
+## Features
+
+- **A native Linux game**, not an emulator: one download for any current distribution, with an installer that adds
+  it to the app menu and to Steam (Steam Deck and ROG Ally friendly).
+- **Aidyn Patch and Aidyn Plus**: halibabica's community rebalances play as two more versions next to the original.
+  Bring your own patched ROM (checked by its hash; nothing of either patch ships here), switch on the title screen, and
+  each version keeps its own saves.
+- **Sharp at any resolution**: drawn at 1080 lines or more, supersampled, with anti-aliasing.
+- **Widescreen**: 16:9, 21:9 or any width, with the HUD at the screen edges; the menus stay 4:3, as they were made.
+- **Smooth**: the game runs at 60 frames a second (the N64 managed 15 to 20), with frames drawn in between up to your
+  display's rate, and walk cycles without their stutter.
+- **Newly painted art**: about 1,500 world textures, every portrait, the icons, the HUD and a repainted pause scroll,
+  plus HD lettering and Xbox button prompts. F2 shows what was there before.
+- **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
+- **A free camera** on the right stick, kept out of walls.
+- **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
+- **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
+- **Clearer combat**: a turn-order bar, a combat log, framed portraits and easier aiming.
+- **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
+  PC edition of the manual (F1).
+- **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options.
+- **Safe saves**: the Controller Pak's last 20 states are kept, and a problem report gathers what's needed when
+  something goes wrong.
+
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
 `47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Nothing from the game is in this download.
 
