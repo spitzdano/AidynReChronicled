@@ -9,8 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-if (NOT CMAKE_SYSTEM_NAME MATCHES "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-    message(FATAL_ERROR "Linux x86_64 only (C7).")
+if (NOT CMAKE_SYSTEM_NAME MATCHES "Linux|Windows" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    message(FATAL_ERROR "Linux x86_64 only (C7), or Windows x86_64 cross-built from Linux (tools/windows).")
 endif()
 
 # RT64 and the runtime, as submodules pinned by new-game.sh (same arrangement as Zelda64Recomp).
@@ -44,8 +44,16 @@ foreach(target rt64 plume)
     endforeach()
 endforeach()
 set(RT64_STATIC TRUE)
-set(RT64_SDL_WINDOW_VULKAN TRUE)
-add_compile_definitions(HLSL_CPU PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
+add_compile_definitions(HLSL_CPU)
+if (WIN32)
+    # As RT64 does for itself: no min/max macros from windows.h, and the SDL 2.26 headers' _m_prefetch left out
+    # (it clashes with clang-cl's builtin); no warnings for the C library's portable functions.
+    add_compile_definitions(NOMINMAX __PRFCHWINTRIN_H _CRT_SECURE_NO_WARNINGS)
+endif()
+if (NOT WIN32)  # on Windows RT64 takes the window's HWND, as in Zelda64Recomp
+    set(RT64_SDL_WINDOW_VULKAN TRUE)
+    add_compile_definitions(PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
+endif()
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
@@ -76,6 +84,7 @@ add_executable(AidynReChronicled
     src/main/settings.cpp
     src/main/register_overlays.cpp
     src/main/report.cpp
+    src/main/platform.cpp
     src/game/pak.cpp
     src/game/page_words.cpp
     src/game/patches.cpp
@@ -110,14 +119,33 @@ target_include_directories(AidynReChronicled PRIVATE
 
 find_package(SDL2 REQUIRED)
 target_include_directories(AidynReChronicled PRIVATE ${SDL2_INCLUDE_DIRS})
+if (WIN32)  # RT64's Windows SDL2 keeps its headers in include/, where "SDL2/SDL.h" expects include/SDL2/
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/sdl2-include)
+    file(CREATE_LINK ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/include
+         ${CMAKE_BINARY_DIR}/sdl2-include/SDL2 SYMBOLIC)
+    target_include_directories(AidynReChronicled PRIVATE ${CMAKE_BINARY_DIR}/sdl2-include)
+    # SDL2.lib and SDL2main.lib (RT64 adds their folder for its own targets only), and the SDK libraries RT64 names
+    # with other capitals than the SDK's (tools/windows/toolchain.cmake links them in build/windows-case).
+    target_link_directories(AidynReChronicled PRIVATE
+        ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/lib/x64
+        ${CMAKE_SOURCE_DIR}/build/windows-case)
+    # A windowed program (no console): SDL2main gives it WinMain, which calls main().
+    set_target_properties(AidynReChronicled PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_libraries(AidynReChronicled PRIVATE SDL2::SDL2main)
+endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 target_link_libraries(AidynReChronicled PRIVATE
-    RecompiledFuncs librecomp ultramodern rt64 nfd SDL2::SDL2
-    "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads
+    RecompiledFuncs librecomp ultramodern rt64 nfd SDL2::SDL2 ${CMAKE_DL_LIBS} Threads::Threads
 )
+if (NOT WIN32)
+    target_link_libraries(AidynReChronicled PRIVATE "-latomic -static-libstdc++")
+endif()
 
-# tools/hdui: RT64's texture hash for textures the game hasn't drawn yet (portraits read from the ROM).
+# tools/hdui: RT64's texture hash for textures the game hasn't drawn yet (portraits read from the ROM). A tool for the
+# build machine: not made in the Windows cross-build (tools/windows).
+if (NOT WIN32)
 add_executable(tmemhash tools/hdui/tmemhash.cpp lib/rt64/src/common/rt64_load_types.cpp)
 target_include_directories(tmemhash PRIVATE ${CMAKE_SOURCE_DIR}/lib/rt64/src ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib)
+endif()

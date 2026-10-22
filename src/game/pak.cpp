@@ -165,7 +165,11 @@ void backup_locked(const char* why) {
     }
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
     localtime_r(&now, &tm);
+#endif
     char stamp[32];
     std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm);
     fs::path file = dir / (stem + "-" + stamp + ".mpk");
@@ -176,11 +180,11 @@ void backup_locked(const char* why) {
         std::ofstream out(file, std::ios::binary | std::ios::trunc);
         out.write(reinterpret_cast<const char*>(g_image.data()), g_image.size());
         if (!out) {
-            fprintf(stderr, "Controller Pak: could not write the backup %s (the save goes ahead)\n", file.c_str());
+            fprintf(stderr, "Controller Pak: could not write the backup %s (the save goes ahead)\n", file.string().c_str());
             return;
         }
     }
-    fprintf(stderr, "Controller Pak: backup %s (%s)\n", file.c_str(), why);
+    fprintf(stderr, "Controller Pak: backup %s (%s)\n", file.string().c_str(), why);
     copies.push_back(file);
     while ((int)copies.size() > keep) {
         fs::remove(copies.front(), ec);
@@ -211,7 +215,7 @@ void load_locked() {
     } else {
         format_image();
         flush_locked();
-        fprintf(stderr, "Controller Pak: created %s\n", g_path.c_str());
+        fprintf(stderr, "Controller Pak: created %s\n", g_path.string().c_str());
     }
     g_loaded = true;
 }
@@ -240,7 +244,7 @@ void refresh_locked(uint8_t* rdram) {
     if (std::filesystem::file_size(g_path, ec) != kImageSize ||
         !in.read(reinterpret_cast<char*>(disk.data()), disk.size())) {
         fprintf(stderr, "Controller Pak: %s changed, but isn't a 32 KiB pack now: kept the game's copy\n",
-                g_path.c_str());
+                g_path.string().c_str());
         return;
     }
     for (size_t block : kIdBlocks) {
@@ -255,7 +259,7 @@ void refresh_locked(uint8_t* rdram) {
     MEM_W(0, (gpr)kInodeCacheChannel) = -1;
     MEM_B(0, (gpr)kInodeCacheBank) = (int8_t)250;  // libultra's "nothing cached"
     fprintf(stderr, "Controller Pak: %s changed on disk (saves from another device?): read it again\n",
-            g_path.c_str());
+            g_path.string().c_str());
 }
 
 } // namespace

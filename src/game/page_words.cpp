@@ -11,6 +11,7 @@
 // tools/hdui/repaint.py erase does); the new words laid over. RT64 uses it in place of the pack's (save_pictures.cpp
 // has the mechanism). An hd-ui pack whose aidyn-labels.txt matches page-words.json's id has these words already, and
 // its pages are left alone. AIDYN_PAGE_WORDS_LOG=1 prints each step.
+#include "platform.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -77,7 +78,7 @@ std::filesystem::path pack_folder(const std::string& name) {
         return {};
     }
     std::error_code ec;
-    const std::filesystem::path beside = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
+    const std::filesystem::path beside = aidyn::platform::exe_path().parent_path() / "texture-packs";
     for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
         if (std::filesystem::is_directory(dir / name, ec)) {
             return dir / name;
@@ -105,7 +106,7 @@ const Setup& setup() {
             std::ifstream in(text / "page-words.json");
             j = nlohmann::json::parse(in);
         } catch (const std::exception& e) {
-            fprintf(stderr, "Page words: %s: %s\n", (text / "page-words.json").c_str(), e.what());
+            fprintf(stderr, "Page words: %s: %s\n", (text / "page-words.json").string().c_str(), e.what());
             return s;
         }
         const std::string id = j.value("labels", "");
@@ -113,7 +114,7 @@ const Setup& setup() {
         s.hd_ui = pack_folder("hd-ui");
         if (!s.hd_ui.empty() && first_word(s.hd_ui / "aidyn-labels.txt") == id) {
             if (log_on()) {
-                fprintf(stdout, "Page words: %s has them already\n", s.hd_ui.c_str());
+                fprintf(stdout, "Page words: %s has them already\n", s.hd_ui.string().c_str());
             }
             return s;  // the pack's pages have these words
         }
@@ -144,7 +145,7 @@ const Setup& setup() {
         }
         s.on = !s.pages.empty();
         fprintf(stdout, "Page words: %zu page(s) redrawn over %s\n", s.pages.size(),
-                s.hd_ui.empty() ? "the game's own pictures" : s.hd_ui.c_str());
+                s.hd_ui.empty() ? "the game's own pictures" : s.hd_ui.string().c_str());
         return s;
     }();
     return s;

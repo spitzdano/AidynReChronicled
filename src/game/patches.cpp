@@ -5,6 +5,7 @@
 #include "recomp.h"
 #include "librecomp/helpers.hpp"
 
+#include "platform.h"
 #include "settings.h"
 
 namespace {
@@ -588,7 +589,7 @@ extern "C" void get_memFree(uint8_t* rdram, recomp_context* ctx);  // the game's
 static int props_tried = 0, props_original = 0, props_scaled = 0;
 
 // AIDYN_FAR_LOG=1: once a second, the far clip, the loaded ground's edge and the game's free heap.
-static void log_far(uint8_t* rdram, recomp_context* ctx, float far, float edge) {
+static void log_far(uint8_t* rdram, recomp_context* ctx, float clip, float edge) {
     static const bool enabled = std::getenv("AIDYN_FAR_LOG") != nullptr;
     static int frames = 0;
     if (!enabled || ++frames % 60 != 0) {
@@ -599,7 +600,7 @@ static void log_far(uint8_t* rdram, recomp_context* ctx, float far, float edge) 
     const uint32_t free_bytes = (uint32_t)ctx->r2;
     *ctx = saved;
     fprintf(stdout, "far %.0f edge %.0f free heap %u KB, props a frame: tried %d, near enough %d originally, %d now\n",
-            far, std::min(edge, 9999.0f), free_bytes / 1024, props_tried / 60, props_original / 60, props_scaled / 60);
+            clip, std::min(edge, 9999.0f), free_bytes / 1024, props_tried / 60, props_original / 60, props_scaled / 60);
     props_tried = props_original = props_scaled = 0;
     fflush(stdout);
 }
@@ -612,16 +613,16 @@ extern "C" uint32_t aidyn_field_far_plane(uint8_t* rdram, recomp_context* ctx, u
     const float target = std::clamp(edge, original, original * scale);
     static float current = 0.0f;
     current = current <= 0.0f ? target : current + (target - current) * 0.12f;
-    const float far = std::clamp(current, original, original * scale);
-    far_clip_now = far;
+    const float clip = std::clamp(current, original, original * scale);
+    far_clip_now = clip;
     const float half = half_view_degrees();
-    write_f32_at(rdram, 0x800CD6F4, far * (200.0f / 180.0f));                  // cell wedge length (200 at 180)
+    write_f32_at(rdram, 0x800CD6F4, clip * (200.0f / 180.0f));                  // cell wedge length (200 at 180)
     write_f32_at(rdram, 0x800CD6FC, std::max(42.5f, half + 13.6f));            // cell wedge angle, degrees
     write_f32_at(rdram, 0x800CD6A0, std::max(37.5f, half + 8.6f) * kPi / 180.0f);   // props: fading from
     write_f32_at(rdram, 0x800CD6A4, std::max(42.5f, half + 13.6f) * kPi / 180.0f);  // props: gone at
-    log_far(rdram, ctx, far, edge);
+    log_far(rdram, ctx, clip, edge);
     uint32_t bits;
-    std::memcpy(&bits, &far, sizeof(far));
+    std::memcpy(&bits, &clip, sizeof(clip));
     return bits;
 }
 
@@ -894,7 +895,7 @@ namespace {
     }
 
     // In view: some corner of the cell within the picture's width (plus a margin) and the far clip.
-    bool far_cell_visible(uint8_t* rdram, int dx, int dz, float far) {
+    bool far_cell_visible(uint8_t* rdram, int dx, int dz, float clip) {
         const gpr g = (gpr)kGlobals;
         const float px = read_f32(rdram, g + 0x214), pz = read_f32(rdram, g + 0x21C);
         float fx = read_f32(rdram, g + 0x220) - px, fz = read_f32(rdram, g + 0x228) - pz;
@@ -923,7 +924,7 @@ namespace {
                 if (d < 1.0f) {
                     return true;
                 }
-                if ((x * fx + z * fz) / d >= cosv && d * ((x * fx + z * fz) / d) <= far + 10.0f) {
+                if ((x * fx + z * fz) / d >= cosv && d * ((x * fx + z * fz) / d) <= clip + 10.0f) {
                     return true;
                 }
             }
@@ -2404,7 +2405,7 @@ namespace {
             const auto& packs = aidyn::settings::graphics().texture_packs;
             std::error_code ec;
             const std::filesystem::path beside =
-                std::filesystem::read_symlink("/proc/self/exe", ec).parent_path() / "texture-packs";
+                aidyn::platform::exe_path().parent_path() / "texture-packs";
             for (auto name = packs.rbegin(); name != packs.rend(); ++name) {
                 if (*name != "rechronicled-text" && *name != "hd-ui") {
                     continue;
@@ -2419,7 +2420,7 @@ namespace {
                         }
                         fprintf(stderr, "HD text: %s was drawn for other letter widths (%s): the game keeps its own. "
                                 "rechronicled-text from this release (or a newer hd-ui pack) gives the HD text its "
-                                "spacing.\n", (dir / *name).c_str(), id.empty() ? "an older pack" : id.c_str());
+                                "spacing.\n", (dir / *name).string().c_str(), id.empty() ? "an older pack" : id.c_str());
                         return false;
                     }
                     if (std::filesystem::exists(dir / (*name + ".rtz"), ec)) {
@@ -4730,7 +4731,6 @@ gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // the far props' maps) is checked: its heap block still in use (the size tag before it has bit 0 set) and its Borg5
 // pointer intact. The first one that isn't goes to heap-trace.txt in the settings folder with every recorded event
 // that touched its block.
-#include <execinfo.h>
 
 namespace {
     bool heap_trace_on() {
@@ -4769,7 +4769,7 @@ namespace {
             std::memcpy(e.stack, stack_from->stack, sizeof(e.stack));
         }
         else {
-            e.depth = backtrace(e.stack, 10);
+            e.depth = aidyn::platform::capture_stack(e.stack, 10);
         }
     }
 
@@ -4793,13 +4793,12 @@ namespace {
             }
             std::snprintf(line, sizeof line, "  frame %u %c %08x size %x\n", e.frame, e.kind, a, e.size);
             out += line;
-            char** names = backtrace_symbols(e.stack, e.depth);
-            for (int k = 1; names != nullptr && k < e.depth; k++) {
+            const std::vector<std::string> names = aidyn::platform::describe_stack(e.stack, e.depth);
+            for (size_t k = 1; k < names.size(); k++) {
                 out += "      ";
                 out += names[k];
                 out += "\n";
             }
-            std::free(names);
         }
         std::fputs(out.c_str(), stdout);
         std::fflush(stdout);
@@ -4867,7 +4866,7 @@ void heap_trace_frame(uint8_t* rdram) {
 
 extern "C" void aidyn_heap_alloc_begin(uint8_t* rdram, recomp_context* ctx) {
     if (heap_trace_on()) {
-        alloc_pending.depth = backtrace(alloc_pending.stack, 10);
+        alloc_pending.depth = aidyn::platform::capture_stack(alloc_pending.stack, 10);
     }
 }
 
@@ -4954,7 +4953,6 @@ void free_spill_frame(uint8_t* rdram, recomp_context* ctx) {
 // says where, and the program ends rather than sit frozen.
 #include "report.h"
 extern "C" void get_MemFree(uint8_t* rdram, recomp_context* ctx);
-#include <execinfo.h>
 
 extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
     std::string out;
@@ -4963,15 +4961,11 @@ extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
                   "heap free %u bytes\n", (uint32_t)ctx->r31, (uint32_t)MEM_HU(0x800, (gpr)kQueueA), free_spill.size(),
                   (uint32_t)MEM_W(0, (gpr)(int32_t)0x800E3D90 + 0x14));
     out += line;
-    void* stack[24];
-    const int depth = backtrace(stack, 24);
-    char** names = backtrace_symbols(stack, depth);
-    for (int k = 1; names != nullptr && k < depth; k++) {
+    for (const std::string& frame : aidyn::platform::backtrace_lines(0)) {
         out += "    ";
-        out += names[k];
+        out += frame;
         out += "\n";
     }
-    std::free(names);
     std::fputs(out.c_str(), stdout);
     std::fflush(stdout);
     if (FILE* f = std::fopen((aidyn::settings::folder() / "game-crash.txt").string().c_str(), "w")) {

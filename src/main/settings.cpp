@@ -20,7 +20,7 @@ namespace {
     std::filesystem::path g_folder;
 
     [[noreturn]] void bad(const std::filesystem::path& path, const std::string& why) {
-        fprintf(stderr, "%s: %s\n", path.c_str(), why.c_str());
+        fprintf(stderr, "%s: %s\n", path.string().c_str(), why.c_str());
         std::exit(EXIT_FAILURE);
     }
 
@@ -56,7 +56,7 @@ namespace {
             }
         }
         catch (const nlohmann::json::exception& e) {
-            fprintf(stderr, "%s: %s (not updated)\n", path.c_str(), e.what());
+            fprintf(stderr, "%s: %s (not updated)\n", path.string().c_str(), e.what());
             return;
         }
         change(j);
@@ -65,14 +65,14 @@ namespace {
             std::ofstream out(tmp);
             out << j.dump(4) << "\n";
             if (!out) {
-                fprintf(stderr, "%s: cannot write (not updated)\n", tmp.c_str());
+                fprintf(stderr, "%s: cannot write (not updated)\n", tmp.string().c_str());
                 return;
             }
         }
         std::error_code ec;
         std::filesystem::rename(tmp, path, ec);
         if (ec) {
-            fprintf(stderr, "%s: %s (not updated)\n", path.c_str(), ec.message().c_str());
+            fprintf(stderr, "%s: %s (not updated)\n", path.string().c_str(), ec.message().c_str());
         }
     }
 }

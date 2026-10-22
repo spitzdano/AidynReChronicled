@@ -4,6 +4,7 @@
 // an SDL window for RT64, SDL audio, SDL input, and the recompiled audio microcode. No launcher
 // UI, no mods, no patches. The player's own ROM is given with --rom (or remembered from the
 // last run, since librecomp stores a copy of a validated ROM in the config folder).
+#include "platform.h"
 #include "report.h"
 #include "settings.h"
 #include "version.h"
@@ -17,7 +18,11 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
@@ -25,8 +30,13 @@
 #include "librecomp/game.hpp"
 #include "librecomp/rsp.hpp"
 
+#ifndef _WIN32  // on Windows SDL2main's WinMain starts the program and calls main() (as SDL_main)
 #define SDL_MAIN_HANDLED
+#endif
 #include "SDL2/SDL.h"
+#ifdef _WIN32
+#include "SDL2/SDL_syswm.h"
+#endif
 
 #include "rt64_context.h"
 #include "input.h"
@@ -74,8 +84,13 @@ static ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 
 static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
     // The game renders 4:3 at 320x240 (high-res 640x480 with the Expansion Pak).
+#ifdef _WIN32
+    constexpr Uint32 kWindowFlags = SDL_WINDOW_RESIZABLE;  // RT64 makes its own surface from the HWND
+#else
+    constexpr Uint32 kWindowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN;
+#endif
     window = SDL_CreateWindow("Aidyn ReChronicled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              1280, 960, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+                              1280, 960, kWindowFlags);
     if (window == nullptr) {
         fatal("Failed to create window: %s", SDL_GetError());
     }
@@ -90,7 +105,17 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
     if (SDL_GetWindowDisplayIndex(window) < 0) {
         fprintf(stderr, "Warning: the window still has no display after 3 s (%s); continuing\n", SDL_GetError());
     }
+#ifdef _WIN32
+    // On Windows RT64 takes the native window and the thread that pumps its messages (as in Zelda64Recomp).
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (!SDL_GetWindowWMInfo(window, &info)) {
+        fatal("Failed to get the window's handle: %s", SDL_GetError());
+    }
+    return ultramodern::renderer::WindowHandle{ info.info.win.window, GetCurrentThreadId() };
+#else
     return ultramodern::renderer::WindowHandle{ window };
+#endif
 }
 
 static std::filesystem::path data_folder();
@@ -101,7 +126,7 @@ static void open_manual() {
     const std::filesystem::path page = data_folder() / "manual" / "index.html";
     std::error_code ec;
     if (!std::filesystem::exists(page, ec)) {
-        fprintf(stderr, "No manual in %s yet: build it with tools/manual/build_manual.py\n", page.parent_path().c_str());
+        fprintf(stderr, "No manual in %s yet: build it with tools/manual/build_manual.py\n", page.parent_path().string().c_str());
         return;
     }
     if (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) {
@@ -162,8 +187,7 @@ static ultramodern::input::connected_device_info_t get_connected_device_info(int
 }
 
 static std::filesystem::path data_folder() {
-    const char* xdg = std::getenv("XDG_DATA_HOME");
-    std::filesystem::path base = (xdg != nullptr && *xdg != '\0') ? std::filesystem::path(xdg) : std::filesystem::path(std::getenv("HOME") ? std::getenv("HOME") : ".") / ".local" / "share";
+    const std::filesystem::path base = aidyn::platform::data_home();
     std::filesystem::path folder = base / "AidynReChronicled";
     // The project was called AidynRecompiled: its folder (saves, settings, the stored ROMs, texture packs) moves over once.
     static bool checked = false;
@@ -177,7 +201,7 @@ static std::filesystem::path data_folder() {
                 const std::string why = old.string() + " to " + folder.string() + ": " + ec.message();
                 fatal("Could not move %s", why.c_str());
             }
-            printf("Moved %s to %s\n", old.c_str(), folder.c_str());
+            printf("Moved %s to %s\n", old.string().c_str(), folder.string().c_str());
         }
     }
     return folder;
@@ -256,18 +280,9 @@ void aidyn::switch_version(aidyn::settings::RomPatch version) {
         args.push_back(g_args[i]);
     }
     args.push_back(version_flag_arg(version));
-    std::vector<char*> argv;
-    for (std::string& a : args) {
-        argv.push_back(a.data());
-    }
-    argv.push_back(nullptr);
     printf("Switching to %s\n", version_name(version));
     fflush(stdout);
-    // The executable's own path, not /proc/self/exe: exec takes the process's name from the path ("exe" otherwise).
-    std::error_code ec;
-    const std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe", ec);
-    execv(ec ? "/proc/self/exe" : self.c_str(), argv.data());
-    fprintf(stderr, "Could not restart: %s\n", strerror(errno));
+    aidyn::platform::restart(args);
 }
 
 // Checks a ROM the player gave and stores it in the data folder (librecomp keeps a copy): the 1.0 release, or it with
@@ -290,14 +305,14 @@ static void store_rom(const std::filesystem::path& rom_path) {
         fflush(stdout);
         break;
     case recomp::RomValidationError::FailedToOpen:
-        fatal("Could not open ROM: %s", rom_path.c_str());
+        fatal("Could not open ROM: %s", rom_path.string().c_str());
     case recomp::RomValidationError::NotARom:
-        fatal("Not an N64 ROM (a zipped ROM must be unzipped first): %s", rom_path.c_str());
+        fatal("Not an N64 ROM (a zipped ROM must be unzipped first): %s", rom_path.string().c_str());
     case recomp::RomValidationError::IncorrectVersion:
         fatal("This is Aidyn Chronicles, but not the NTSC-U 1.0 release (version byte 0), nor it with Aidyn Patch or "
-              "Aidyn Plus applied (the patch must be applied to the 1.0 ROM, unchanged): %s", rom_path.c_str());
+              "Aidyn Plus applied (the patch must be applied to the 1.0 ROM, unchanged): %s", rom_path.string().c_str());
     default:
-        fatal("This is not Aidyn Chronicles (NTSC-U 1.0): %s", rom_path.c_str());
+        fatal("This is not Aidyn Chronicles (NTSC-U 1.0): %s", rom_path.string().c_str());
     }
 }
 
@@ -368,6 +383,7 @@ int main(int argc, char** argv) {
     }
 
     std::filesystem::create_directories(data_folder());
+    aidyn::platform::start_log(data_folder() / "logs", g_args);
     recomp::register_config_path(data_folder());
     // settings.json: AIDYN_SETTINGS_DIR points at another folder (tests).
     const char* settings_dir = std::getenv("AIDYN_SETTINGS_DIR");
@@ -460,7 +476,12 @@ int main(int argc, char** argv) {
     const bool fullscreen = aidyn::settings::graphics().fullscreen && std::getenv("AIDYN_WINDOWED") == nullptr;
     graphics.wm_option = fullscreen ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
     graphics.hr_option = ultramodern::renderer::HUDRatioMode::Full; // extended-GBI origins span the window (clouds)
+#ifdef _WIN32
+    // Vulkan on Windows too (RT64 would pick D3D12): the save pictures' full-resolution copy (tools/patches) is Vulkan's.
+    graphics.api_option = ultramodern::renderer::GraphicsApi::Vulkan;
+#else
     graphics.api_option = ultramodern::renderer::GraphicsApi::Auto;
+#endif
     graphics.ar_option = ultramodern::renderer::AspectRatio::Original;
     switch (aidyn::settings::graphics().msaa) {
         case 2: graphics.msaa_option = ultramodern::renderer::Antialiasing::MSAA2X; break;

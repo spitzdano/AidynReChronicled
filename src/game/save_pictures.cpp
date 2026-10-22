@@ -169,13 +169,13 @@ void write_picture(uint64_t key, std::shared_ptr<const Picture> picture, std::fi
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
         const std::filesystem::path tmp = path.string() + ".tmp";
-        if (!stbi_write_jpg(tmp.c_str(), (int)picture->width, (int)picture->height, 4, picture->rgba.data(), 95)) {
-            fprintf(stderr, "Save picture: could not write %s\n", tmp.c_str());
+        if (!stbi_write_jpg(tmp.string().c_str(), (int)picture->width, (int)picture->height, 4, picture->rgba.data(), 95)) {
+            fprintf(stderr, "Save picture: could not write %s\n", tmp.string().c_str());
             return;
         }
         std::filesystem::rename(tmp, path, ec);
         if (log_on()) {
-            fprintf(stdout, "Save picture %016llx: wrote %s\n", (unsigned long long)key, path.c_str());
+            fprintf(stdout, "Save picture %016llx: wrote %s\n", (unsigned long long)key, path.string().c_str());
         }
         std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> files;
         for (const auto& entry : std::filesystem::directory_iterator(path.parent_path(), ec)) {

@@ -15,12 +15,11 @@
 #include <fstream>
 #include <sstream>
 
-#include <sys/utsname.h>
-
 #include "SDL2/SDL.h"
 #include "miniz.h"
 
 #include "aidyn_build.h"
+#include "platform.h"
 #include "settings.h"
 
 namespace {
@@ -34,11 +33,10 @@ namespace {
 
     // The home folder's path (which holds the user's name) as ~.
     std::string redact(std::string s) {
-        const char* home = std::getenv("HOME");
-        if (home == nullptr || std::strlen(home) < 2) {
+        const std::string h = aidyn::platform::home_dir();
+        if (h.size() < 2) {
             return s;
         }
-        const std::string h = home;
         for (size_t at = 0; (at = s.find(h, at)) != std::string::npos; at += 1) {
             s.replace(at, h.size(), "~");
         }
@@ -52,19 +50,6 @@ namespace {
         char buf[32];
         std::strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
         return buf;
-    }
-
-    std::string os_name() {
-        std::ifstream in("/etc/os-release");
-        std::string line;
-        while (std::getline(in, line)) {
-            if (line.rfind("PRETTY_NAME=", 0) == 0) {
-                std::string v = line.substr(12);
-                v.erase(std::remove(v.begin(), v.end(), '"'), v.end());
-                return v;
-            }
-        }
-        return "Linux";
     }
 
     const char* game_name() {
@@ -119,14 +104,12 @@ std::filesystem::path aidyn::report::make(const std::string& reason,
     };
 
     std::ostringstream info;
-    utsname uts{};
-    uname(&uts);
     info << "Aidyn ReChronicled problem report\n\n"
          << "Why:         " << reason << "\n"
          << "Made:        " << made << "\n"
          << "Build:       " << AIDYN_BUILD_TEXT << "\n"
          << "Playing:     " << game_name() << "\n"
-         << "System:      " << os_name() << ", kernel " << uts.release << " (" << uts.machine << ")\n";
+         << "System:      " << aidyn::platform::os_description() << "\n";
     const fs::path crash = aidyn::settings::folder() / "game-crash.txt";
     if (fs::is_regular_file(crash, ec)) {
         info << "Game crash:  game-crash.txt, written " << when(fs::last_write_time(crash, ec)) << "\n";

@@ -89,7 +89,10 @@ ignored = [
 # N64Recomp already renames libc names (memcpy, sinf, strlen, ...) on its own, but not `main`:
 # new-game.sh lists it here when splat's create_config named the entrypoint's target `main`.
 # N64Recomp aborts if a name here doesn't exist, so drop `main` if a decomp config renames it.
-renamed = []
+# Names that clash on Windows (tools/windows): the game's own strncmp and strncpy (libultra's) with the C library's,
+# and its HeapAlloc and HeapFree with Windows' own. Renamed to <name>_recomp, as N64Recomp does itself for memset
+# and the like (hooks below still use the original names).
+renamed = ["strncmp", "strncpy", "HeapAlloc", "HeapFree"]
 
 # Replace one instruction (e.g. to remove an osSetTimer call that stalls a thread).
 # [[patches.instruction]]

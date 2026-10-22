@@ -1,0 +1,67 @@
+# rt64-cross-windows.patch: building for Windows on Linux (tools/windows): the shaders are compiled with the Linux DXC, not
+# dxc.exe, and embedded with a file_to_c built for this machine (RT64_HOST_FILE_TO_C), not the Windows one.
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -36,7 +36,12 @@
+ endfunction()
+ 
+ if (WIN32)
+-    set (DXC "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc.exe")
++    if (CMAKE_HOST_WIN32)
++        set (DXC "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc.exe")
++    else()
++        # Cross-compiling for Windows from Linux: the Linux DXC makes the same DXIL (signed, libdxil) and SPIR-V.
++        set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc-linux")
++    endif()
+     add_compile_definitions(
+         NOMINMAX
+         __PRFCHWINTRIN_H
+@@ -70,6 +75,12 @@
+ set(ZSTD_BUILD_SHARED OFF)
+ 
+ add_subdirectory(src/tools/file_to_c)
++# Cross-compiling, the file_to_c built here is for the target: RT64_HOST_FILE_TO_C names one built for this machine.
++if (CMAKE_CROSSCOMPILING AND RT64_HOST_FILE_TO_C)
++    set (FILE_TO_C "${RT64_HOST_FILE_TO_C}")
++else()
++    set (FILE_TO_C file_to_c)
++endif()
+ add_subdirectory(src/contrib/re-spirv)
+ add_subdirectory(src/contrib/nativefiledialog-extended)
+ add_subdirectory(src/contrib/zstd/build/cmake)
+@@ -118,7 +129,7 @@
+         COMMAND ${DXC} ${DXC_SPV_OPTS} ${ARGN} ${FILENAME} /Fo ${OUTNAME}.spv
+         DEPENDS ${FILENAME})
+     add_custom_command(OUTPUT ${OUTNAME}.spirv.c
+-        COMMAND file_to_c ${OUTNAME}.spv ${TARGET_NAME}BlobSPIRV ${OUTNAME}.spirv.c ${OUTNAME}.spirv.h
++        COMMAND ${FILE_TO_C} ${OUTNAME}.spv ${TARGET_NAME}BlobSPIRV ${OUTNAME}.spirv.c ${OUTNAME}.spirv.h
+         DEPENDS ${OUTNAME}.spv file_to_c
+         BYPRODUCTS ${OUTNAME}.spirv.h)
+     target_sources(${TARGETOBJ} PRIVATE ${OUTNAME}.spirv.c)
+@@ -129,7 +140,7 @@
+         COMMAND ${DXC} ${DXC_DXIL_OPTS} ${ARGN} ${FILENAME} /Fo ${OUTNAME}.dxil
+         DEPENDS ${FILENAME})
+     add_custom_command(OUTPUT ${OUTNAME}.dxil.c
+-        COMMAND file_to_c ${OUTNAME}.dxil ${TARGET_NAME}BlobDXIL ${OUTNAME}.dxil.c ${OUTNAME}.dxil.h
++        COMMAND ${FILE_TO_C} ${OUTNAME}.dxil ${TARGET_NAME}BlobDXIL ${OUTNAME}.dxil.c ${OUTNAME}.dxil.h
+         DEPENDS ${OUTNAME}.dxil file_to_c
+         BYPRODUCTS ${OUTNAME}.dxil.h)
+     target_sources(${TARGETOBJ} PRIVATE ${OUTNAME}.dxil.c)
+@@ -149,7 +160,7 @@
+             COMMAND xcrun -sdk macosx metallib ${OUTNAME}.ir -o ${OUTNAME}.metallib
+             DEPENDS ${OUTNAME}.ir)
+     add_custom_command(OUTPUT ${OUTNAME}.metal.c
+-            COMMAND file_to_c ${OUTNAME}.metallib ${TARGET_NAME}BlobMSL ${OUTNAME}.metal.c ${OUTNAME}.metal.h
++            COMMAND ${FILE_TO_C} ${OUTNAME}.metallib ${TARGET_NAME}BlobMSL ${OUTNAME}.metal.c ${OUTNAME}.metal.h
+             DEPENDS ${OUTNAME}.metallib file_to_c
+             BYPRODUCTS ${OUTNAME}.metal.h)
+     target_sources(${TARGETOBJ} PRIVATE ${OUTNAME}.metal.c)
+@@ -243,7 +254,7 @@
+     cmake_path(GET OUTNAME PARENT_PATH OUTPUT_DIR)
+     preprocess(${FILENAME} ${OUTNAME}.rw ${DXC_COMMON_OPTS})
+     add_custom_command(OUTPUT ${OUTNAME}.rw.c
+-        COMMAND file_to_c ${OUTNAME}.rw ${TARGET_NAME}Text ${OUTNAME}.rw.c ${OUTNAME}.rw.h
++        COMMAND ${FILE_TO_C} ${OUTNAME}.rw ${TARGET_NAME}Text ${OUTNAME}.rw.c ${OUTNAME}.rw.h
+         DEPENDS ${OUTNAME}.rw file_to_c
+         BYPRODUCTS ${OUTNAME}.rw.h)
+     file(MAKE_DIRECTORY ${OUTPUT_DIR})
