@@ -13,8 +13,7 @@ spitzdano's title card (art/titles/source/aidyn-chronicles-logo-redesign.png, RE
 The title card gets a soft shadow so it reads against the bright sky. tools/ally/steam_shortcut.py --art
 build/ally/steam-art puts them into Steam.
 
---icon PATH writes only the release's app icon: an illuminated A like the manual's initials (tools/manual/initial.svg,
-Marcellus SC), made from fonts, so it can ship anywhere.
+--icon PATH writes only the icon, to that path: the release's game/icon.png (the app menu's and the Steam shortcut's).
 """
 import argparse
 import subprocess
@@ -24,7 +23,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[1]
-FONT = PROJECT / "tools/hdui/fonts/MarcellusSC-Regular.ttf"
 
 
 def magick(*args):
@@ -42,17 +40,13 @@ def title_card(out, width):
 
 
 def icon(path):
-    """256x256: the manual's gold tile with an A in Marcellus SC."""
-    magick("-background", "none", "-density", "288", HERE.parent / "manual/initial.svg", "-resize", "256x256!",
-           "(", "-background", "none", "-fill", "#fff6d6", "-stroke", "#7a4e0c", "-strokewidth", "3",
-           "-font", FONT, "-pointsize", "200", "label:A", "-trim", "+repage", "-resize", "x168", ")",
-           "-gravity", "center", "-geometry", "+0+4", "-composite",
-           "-bordercolor", "#9a6a12", "-border", "6", "-resize", "256x256!", path)
+    """256x256: the swordsman from the box painting."""
+    magick(SRC / "icon.png", "-filter", "Lanczos", "-resize", "256x256", "-strip", path)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--icon", type=Path, help="only write the release's app icon (the illuminated A), to this path")
+    ap.add_argument("--icon", type=Path, help="only write the icon (the swordsman), to this path")
     args = ap.parse_args()
     if args.icon:
         icon(args.icon)
@@ -73,7 +67,7 @@ def main():
                "-filter", "Lanczos", "-resize", "920x430", "-strip", out / "wide.png")
         magick(SRC / "hero.png", "-strip", out / "hero.png")
         magick(LOGO, "-trim", "+repage", "-resize", "1280x720", out / "logo.png")
-        magick(SRC / "icon.png", "-filter", "Lanczos", "-resize", "256x256", "-strip", out / "icon.png")
+        icon(out / "icon.png")
     for f in sorted(out.iterdir()):
         print(f"steam_art.py: {f}")
 
