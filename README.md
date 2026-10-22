@@ -6,6 +6,8 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) with the
 [RT64](https://github.com/rt64/rt64) renderer.
 
+![Aidyn Chronicles: The First Mage, ReChronicled](docs/banner.jpg)
+
 ## Features
 
 - **A native Linux game**, not an emulator: one download for any current distribution, with an installer that adds
@@ -30,7 +32,7 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 - **Safe saves**: the Controller Pak's last 20 states are kept, and a problem report gathers what's needed when
   something goes wrong.
 
-**This repository contains no game data** (only the screenshots below). You need your own dump of the game. The build
+**This repository contains no game data** (only the pictures on this page). You need your own dump of the game. The build
 checks it against this SHA-1:
 
 ```
