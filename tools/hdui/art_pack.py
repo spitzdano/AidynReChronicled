@@ -116,6 +116,10 @@ def main():
         "textures": entries, "operationFilters": [], "shiftFilters": [], "extraFiles": [],
     }
     (out / "rt64.json").write_text(json.dumps(db, indent=1) + "\n")
+    # The pause pages painted whole, words and all (scroll_pages.py): src/game/page_words.cpp leaves their words to this
+    # pack while it's on, instead of redrawing them over the game's own picture.
+    pages = [name for name in ("PauseBGOptions", "PauseBGStats", "PauseBGMap") if name in art]
+    (out / "aidyn-pages.txt").write_text("".join(f"{name}\n" for name in pages))
     old = final.with_name(final.name + ".old")
     shutil.rmtree(old, ignore_errors=True)
     if final.exists():

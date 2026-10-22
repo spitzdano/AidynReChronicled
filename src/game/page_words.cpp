@@ -12,7 +12,9 @@
 // has the mechanism). An hd-ui pack whose aidyn-labels.txt matches page-words.json's id has these words already, and
 // its pages are left alone. AIDYN_PAGE_WORDS_LOG=1 prints each step.
 #include "platform.h"
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -32,6 +34,7 @@
 #include "recomp.h"
 #include "librecomp/helpers.hpp"
 
+#include "packs.h"
 #include "rt64_context.h"
 #include "settings.h"
 
@@ -45,13 +48,14 @@ struct Page {
     uint64_t fnv = 0;
     std::vector<std::array<int, 4>> erase;  // x, y, w, h in texels
     std::vector<uint8_t> words;            // RGBA at `scale` pixels per texel, width*scale x height*scale
+    bool painted = false;                  // the redrawn art pack paints the whole page, words and all
 };
 
 struct Setup {
     bool on = false;
     int scale = 4;
     std::vector<Page> pages;
-    std::filesystem::path hd_ui;  // the hd-ui folder, whose pictures the strips start from; empty without one
+    bool hd_ui = false;  // the hd-ui pack is there: its pictures are what the strips start from
 };
 
 // A page drawn lately: where its pixels and palette are, and its picture decoded, with the boxes erased.
@@ -70,53 +74,53 @@ bool log_on() {
     return on;
 }
 
-// A texture pack's folder: in <data>/texture-packs, then beside the game (as rt64_context.cpp looks them up). Empty if
-// it isn't in texture_packs or isn't a folder.
-std::filesystem::path pack_folder(const std::string& name) {
+// A pack named in texture_packs (folder or .rtz, src/main/packs.cpp).
+bool listed(const std::string& name) {
     const auto& packs = aidyn::settings::graphics().texture_packs;
-    if (std::find(packs.begin(), packs.end(), name) == packs.end()) {
-        return {};
-    }
-    std::error_code ec;
-    const std::filesystem::path beside = aidyn::platform::exe_path().parent_path() / "texture-packs";
-    for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
-        if (std::filesystem::is_directory(dir / name, ec)) {
-            return dir / name;
-        }
-    }
-    return {};
-}
-
-std::string first_word(const std::filesystem::path& path) {
-    std::ifstream in(path);
-    std::string word;
-    in >> word;
-    return word;
+    return std::find(packs.begin(), packs.end(), name) != packs.end() && !aidyn::packs::find(name).empty();
 }
 
 const Setup& setup() {
     static const Setup s = [] {
         Setup s;
-        const std::filesystem::path text = pack_folder("rechronicled-text");
-        if (text.empty() || !std::filesystem::exists(text / "page-words.json")) {
+        std::vector<uint8_t> bytes;
+        if (!listed("rechronicled-text") || !aidyn::packs::read("rechronicled-text", "page-words.json", bytes)) {
             return s;
         }
         nlohmann::json j;
         try {
-            std::ifstream in(text / "page-words.json");
-            j = nlohmann::json::parse(in);
+            j = nlohmann::json::parse(bytes.begin(), bytes.end());
         } catch (const std::exception& e) {
-            fprintf(stderr, "Page words: %s: %s\n", (text / "page-words.json").string().c_str(), e.what());
+            fprintf(stderr, "Page words: rechronicled-text's page-words.json: %s\n", e.what());
             return s;
         }
         const std::string id = j.value("labels", "");
         s.scale = j.value("scale", 4);
-        s.hd_ui = pack_folder("hd-ui");
-        if (!s.hd_ui.empty() && first_word(s.hd_ui / "aidyn-labels.txt") == id) {
+        s.hd_ui = listed("hd-ui");
+        if (s.hd_ui && aidyn::packs::first_word("hd-ui", "aidyn-labels.txt") == id) {
             if (log_on()) {
-                fprintf(stdout, "Page words: %s has them already\n", s.hd_ui.string().c_str());
+                fprintf(stdout, "Page words: hd-ui has them already\n");
             }
             return s;  // the pack's pages have these words
+        }
+        // The pages the redrawn art pack paints whole, its words drawn in (tools/hdui/scroll_pages.py; art_pack.py
+        // lists them in aidyn-pages.txt): left to it while it's on (F2 turns it off: then they're redrawn here).
+        std::vector<std::string> painted;
+        if (listed("rechronicled-art") && aidyn::packs::read("rechronicled-art", "aidyn-pages.txt", bytes)) {
+            std::string word;
+            for (uint8_t c : bytes) {
+                if (std::isspace(c)) {
+                    if (!word.empty()) {
+                        painted.push_back(word);
+                    }
+                    word.clear();
+                } else {
+                    word += (char)c;
+                }
+            }
+            if (!word.empty()) {
+                painted.push_back(word);
+            }
         }
         for (const auto& p : j.value("pages", nlohmann::json::array())) {
             Page page;
@@ -128,9 +132,11 @@ const Setup& setup() {
             for (const auto& b : p.value("erase", nlohmann::json::array())) {
                 page.erase.push_back({ b[0].get<int>(), b[1].get<int>(), b[2].get<int>(), b[3].get<int>() });
             }
-            const std::string words = (text / p.value("words", "")).string();
+            page.painted = std::find(painted.begin(), painted.end(), page.name) != painted.end();
+            const std::string words = p.value("words", "");
             int w = 0, h = 0;
-            stbi_uc* data = stbi_load(words.c_str(), &w, &h, nullptr, 4);
+            stbi_uc* data = aidyn::packs::read("rechronicled-text", words, bytes)
+                ? stbi_load_from_memory(bytes.data(), (int)bytes.size(), &w, &h, nullptr, 4) : nullptr;
             if (data == nullptr || page.format != 4 || (uint32_t)w != page.width * s.scale
                 || (uint32_t)h != page.height * s.scale) {
                 fprintf(stderr, "Page words: %s doesn't fit its page (skipped)\n", words.c_str());
@@ -145,7 +151,7 @@ const Setup& setup() {
         }
         s.on = !s.pages.empty();
         fprintf(stdout, "Page words: %zu page(s) redrawn over %s\n", s.pages.size(),
-                s.hd_ui.empty() ? "the game's own pictures" : s.hd_ui.string().c_str());
+                s.hd_ui ? "hd-ui's pictures" : "the game's own pictures");
         return s;
     }();
     return s;
@@ -242,7 +248,7 @@ void aidyn_page_words_drawn(uint8_t* rdram, gpr img) {
     const uint32_t format = MEM_HU(0x08, img), w = MEM_HU(0x0A, img), h = MEM_HU(0x0C, img);
     for (size_t i = 0; i < s.pages.size(); i++) {
         const Page& page = s.pages[i];
-        if (format != page.format || w != page.width || h != page.height) {
+        if (format != page.format || w != page.width || h != page.height || (page.painted && aidyn::redrawn_art())) {
             continue;
         }
         const gpr pixels = MEM_W(0x14, img), palette = MEM_W(0x10, img);
@@ -290,6 +296,9 @@ bool aidyn::page_words_for_texture(uint64_t hash, uint32_t address, uint16_t wid
     uint8_t* rdram = g_rdram;
     for (const Shown& shown : g_shown) {
         const Page& page = s.pages[shown.page];
+        if (page.painted && aidyn::redrawn_art()) {
+            continue;  // the redrawn art pack's painting of the page, words and all
+        }
         const int pw = (int)page.width, ph = (int)page.height, S = s.scale;
         if (address < shown.pixels || address >= shown.pixels + uint32_t(pw * ph)) {
             continue;
@@ -313,12 +322,13 @@ bool aidyn::page_words_for_texture(uint64_t hash, uint32_t address, uint16_t wid
         rgba.assign(size_t(OW) * OH * 4, 0);
         // The picture to start from: hd-ui's for this strip, else the game's own, upscaled.
         bool from_pack = false;
-        if (!s.hd_ui.empty()) {
+        std::vector<uint8_t> png;
+        if (s.hd_ui) {
             char name[32];
             snprintf(name, sizeof(name), "%016llx.png", (unsigned long long)hash);
-            const std::string path = (s.hd_ui / name).string();
             int w = 0, h = 0;
-            stbi_uc* data = stbi_load(path.c_str(), &w, &h, nullptr, 4);
+            stbi_uc* data = aidyn::packs::read("hd-ui", name, png)
+                ? stbi_load_from_memory(png.data(), (int)png.size(), &w, &h, nullptr, 4) : nullptr;
             if (data != nullptr && w == OW && h == OH) {
                 std::memcpy(rgba.data(), data, rgba.size());
                 from_pack = true;

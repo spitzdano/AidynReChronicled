@@ -67,9 +67,10 @@ python3 tools/ally/steam_art.py --icon "$out/$name/game/icon.png" >/dev/null
 # run by install.sh, puts it into Steam.
 python3 tools/ally/steam_art.py >/dev/null
 cp -a build/ally/steam-art "$out/$name/game/steam-art"
-cp -a "$pack" "$out/$name/game/texture-packs/rechronicled"
-cp -a "$packs/rechronicled-art" "$out/$name/game/texture-packs/rechronicled-art"
-cp -a "$packs/rechronicled-text" "$out/$name/game/texture-packs/rechronicled-text"
+# Each pack as one .rtz (tools/release/rtz.py: RT64's zipped pack): a fraction of the start-up time 40,000 files take.
+for p in rechronicled rechronicled-art rechronicled-text; do
+    python3 -I tools/release/rtz.py "$packs/$p" "$out/$name/game/texture-packs/$p.rtz"
+done
 cp tools/ally/install.sh tools/release/README.md LICENSE "$out/$name/"
 mkdir -p "$out/$name/ROMs"  # the player's ROMs go here (src/main/main.cpp, store_roms_from_folders)
 cp tools/release/ROMs-README.txt "$out/$name/ROMs/README.txt"
@@ -96,9 +97,7 @@ if (( windows )); then
     mkdir -p "$out/$wname/texture-packs"
     cp -a build/windows/dist/. "$out/$wname/"
     cp -a build/ally/steam-art "$out/$wname/steam-art"
-    for p in rechronicled rechronicled-art rechronicled-text; do
-        cp -a "$out/$name/game/texture-packs/$p" "$out/$wname/texture-packs/$p"
-    done
+    cp "$out/$name/game/texture-packs/"*.rtz "$out/$wname/texture-packs/"
     cp tools/release/README.md LICENSE "$out/$wname/"
     mkdir -p "$out/$wname/ROMs"
     sed 's/$/\r/' tools/release/ROMs-README.txt >"$out/$wname/ROMs/README.txt"

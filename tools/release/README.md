@@ -147,7 +147,7 @@ All in the data folder (see "Your ROM and the data folder"):
 - `reports/`: problem reports, one `.zip` each with the logs, settings and saves: written by the game when it
   crashes, or by **Report a problem** on the pause menu's ReChronicled page. Send the newest with a few words on what
   happened.
-- `texture-packs/`: HD texture packs of your own. This release includes, next to the game (in its own
+- `texture-packs/`: HD texture packs of your own (folders, or `.rtz` files). This release includes, next to the game (in its own
   `texture-packs`), newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
   the first world textures: Alaron, the starting forest, part of Gwernia Castle), the HD letters and Xbox button
   icons for all the game's text and the redrawn menu titles and inventory words (`rechronicled-text`, drawn from fonts;

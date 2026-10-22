@@ -1,3 +1,4 @@
+#include "packs.h"
 #include "platform.h"
 #include <atomic>
 #include <chrono>
@@ -220,20 +221,12 @@ static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool repo
     if (!aidyn::settings::graphics().textures) {
         return packs;  // textures off (the pause menu's ReChronicled page): the game's own, as on the N64
     }
-    std::error_code ec;
     const std::filesystem::path beside = aidyn::platform::exe_path().parent_path() / "texture-packs";
     for (const std::string& name : aidyn::settings::graphics().texture_packs) {
         if (!art && name == "rechronicled-art") {
             continue;
         }
-        std::filesystem::path pack;
-        for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
-            for (const std::filesystem::path& candidate : { dir / name, dir / (name + ".rtz") }) {
-                if (pack.empty() && !dir.empty() && std::filesystem::exists(candidate, ec)) {
-                    pack = candidate;
-                }
-            }
-        }
+        const std::filesystem::path pack = aidyn::packs::find(name);  // its folder or its .rtz (src/main/packs.cpp)
         if (pack.empty()) {
             if (report) {
                 fprintf(stderr, "Texture pack \"%s\" not found in %s or %s (skipped)\n", name.c_str(),

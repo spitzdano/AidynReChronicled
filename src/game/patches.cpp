@@ -2398,35 +2398,28 @@ extern "C" gpr aidyn_combat_bar_end(uint8_t* rdram, gpr g) {
 // (build_pack.py), whichever comes later in texture_packs (later packs win). Letters drawn for other widths (an older
 // pack) or the original letters would be cut off or spread out, so the original widths stay.
 #include "font_widths.h"
+#include "packs.h"
 
 namespace {
     bool hd_text() {
         static const bool on = [] {
             const auto& packs = aidyn::settings::graphics().texture_packs;
-            std::error_code ec;
-            const std::filesystem::path beside =
-                aidyn::platform::exe_path().parent_path() / "texture-packs";
             for (auto name = packs.rbegin(); name != packs.rend(); ++name) {
                 if (*name != "rechronicled-text" && *name != "hd-ui") {
                     continue;
                 }
-                for (const std::filesystem::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
-                    if (std::filesystem::is_directory(dir / *name, ec)) {
-                        std::ifstream in(dir / *name / aidyn::font::kPackMarker);
-                        std::string id;
-                        in >> id;
-                        if (id == aidyn::font::kWidthsId) {
-                            return true;
-                        }
-                        fprintf(stderr, "HD text: %s was drawn for other letter widths (%s): the game keeps its own. "
-                                "rechronicled-text from this release (or a newer hd-ui pack) gives the HD text its "
-                                "spacing.\n", (dir / *name).string().c_str(), id.empty() ? "an older pack" : id.c_str());
-                        return false;
-                    }
-                    if (std::filesystem::exists(dir / (*name + ".rtz"), ec)) {
-                        return false;  // a packed pack can't be checked: the original widths fit any letters
-                    }
+                const std::filesystem::path pack = aidyn::packs::find(*name);  // its folder or its .rtz
+                if (pack.empty()) {
+                    continue;
                 }
+                const std::string id = aidyn::packs::first_word(*name, aidyn::font::kPackMarker);
+                if (id == aidyn::font::kWidthsId) {
+                    return true;
+                }
+                fprintf(stderr, "HD text: %s was drawn for other letter widths (%s): the game keeps its own. "
+                        "rechronicled-text from this release (or a newer hd-ui pack) gives the HD text its "
+                        "spacing.\n", pack.string().c_str(), id.empty() ? "an older pack" : id.c_str());
+                return false;
             }
             return false;
         }();
