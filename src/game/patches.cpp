@@ -4985,7 +4985,8 @@ extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
 // While the redrawn art shows, three HUD pictures the art pack replaces with spitzdano's (art/hud, tools/branding/hud_frames.py)
 // are drawn opaque at N64BorgImageDraw's entry (aidyn_ui_image_seen): CompassRing (the time-of-day dial's, the compass's
 // and the combat radar's ring; the game draws it at 80 or 164 of 255, for a faint white ring) and PortraitHighlight
-// (the white frame of the field's party portraits, the dialogue's and the combat message box's; 128 in the field). On
+// (the white frame of the field's party portraits, the dialogue's and the combat message box's; 128 in the field,
+// where it stays at 128 like the portraits inside it). On
 // an enemy's turn the message box's frame is drawn from a copy with its middle texel changed (a texture of its own,
 // art/hud/PortraitHighlightEnemy: red and silver). And the combat columns' slot frames (image 0x1C6) are hidden: the
 // ornate frames are drawn over the portraits ("Portrait frames (combat columns)"). Told by their size and pixels.
@@ -5083,7 +5084,18 @@ void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx) {
         MEM_W(0x30, sp) = v;
         return;
     }
-    MEM_W(0x34, sp) = (int32_t)std::min(255u, pic == kHudRing ? alpha * 16 / 5 : alpha * 2);
+    // The field's party frames (Portraits::DrawParty: at x 84, 122, 160, 198) keep the game's own half strength, as
+    // the portraits inside them are drawn (spitzdano: frames and portraits see-through alike); the others, opaque.
+    bool party_frame = false;
+    if (pic == kHudHighlight) {
+        float fx;
+        const uint32_t xb = (uint32_t)ctx->r6;
+        std::memcpy(&fx, &xb, 4);
+        for (float px : { 84.0f, 122.0f, 160.0f, 198.0f }) {
+            party_frame = party_frame || std::abs(fx - px) < 0.5f;
+        }
+    }
+    MEM_W(0x34, sp) = (int32_t)std::min(255u, pic == kHudRing ? alpha * 16 / 5 : party_frame ? alpha : alpha * 2);
     if (pic == kHudHighlight && heap_pointer(MEM_W(0, kCombatP))) {
         float x, y;
         uint32_t bits = (uint32_t)ctx->r6;
