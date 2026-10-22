@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """steam_shortcut.py: add Aidyn ReChronicled to Steam as a non-Steam game, with its library art. Runs on the handheld.
 
-    python3 steam_shortcut.py [--dry-run] [--launcher PATH] [--art DIR] [--icon PNG]
+    python3 steam_shortcut.py [--dry-run] [--launcher PATH] [--art DIR] [--icon PNG] [--name NAME] [--compat-tool TOOL]
 
 --launcher, --art and --icon point it at other files than the handheld package's (aidyn-rechronicled.sh, steam-art/
 and icon.png next to this script): on the PC, tools/dev/aidyn-steam.sh with build/ally/steam-art (see that script).
+--name gives the shortcut another name than "Aidyn ReChronicled"; --compat-tool runs it with that Steam Play tool (its
+internal name, e.g. GE-Proton11-11-x86_64), written into config/config.vdf's CompatToolMapping as Properties >
+Compatibility does: tools/dev/windows-steam.sh uses both for the Windows build under Proton.
 
 Steam must be closed (in Desktop Mode: Steam menu > Exit; the script says so if it isn't). For every Steam account on
 the machine it:
@@ -96,14 +99,45 @@ def get(items, key):
     return None
 
 
-def shortcut_entry(appid, exe, start_dir, icon):
+def shortcut_entry(appid, exe, start_dir, icon, name):
     s = lambda k, v: [STR, k.encode(), v.encode()]
     i = lambda k, v: [INT, k.encode(), struct.pack("<i", v)]
-    return [i("appid", appid), s("AppName", NAME), s("Exe", f'"{exe}"'), s("StartDir", f'"{start_dir}"'),
+    return [i("appid", appid), s("AppName", name), s("Exe", f'"{exe}"'), s("StartDir", f'"{start_dir}"'),
             s("icon", str(icon)), s("ShortcutPath", ""), s("LaunchOptions", ""), i("IsHidden", 0),
             i("AllowDesktopConfig", 1), i("AllowOverlay", 1), i("OpenVR", 0), i("Devkit", 0), s("DevkitGameID", ""),
             i("DevkitOverrideAppID", 0), i("LastPlayTime", 0), s("FlatpakAppID", ""), s("sortas", ""),
             [MAP, b"tags", []]]
+
+
+def set_compat_tool(root, appid_u, tool, dry):
+    """Maps the shortcut's app id to a Steam Play tool in config/config.vdf (text key-values), the way Properties >
+    Compatibility > Force does: an entry in InstallConfigStore > Software > Valve > Steam > CompatToolMapping."""
+    vdf = root / "config" / "config.vdf"
+    lines = vdf.read_text().split("\n")
+    start = next((i for i, l in enumerate(lines) if l.strip() == '"CompatToolMapping"'), None)
+    if start is None or lines[start + 1].strip() != "{":
+        sys.exit(f"steam_shortcut.py: no CompatToolMapping in {vdf}; set the compatibility tool by hand "
+                 "(Properties > Compatibility).")
+    indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())] + "\t"
+    # The block's end: the closing brace at the block's own indent.
+    end = next(i for i in range(start + 2, len(lines)) if lines[i] == indent[:-1] + "}")
+    key = f'{indent}"{appid_u}"'
+    entry = [key, indent + "{", f'{indent}\t"name"\t\t"{tool}"', f'{indent}\t"config"\t\t""',
+             f'{indent}\t"priority"\t\t"250"', indent + "}"]
+    old = next((i for i in range(start + 2, end) if lines[i] == key), None)
+    if old is not None:
+        close = next(i for i in range(old + 1, end) if lines[i] == indent + "}")
+        lines[old:close + 1] = entry
+    else:
+        lines[start + 2:start + 2] = entry
+    print(f"compatibility tool for {appid_u}: {tool} ({vdf})")
+    if dry:
+        return
+    if not (vdf.parent / "config.vdf.before-aidyn").exists():
+        shutil.copy2(vdf, vdf.parent / "config.vdf.before-aidyn")
+    tmp = vdf.with_suffix(".vdf.tmp")
+    tmp.write_text("\n".join(lines))
+    os.replace(tmp, vdf)
 
 
 def steam_running():
@@ -120,7 +154,10 @@ def main():
     ap.add_argument("--launcher", type=Path, default=LAUNCHER)
     ap.add_argument("--art", type=Path, default=ART)
     ap.add_argument("--icon", type=Path)
+    ap.add_argument("--name", default=NAME)
+    ap.add_argument("--compat-tool")
     args = ap.parse_args()
+    name = args.name
     dry, launcher, art = args.dry_run, args.launcher.resolve(), args.art.resolve()
     icon = (args.icon or (art / "icon.png" if args.art != ART else HERE / "icon.png")).resolve()
     if not launcher.exists():
@@ -137,7 +174,7 @@ def main():
 
     exe = launcher
     # Steam's own id for a shortcut: CRC32 of exe + name, top bit set. Signed in shortcuts.vdf, unsigned in grid/.
-    appid_u = (binascii.crc32((f'"{exe}"' + NAME).encode()) & 0xFFFFFFFF) | 0x80000000
+    appid_u = (binascii.crc32((f'"{exe}"' + name).encode()) & 0xFFFFFFFF) | 0x80000000
     appid_s = struct.unpack("<i", struct.pack("<I", appid_u))[0]
 
     for account in accounts:
@@ -165,7 +202,7 @@ def main():
             if ex and exe.name.encode() in ex[2]:
                 mine = e
                 break
-        entry = shortcut_entry(appid_s, exe, exe.parent, icon)
+        entry = shortcut_entry(appid_s, exe, exe.parent, icon, name)
         if mine:
             old_id = get(mine[2], b"appid")
             if old_id:  # keep the id Steam already knows (play time, controller layout, art)
@@ -193,7 +230,9 @@ def main():
                          ("hero.png", f"{appid_u}_hero.png"), ("logo.png", f"{appid_u}_logo.png")):
             if (art / src).exists():
                 shutil.copyfile(art / src, grid / dst)
-    print("Done. Start Steam (or switch to Game Mode): Aidyn ReChronicled is in the Library under Non-Steam.")
+    if args.compat_tool:
+        set_compat_tool(root, appid_u, args.compat_tool, dry)
+    print(f"Done. Start Steam (or switch to Game Mode): {name} is in the Library under Non-Steam.")
 
 
 if __name__ == "__main__":
