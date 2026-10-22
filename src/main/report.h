@@ -18,4 +18,7 @@ namespace aidyn::report {
     // The game hit its own crash check (src/game/patches.cpp): a report, a message saying where it is, and the end of
     // the program (where the game would sit frozen).
     [[noreturn]] void game_crashed(const std::string& reason);
+    // Windows: a crash the program doesn't handle itself (an access violation...) writes game-crash.txt (the exception,
+    // where, the call stack) and a problem report, as the Linux launcher does after a crash signal. Linux: nothing.
+    void install_crash_handler();
 }

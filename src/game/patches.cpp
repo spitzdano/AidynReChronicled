@@ -5442,9 +5442,14 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
     saves.safe_for += dt;
     saves.explored += dt;
     // AIDYN_CRASH_TEST=1: after 10 seconds of walking about, the game's own crash check, to try the problem report's
-    // way end to end (Steam launch options: AIDYN_CRASH_TEST=1 %command%).
-    static const bool crash_test = std::getenv("AIDYN_CRASH_TEST") != nullptr;
+    // way end to end (Steam launch options: AIDYN_CRASH_TEST=1 %command%); AIDYN_CRASH_TEST=native: a real crash
+    // there instead (a write to address 0: the launcher's report on Linux, the crash handler's on Windows).
+    static const char* crash_test_kind = std::getenv("AIDYN_CRASH_TEST");
+    static const bool crash_test = crash_test_kind != nullptr;
     static double crash_test_time = 0.0;
+    if (crash_test && std::strcmp(crash_test_kind, "native") == 0 && crash_test_time + dt >= 10.0) {
+        *(volatile int*)nullptr = 1;
+    }
     if (crash_test && (crash_test_time += dt) >= 10.0) {
         call_game(rdram, ctx, Crash__ManualCrash);
     }

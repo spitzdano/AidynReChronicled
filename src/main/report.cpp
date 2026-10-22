@@ -16,6 +16,9 @@
 #include <sstream>
 
 #include "SDL2/SDL.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "miniz.h"
 
 #include "aidyn_build.h"
@@ -156,11 +159,63 @@ std::filesystem::path aidyn::report::make(const std::string& reason,
     return path;
 }
 
+#ifdef _WIN32
+namespace {
+    LONG WINAPI unhandled(EXCEPTION_POINTERS* info) {
+        static volatile LONG entered = 0;
+        if (InterlockedExchange(&entered, 1) != 0) {
+            return EXCEPTION_EXECUTE_HANDLER;  // a crash while reporting one: just end
+        }
+        const EXCEPTION_RECORD* rec = info->ExceptionRecord;
+        std::string out;
+        char line[256];
+        HMODULE mod = nullptr;
+        char name[MAX_PATH] = "?";
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCSTR)rec->ExceptionAddress, &mod)) {
+            GetModuleFileNameA(mod, name, sizeof name);
+        }
+        const char* base = std::strrchr(name, '\\');
+        std::snprintf(line, sizeof line, "CRASH (exception 0x%08lX) at %s(+0x%llx)", rec->ExceptionCode, base ? base + 1 : name,
+                      (unsigned long long)((const char*)rec->ExceptionAddress - (const char*)mod));
+        out += line;
+        if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && rec->NumberParameters >= 2) {
+            std::snprintf(line, sizeof line, ", %s address 0x%llx", rec->ExceptionInformation[0] == 1 ? "writing" : "reading",
+                          (unsigned long long)rec->ExceptionInformation[1]);
+            out += line;
+        }
+        out += "\n";
+        for (const std::string& frame : aidyn::platform::backtrace_lines(0)) {
+            out += "    " + frame + "\n";
+        }
+        std::fputs(out.c_str(), stderr);
+        if (FILE* f = std::fopen((aidyn::settings::folder() / "game-crash.txt").string().c_str(), "w")) {
+            std::fputs(out.c_str(), f);
+            std::fclose(f);
+        }
+        char reason[96];
+        std::snprintf(reason, sizeof reason, "The game crashed (exception 0x%08lX, game-crash.txt)", rec->ExceptionCode);
+        aidyn::report::game_crashed(reason);
+    }
+}
+#endif
+
+void aidyn::report::install_crash_handler() {
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(unhandled);
+#endif
+}
+
 void aidyn::report::game_crashed(const std::string& reason) {
     const std::filesystem::path made = make(reason);
     std::string text = "Aidyn ReChronicled ran into a problem and has to close.\n\n";
     if (!made.empty()) {
-        text += "A problem report was saved:\n" + redact(made.string()) +
+#ifdef _WIN32
+        const std::string where = made.string();  // in full: "~" means nothing on Windows (and only the player sees this)
+#else
+        const std::string where = redact(made.string());
+#endif
+        text += "A problem report was saved:\n" + where +
                 "\n\nTo help fix it, send that file with a few words on what you were doing (the manual's "
                 "\"Reporting a problem\" says how).";
     } else {
@@ -168,6 +223,11 @@ void aidyn::report::game_crashed(const std::string& reason) {
     }
     fprintf(stderr, "%s\n", text.c_str());
     fflush(stderr);
+#ifdef _WIN32
+    // Windows' own message box: it works from inside the crash handler, where SDL's may not.
+    MessageBoxA(nullptr, text.c_str(), "Aidyn ReChronicled", MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND);
+#else
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Aidyn ReChronicled", text.c_str(), nullptr);
+#endif
     std::_Exit(1);
 }

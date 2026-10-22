@@ -407,6 +407,7 @@ int main(int argc, char** argv) {
     aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");
     aidyn_quick_saves_set_pak(pak);  // quick and auto saves: beside it, named after it
     aidyn::report::set_paths(data_folder(), pak);
+    aidyn::report::install_crash_handler();
     if (!report_reason.empty()) {
         const std::filesystem::path made = aidyn::report::make(report_reason);
         if (made.empty()) {
