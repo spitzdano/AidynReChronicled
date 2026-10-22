@@ -8,3 +8,6 @@
 [submodule "decomp"]
 	path = decomp
 	url = https://github.com/blackgamma7/Aidyn.git
+[submodule "art"]
+	path = art
+	url = git@github.com:spitzdano/AidynReChronicled-Art.git

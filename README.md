@@ -56,6 +56,8 @@ For the record, a release is built from this repository and the
 [n64-recomp-toolkit](https://github.com/spitzdano/n64-recomp-toolkit) at commit `e1e4e40`, cloned and built on the
 machine (`install.sh`, `build.sh`, `doctor.sh`). `tools/toolkit.env` says where it is (`~/Work/n64-recomp-toolkit`); set
 `N64RECOMP_TOOLKIT` to override.
+The redrawn art (`art/`) is a submodule from its own private repository; players get it in the releases' texture
+packs.
 
 ```sh
 git submodule update --init --recursive
