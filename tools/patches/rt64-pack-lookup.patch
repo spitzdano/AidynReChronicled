@@ -1,0 +1,54 @@
+# rt64-pack-lookup.patch: a texture's file is looked up in the pack's file list (listed just before) instead of on the disk:
+# under Wine every missing name (each texture is tried as .dds first) costs a scan of its whole folder, minutes for a
+# 30,000-file pack. Faster everywhere, the same result.
+diff --git i/src/common/rt64_replacement_database.cpp w/src/common/rt64_replacement_database.cpp
+index 9f331c9..026593a 100644
+--- i/src/common/rt64_replacement_database.cpp
++++ w/src/common/rt64_replacement_database.cpp
+@@ -4,6 +4,8 @@
+ 
+ #include "rt64_replacement_database.h"
+ 
++#include <unordered_set>
++
+ #include <cinttypes>
+ 
+ #include "rt64_filesystem_directory.h"
+@@ -147,7 +149,9 @@ namespace RT64 {
+     
+     void ReplacementDatabase::resolvePaths(const FileSystem *fileSystem, uint32_t fileSystemIndex, std::unordered_map<uint64_t, ReplacementResolvedPath> &resolvedPathMap, bool onlyDDS, std::vector<uint64_t> *hashesMissing, std::unordered_set<std::string> *pathsToPreload) {
+         std::unordered_map<std::string, std::string> autoPathMap;
++        std::unordered_set<std::string> listedPaths;
+         for (const std::string &relativePath : *fileSystem) {
++            listedPaths.insert(FileSystem::toForwardSlashes(relativePath));
+             const std::filesystem::path relativePathFs = std::filesystem::u8path(relativePath);
+             std::string fileExtension = toLower(relativePathFs.extension().u8string());
+             if (!isExtensionKnown(fileExtension)) {
+@@ -204,8 +208,25 @@ namespace RT64 {
+                 bool fileExists = false;
+                 for (uint32_t i = 0; i < std::size(ReplacementKnownExtensions); i++) {
+                     const std::string relativePathKnown = relativePathBase + ReplacementKnownExtensions[i];
+-                    std::string canonicalPath = fileSystem->makeCanonical(relativePathKnown);
+-                    if (!canonicalPath.empty() && fileSystem->exists(canonicalPath)) {
++                    // Every file of the pack was listed above: a name is looked up there, not on the disk, where a
++                    // missing one (each texture is tried as .dds first) costs a scan of its whole folder under Wine.
++                    std::string canonicalPath;
++                    if (!listedPaths.empty()) {
++                        const std::string normalPath = FileSystem::toForwardSlashes(std::filesystem::u8path(relativePathKnown).lexically_normal().u8string());
++                        if (listedPaths.count(normalPath) == 0) {
++                            continue;
++                        }
++
++                        canonicalPath = normalPath;
++                    }
++                    else {
++                        canonicalPath = fileSystem->makeCanonical(relativePathKnown);
++                        if (canonicalPath.empty() || !fileSystem->exists(canonicalPath)) {
++                            continue;
++                        }
++                    }
++
++                    {
+                         if (!onlyDDS || (i == 0)) {
+                             std::string relativePathFinal = FileSystem::toForwardSlashes(canonicalPath);
+                             addResolvedPath(hashRT64, relativePathFinal, texture.operation, texture.shift);
