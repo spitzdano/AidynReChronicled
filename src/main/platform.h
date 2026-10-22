@@ -7,7 +7,9 @@
 namespace aidyn::platform {
     std::filesystem::path exe_path();   // this program's file
     std::filesystem::path data_home();  // where per-user data goes: $XDG_DATA_HOME or ~/.local/share; %APPDATA% on Windows
-    std::string home_dir();             // the user's home folder (problem reports write it as ~)
+    // The user's home folder, as each path may spell it (problem reports write it as ~): on Windows %USERPROFILE%, and
+    // under Wine also the Linux home, as Z:\home\<name> and /home/<name>.
+    std::vector<std::string> home_dirs();
     std::string os_description();       // e.g. "Arch Linux, kernel 6.x (x86_64)" or "Windows 10.0.26100 (x86_64)"
     // Starts this program again with these arguments (args[0] the program) in place of this one. Returns only if it
     // couldn't.

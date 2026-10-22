@@ -45,9 +45,24 @@ fs::path aidyn::platform::data_home() {
     return out.empty() ? fs::current_path() : out;
 }
 
-std::string aidyn::platform::home_dir() {
-    const char* p = std::getenv("USERPROFILE");
-    return p != nullptr ? p : "";
+std::vector<std::string> aidyn::platform::home_dirs() {
+    std::vector<std::string> out;
+    if (const char* p = std::getenv("USERPROFILE")) {
+        out.emplace_back(p);
+    }
+    if (const char* w = std::getenv("WINEHOMEDIR")) {  // Wine: "\\??\\Z:\\home\\<name>"
+        std::string z = w;
+        if (z.rfind("\\??\\", 0) == 0) {
+            z.erase(0, 4);
+        }
+        out.push_back(z);
+        if (z.size() > 2 && z[1] == ':') {
+            std::string unix_home = z.substr(2);
+            std::replace(unix_home.begin(), unix_home.end(), '\\', '/');
+            out.push_back(unix_home);
+        }
+    }
+    return out;
 }
 
 std::string aidyn::platform::os_description() {
@@ -129,9 +144,9 @@ fs::path aidyn::platform::data_home() {
     return fs::path(home != nullptr ? home : ".") / ".local" / "share";
 }
 
-std::string aidyn::platform::home_dir() {
+std::vector<std::string> aidyn::platform::home_dirs() {
     const char* p = std::getenv("HOME");
-    return p != nullptr ? p : "";
+    return p != nullptr ? std::vector<std::string>{ p } : std::vector<std::string>{};
 }
 
 std::string aidyn::platform::os_description() {

@@ -7,6 +7,7 @@
 #include "report.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -34,14 +35,28 @@ namespace {
         return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
 
-    // The home folder's path (which holds the user's name) as ~.
+    // The home folder's path (which holds the user's name) as ~; on Windows in any case (C:\Users or c:\users).
     std::string redact(std::string s) {
-        const std::string h = aidyn::platform::home_dir();
-        if (h.size() < 2) {
-            return s;
-        }
-        for (size_t at = 0; (at = s.find(h, at)) != std::string::npos; at += 1) {
-            s.replace(at, h.size(), "~");
+        for (const std::string& h : aidyn::platform::home_dirs()) {
+            if (h.size() < 2) {
+                continue;
+            }
+#ifdef _WIN32
+            const auto lower = [](std::string t) {
+                std::transform(t.begin(), t.end(), t.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+                return t;
+            };
+            const std::string needle = lower(h);
+            std::string folded = lower(s);
+            for (size_t at = 0; (at = folded.find(needle, at)) != std::string::npos; at += 1) {
+                s.replace(at, h.size(), "~");
+                folded.replace(at, h.size(), "~");
+            }
+#else
+            for (size_t at = 0; (at = s.find(h, at)) != std::string::npos; at += 1) {
+                s.replace(at, h.size(), "~");
+            }
+#endif
         }
         return s;
     }

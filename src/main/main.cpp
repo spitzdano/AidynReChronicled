@@ -132,7 +132,11 @@ static void open_manual() {
     if (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) {
         SDL_SetWindowFullscreen(window, 0);
     }
+#ifdef _WIN32
+    const std::string url = "file:///" + page.generic_string();  // file:///C:/Users/...
+#else
     const std::string url = "file://" + page.string();
+#endif
     if (SDL_OpenURL(url.c_str()) != 0) {
         fprintf(stderr, "Could not open %s: %s\n", url.c_str(), SDL_GetError());
     }
