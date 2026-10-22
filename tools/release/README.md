@@ -110,7 +110,8 @@ entries, or `--patch` / `--plus`, also ask for it when it's missing). It is chec
 
 On the title screen the bottom left lists Original, Aidyn Patch and Aidyn Plus, the one you're playing lit; X and Y
 (keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*: put its
-ROM in the `ROMs` folder and start the game again. From the
+ROM in the `ROMs` folder and start the game again. If the version you played last has no ROM (you only have Aidyn
+Plus, say), the game plays one that has. From the
 menu (New Game, Load Game, Options), B goes back to the title. Each version keeps its own saves.
 
 ## Controls

@@ -415,6 +415,55 @@ static std::filesystem::path pick_rom(aidyn::settings::RomPatch version) {
     return chosen;
 }
 
+// The version this run plays, once the stored ROMs and the ROMs folder have been looked at: settings.json's (or
+// --original / --patch / --plus's) when its ROM is there. If it isn't, and the version came from settings.json, any
+// version whose ROM is there (the original first), for this run only (the title screen lights the one playing); a
+// version asked for on the command line (the Linux app menu's entries) asks for its ROM first. With no ROM at all the
+// file dialog asks, and whichever of the three is chosen is played. Without a dialog (--report) the asked version.
+static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
+    using aidyn::settings::RomPatch;
+    const RomPatch wanted = aidyn::settings::game().rom_patch;
+    if (aidyn::version_available(wanted)) {
+        return wanted;
+    }
+    const auto other = [wanted] {
+        for (RomPatch v : { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus }) {
+            if (aidyn::version_available(v)) {
+                printf("No ROM for %s: playing %s this time\n", version_name(wanted), version_name(v));
+                fflush(stdout);
+                aidyn::settings::use_rom_patch(v);
+                return v;
+            }
+        }
+        return wanted;
+    };
+    if (!asked && other() != wanted) {
+        return aidyn::settings::game().rom_patch;
+    }
+    if (!interactive) {
+        return wanted;
+    }
+    // Ask with a file picker (RT64's nativefiledialog: the desktop portal in the portable build, GTK otherwise).
+    const std::filesystem::path chosen = pick_rom(wanted);
+    if (!chosen.empty()) {
+        store_rom(chosen);
+        recomp::check_all_stored_roms();
+    }
+    if (aidyn::version_available(wanted)) {
+        return wanted;
+    }
+    if (other() != wanted) {
+        return aidyn::settings::game().rom_patch;
+    }
+    if (wanted == RomPatch::None) {
+        fatal("No ROM yet. Put your NTSC-U 1.0 Aidyn Chronicles ROM (.z64) in the ROMs folder next to the game, or "
+              "choose it when the game asks (or start it with --rom <path to the ROM>).");
+    }
+    const std::string name = version_name(wanted);
+    fatal("%s", ("No " + name + " ROM yet. Put your 1.0 ROM with " + name + " applied in the ROMs folder next to the "
+                 "game, or choose it when the game asks (or start it with --rom <path to it>).").c_str());
+}
+
 int main(int argc, char** argv) {
     g_args.assign(argv, argv + argc);
     std::filesystem::path rom_path;
@@ -465,29 +514,6 @@ int main(int argc, char** argv) {
                                        : version_flag == 2 ? aidyn::settings::RomPatch::AidynPlus
                                                            : aidyn::settings::RomPatch::None);
     }
-    const aidyn::settings::RomPatch version = aidyn::settings::game().rom_patch;
-    const char8_t* chosen_id = game_id_for(version);
-
-    // The Controller Pak in port 1. AIDYN_MPK points it elsewhere (an emulator's .mpk, or a scratch copy for tests).
-    const char* mpk = std::getenv("AIDYN_MPK");
-    const std::filesystem::path pak = mpk != nullptr && *mpk != '\0' ? std::filesystem::path(mpk)
-                                      : data_folder() / (version == aidyn::settings::RomPatch::AidynPatch  ? "aidyn-patch.mpk"
-                                                         : version == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus.mpk"
-                                                                                                           : "aidyn.mpk");
-    aidyn_pak_set_path(pak);
-    aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");
-    aidyn_quick_saves_set_pak(pak);  // quick and auto saves: beside it, named after it
-    aidyn::report::set_paths(data_folder(), pak);
-    aidyn::report::install_crash_handler();
-    if (!report_reason.empty()) {
-        const std::filesystem::path made = aidyn::report::make(report_reason);
-        if (made.empty()) {
-            return 1;
-        }
-        printf("%s\n", made.string().c_str());
-        return 0;
-    }
-
     recomp::GameEntry entry{
         .rom_hash = 0x79127D0E9CAF38BCULL, // XXH3-64 of the big-endian NTSC-U 1.0 ROM (SHA-1 47ae795a...)
         .internal_name = "AIDYN_CHRONICLES",
@@ -518,25 +544,29 @@ int main(int argc, char** argv) {
     }
     recomp::check_all_stored_roms();
     store_roms_from_folders();
-    if (!recomp::is_rom_valid(chosen_id) && rom_path.empty()) {
-        // First start without --rom: ask for the ROM with a file picker (RT64's nativefiledialog: the desktop portal in
-        // the portable build, GTK otherwise).
-        rom_path = pick_rom(version);
-        if (!rom_path.empty()) {
-            store_rom(rom_path);
-            recomp::check_all_stored_roms();
+    const aidyn::settings::RomPatch version = choose_version(version_flag >= 0, report_reason.empty());
+    const char8_t* chosen_id = game_id_for(version);
+
+    // The Controller Pak in port 1. AIDYN_MPK points it elsewhere (an emulator's .mpk, or a scratch copy for tests).
+    const char* mpk = std::getenv("AIDYN_MPK");
+    const std::filesystem::path pak = mpk != nullptr && *mpk != '\0' ? std::filesystem::path(mpk)
+                                      : data_folder() / (version == aidyn::settings::RomPatch::AidynPatch  ? "aidyn-patch.mpk"
+                                                         : version == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus.mpk"
+                                                                                                           : "aidyn.mpk");
+    aidyn_pak_set_path(pak);
+    aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");
+    aidyn_quick_saves_set_pak(pak);  // quick and auto saves: beside it, named after it
+    aidyn::report::set_paths(data_folder(), pak);
+    aidyn::report::install_crash_handler();
+    if (!report_reason.empty()) {
+        const std::filesystem::path made = aidyn::report::make(report_reason);
+        if (made.empty()) {
+            return 1;
         }
+        printf("%s\n", made.string().c_str());
+        return 0;
     }
-    if (!recomp::is_rom_valid(chosen_id)) {
-        if (version != aidyn::settings::RomPatch::None) {
-            const std::string name = version_name(version);
-            fatal("%s", ("settings.json picks " + name + " (game.rom_patch), but no " + name + " ROM is stored yet. Start "
-                         "the game with --rom <your 1.0 ROM with " + name + " applied>, or set game.rom_patch to \"none\".")
-                            .c_str());
-        }
-        fatal("No ROM yet. Start the game again and choose your NTSC-U 1.0 Aidyn Chronicles ROM (.z64), or start it "
-              "with --rom <path to the ROM>.");
-    }
+
     printf("Game: %s\n", version == aidyn::settings::RomPatch::None ? "Aidyn Chronicles (NTSC-U 1.0)" : version_name(version));
     fflush(stdout);
 
