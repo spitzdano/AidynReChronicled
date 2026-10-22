@@ -10,6 +10,9 @@ spitzdano's title card (art/titles/source/aidyn-chronicles-logo-redesign.png, RE
   hero.png      3840x1240: the hero painting as it is (Steam lays logo.png over it)
   logo.png      the title card, trimmed and fitted into 1280x720; transparent
   icon.png      256x256: the swordsman (art/steam/icon.png)
+  ../github-preview.jpg  1280x640 (beside the folder, not shipped): the landscape with the title card, for the GitHub
+                repository's social preview
+                (Settings > General > Social preview: uploaded by hand, the API can't)
 The title card gets a soft shadow so it reads against the bright sky. tools/ally/steam_shortcut.py --art
 build/ally/steam-art puts them into Steam.
 
@@ -68,6 +71,10 @@ def main():
         magick(SRC / "hero.png", "-strip", out / "hero.png")
         magick(LOGO, "-trim", "+repage", "-resize", "1280x720", out / "logo.png")
         icon(out / "icon.png")
+        # GitHub's social preview is 2:1: the landscape (1840x860) cropped to 1720x860, the heroes kept at the right.
+        magick(SRC / "landscape.png", "-crop", "1720x860+60+0", "+repage", tmp / "card.png", "-gravity", "northwest",
+               "-geometry", "+190+40", "-composite", "-filter", "Lanczos", "-resize", "1280x640", "-strip", "-quality", "90",
+               out.parent / "github-preview.jpg")
     for f in sorted(out.iterdir()):
         print(f"steam_art.py: {f}")
 
