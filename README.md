@@ -14,8 +14,9 @@ checks it against this SHA-1:
 ```
 
 > **Work in progress.** This is a hobby project I'm making for myself, in my own time. Expect rough edges, unfinished
-> parts and changes between releases, and no schedule. Problem reports are welcome (see
-> [Found a problem?](#found-a-problem)), but there's no promise of support.
+> parts and changes between releases, and no schedule. For lack of time I haven't played very far into the game yet,
+> so playtests and problem reports from further along are very welcome (see [Found a problem?](#found-a-problem)),
+> though there's no promise of support.
 
 > **Unofficial fan project.** Not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. *Aidyn
 > Chronicles: The First Mage* and its characters, art and music belong to their rights holders.
