@@ -114,7 +114,7 @@ def toolkit():
             value = line.split("=", 1)[1].strip().strip('"')
             if value.startswith("${") and ":-" in value:
                 value = value.split(":-", 1)[1].rstrip("}")
-            return Path(value)
+            return Path(os.path.expandvars(value)).expanduser()
     sys.exit("build_manual.py: tools/toolkit.env has no TOOLKIT=")
 
 

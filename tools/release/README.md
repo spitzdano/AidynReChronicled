@@ -22,6 +22,20 @@ in `~/.local/share/AidynReChronicled`, and never asked for again. A zipped ROM h
 Needs: Linux on x86_64 with glibc 2.38 or newer (any current distribution: Bazzite, Fedora, Ubuntu 24.04, Arch…), a
 Vulkan graphics driver, and libdbus (every desktop has it). Everything else is in `game/lib`.
 
+## Found a problem?
+
+Please report it: a crash, a freeze, a glitch, a wrong picture, anything that looks off.
+
+1. **Make a problem report.** If the game crashed, it already made one and said where. Otherwise pause as close as you
+   can to the problem and choose **Report a problem** at the bottom of the **ReChronicled** page (on the pause
+   menu's Menu page): it also keeps a picture of the screen and a save of that moment.
+2. **Open an issue** with the [Problem report form](https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml) and drag in the newest `.zip` from
+   `~/.local/share/AidynReChronicled/reports` (on a Steam Deck or an Ally, switch to Desktop Mode to reach it).
+3. **Say what happened** and what you were doing just before.
+
+A report holds the game's logs, your settings and your saves, nothing from the game's ROM, and your home folder's
+name is left out of it.
+
 ## Aidyn Patch and Aidyn Plus
 
 Two community rebalances by halibabica (u/halibabica) can be played instead of the original: Aidyn Patch and the bigger

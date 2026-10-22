@@ -1,4 +1,4 @@
-"""hud_frames.py: Dan's ornate portrait frames and gold ring (art/hud/source) fitted to the HUD.
+"""hud_frames.py: spitzdano's ornate portrait frames and gold ring (art/hud/source) fitted to the HUD.
 
   frame-gold.png, frame-red.png  a square frame around a portrait (gold: the party, red and silver: enemies)
   ring-gold.png                  a gold ring

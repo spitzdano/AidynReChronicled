@@ -714,7 +714,7 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
     } else {
         prox /= scale;
         // Fading in over the last 20% of the range instead of the game's last unit, which at draw_distance's longer
-        // ranges, out of the fog, showed as trees popping in whole (the title flyover's valley, Dan): that band of
+        // ranges, out of the fog, showed as trees popping in whole (the title flyover's valley, spitzdano): that band of
         // the distance is mapped onto the unit where the game fades the farthest level of detail. Kept inside that
         // level's own band (above the nearer level's fade) and only where the level, not size, is the cut-off.
         if (models >= 1 && models <= 3) {
@@ -942,7 +942,7 @@ namespace {
 // Far props. The trees, rocks, buildings and chests' models of a map cell (its Borg9 map's scene objects) are drawn by
 // RenderVoxelScenes only for the game's 3x3 block; the far cells above are ground only. With draw_distance above 1,
 // props reach past the 3x3 (to about 40 x draw_distance), so whole groups of trees popped in each time the camera's
-// cell changed and the next cells' maps arrived (the title flyover's valley before the castle, Dan). So the cells
+// cell changed and the next cells' maps arrived (the title flyover's valley before the castle, spitzdano). So the cells
 // within kPropRing of the centre get their map too, loaded with loadBorg9 alone (no collision, wanderers, sounds or
 // containers: loading_map_data's other steps), their scene objects marked active as VoxelObjects_Activate would with
 // the Expansion Pak (all but VOXEL_JumperPak ones; the voxel chart's few changed objects aren't looked up), and drawn
@@ -1059,7 +1059,7 @@ namespace {
 // Every prop considered. A map's props are listed per collision section (about 5 x 5 units, some 20 x 20 to a cell):
 // each section lists the scene objects to consider from there (20 to 40 of a cell's 30 to 80), made for the N64's
 // short view. With draw_distance above 1 trees beyond those lists were in range, and whole groups appeared the moment
-// the camera crossed into the next section (the title flyover, Dan). Outdoors, with draw_distance above 1, every
+// the camera crossed into the next section (the title flyover, spitzdano). Outdoors, with draw_distance above 1, every
 // RenderVoxelScenes (the game's own cells' and the far cells') is handed a section listing all of the map's scene
 // objects instead (aidyn.us.toml hook right after its getCollideSection): each object still checks its own distance
 // and view, and is drawn once a frame (its timestamp). The lists are made each frame in RDRAM above the game's 15 MB
@@ -1125,7 +1125,7 @@ extern "C" void aidyn_far_cells_free_all(uint8_t* rdram, recomp_context* ctx) {
 // Crossing a map cell. The field's coordinates are relative to the centre cell, so when the party walks into the next
 // cell the game moves everything (camera, cells, characters) by 100 units in one frame. RT64 blends each transform
 // between game frames to show 100 Hz from the game's 60, and blending across that jump draws one in-between frame
-// slightly out of place: a one-frame flicker each time a boundary is crossed (Dan). So on the frame the centre cell
+// slightly out of place: a one-frame flicker each time a boundary is crossed (spitzdano). So on the frame the centre cell
 // changes, the display list tells RT64 not to interpolate into it (gEXSkipInterpolation, tools/patches/
 // rt64-save-pictures.patch): that frame is shown as it is. AIDYN_RECENTRE_LOG=1 prints each one.
 namespace {
@@ -1986,7 +1986,7 @@ namespace aidyn {
     bool redrawn_art();  // src/main/rt64_context.cpp: false while F2 has the redrawn art pack off
 }
 
-// The redrawn title card (art/titles, tools/branding/make_logo.py: Dan's redesign) has RECHRONICLED in it: on screen
+// The redrawn title card (art/titles, tools/branding/make_logo.py: spitzdano's redesign) has RECHRONICLED in it: on screen
 // while textures are on, the art pack is listed and F2 hasn't turned it off.
 bool redesigned_card() {
     const auto& gfx = aidyn::settings::graphics();
@@ -2256,7 +2256,7 @@ namespace {
 
 extern "C" void borg8DlistInit(uint8_t* rdram, recomp_context* ctx);  // (g, flags, hres, vres): the 2D images' state
 
-// Portrait frames (combat columns): Dan's ornate frames over each portrait in the combat columns, gold for the party
+// Portrait frames (combat columns): spitzdano's ornate frames over each portrait in the combat columns, gold for the party
 // and red and silver for enemies (branding images frame_party / frame_enemy, tools/branding/hud_frames.py), drawn
 // after the portrait (its widget's render, below) while the redrawn art shows. The game's own slot frame under it
 // (image 0x1C6) is hidden then (aidyn_hud_frames_image, below); its colour said something (in reach: green, the
@@ -2800,7 +2800,7 @@ namespace {
         if (card.bottom) {
             combat_card_top = y0;  // the combat log goes above it
         }
-        (void)p;  // no backing (Dan): the rows' letters have their own dark edge
+        (void)p;  // no backing (spitzdano): the rows' letters have their own dark edge
         g = hud_begin(rdram, g, false);
         g = prompt_state(rdram, g, 255);
         float y = y0 + kPad;
@@ -3250,7 +3250,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
 // 30 to 34 two, or three every other round; 35 and up three. The list is four groups in turn: the DEX 0 fighters, the
 // three-turn fighters' first turns, the two- and three-turn fighters' (next) turns, then everyone's last turn; within a
 // group the order is rolled. CombatTurn::FUN_8007381c (func_8006A62C) starts the next round when the last turn ends.
-// The strip is an ornate bar of pieces cut from Dan's concept (tools/branding/turn_order.py; branding_images.h has
+// The strip is an ornate bar of pieces cut from spitzdano's concept (tools/branding/turn_order.py; branding_images.h has
 // each piece's picture, the bar's middle row and a slot's portrait window): the left end with this round's plate
 // ("Round" and its number written on it), the rest of the round from the fighter whose turn it is (a glowing gold
 // frame, the others bronze; anyone dead or fled since is left out), the divider, the next round's plate and turns
@@ -3417,7 +3417,7 @@ namespace {
         return g;
     }
 
-    // The strip's pieces, cut from Dan's concept (tools/branding/turn_order.py): their pictures (branding_images.h)
+    // The strip's pieces, cut from spitzdano's concept (tools/branding/turn_order.py): their pictures (branding_images.h)
     // and, in texels, the bar's middle row and a slot's portrait window.
     struct Piece {
         int image = -1;
@@ -4721,7 +4721,7 @@ gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
 }
 
 // ---- Heap trace ----
-// Dan's game crashed at draw distance 3 near the hut by the first forest (2026-10-19): a prop's model (a SceneData
+// spitzdano's game crashed at draw distance 3 near the hut by the first forest (2026-10-19): a prop's model (a SceneData
 // one of the game's own cells still pointed at, its second detail level) had been overwritten with zeros, and
 // BorgAnimDrawSceneRaw read through its zeroed Borg5 pointer. Such a model is now skipped (aidyn_scene_draw_begin)
 // and reported once on stdout. AIDYN_HEAP_TRACE=1 also finds what did it: the game's HeapAlloc, HeapFree, _bzero,
@@ -4982,7 +4982,7 @@ extern "C" void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // ---- Portrait frames (images) ----
-// While the redrawn art shows, three HUD pictures the art pack replaces with Dan's (art/hud, tools/branding/hud_frames.py)
+// While the redrawn art shows, three HUD pictures the art pack replaces with spitzdano's (art/hud, tools/branding/hud_frames.py)
 // are drawn opaque at N64BorgImageDraw's entry (aidyn_ui_image_seen): CompassRing (the time-of-day dial's, the compass's
 // and the combat radar's ring; the game draws it at 80 or 164 of 255, for a faint white ring) and PortraitHighlight
 // (the white frame of the field's party portraits, the dialogue's and the combat message box's; 128 in the field). On
@@ -5133,7 +5133,7 @@ extern "C" void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     // A wall right behind the head (backed against it) would put the camera on the aim itself, which the game takes
-    // for a crash (handleZoneEngineFrame: "Focus, and Camera at same Spot!", under 0.05 apart; Dan's game froze so,
+    // for a crash (handleZoneEngineFrame: "Focus, and Camera at same Spot!", under 0.05 apart; spitzdano's game froze so,
     // 2026-10-21): then the camera stays where the game put it.
     float to[3], d2 = 0.0f;
     for (int k = 0; k < 3; k++) {
@@ -5166,7 +5166,7 @@ extern "C" void aidyn_camera_apart(uint8_t* rdram, gpr pos) {
 }
 
 // ---- Quick and auto saves ----
-// Saves of their own beside the Controller Pak (Dan, 2026-10-21), which keeps the game's manual saves: files next to
+// Saves of their own beside the Controller Pak (spitzdano, 2026-10-21), which keeps the game's manual saves: files next to
 // the pak, named after it (aidyn-patch.mpk: aidyn-patch-quicksave.sav, -autosave-1.sav, -autosave-2.sav), each the
 // 7 KB SaveDatStruct the game writes to the pak, byte for byte.
 //  - View in the field quicksaves (src/main/input.cpp). Autosaves are made on arriving in another area (through a door
@@ -5658,7 +5658,7 @@ extern "C" void aidyn_walk_steps_end(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // ---- Report a problem ----
-// The ReChronicled page's last row (Dan, 2026-10-21, for playtesting): a problem report (src/main/report.cpp: the logs,
+// The ReChronicled page's last row (spitzdano, 2026-10-21, for playtesting): a problem report (src/main/report.cpp: the logs,
 // settings and saves in one .zip in reports/) with the screen as the pause menu opened (its picture, full resolution:
 // save_pictures.cpp) and, paused from walking about (not a fight: the game's own Save isn't offered there), a save of
 // this moment made as Save Game makes one.

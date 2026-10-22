@@ -354,7 +354,7 @@ TURN_INK = [(0.0, "#fff6e0"), (0.55, "#f1dcb2"), (1.0, "#c9a066")]
 
 def turn_label(text, caps):
     """The combat turn order's words (src/game/patches.cpp, "Turn order"): ivory serif capitals `caps` texels tall,
-    lit from above, with a soft dark shadow, as in Dan's concept of the strip; left-aligned (the game measures the ink
+    lit from above, with a soft dark shadow, as in spitzdano's concept of the strip; left-aligned (the game measures the ink
     to centre them on the plates)."""
     def draw(w, h):
         W, H = w * SS, h * SS
@@ -449,7 +449,7 @@ IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPAD", True)),
 IMAGES += [("turn_round", 13, 5, turn_label("Round", 2.6))]
 IMAGES += [(f"turn_d{d}", 10, 10, turn_label(str(d), 7.6)) for d in range(10)]
 IMAGES += [("turn_plus", 10, 10, turn_label("+", 7.6))]
-# The strip's pieces, cut from Dan's concept (turn_order.py): its ends, the round plates, the portrait slots (bronze,
+# The strip's pieces, cut from spitzdano's concept (turn_order.py): its ends, the round plates, the portrait slots (bronze,
 # the current fighter's gold, a target's silver) and the divider. The game lines them up by kTurnPieces (header).
 import turn_order  # noqa: E402
 TURN_PIECES, TURN_PIECE_LINES = turn_order.images(SS)
@@ -491,7 +491,7 @@ IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
 IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back", 60, 11, menu_hint("Back", "B"))]
 # The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
 IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
-# The combat columns' portrait frames from Dan's art (hud_frames.py): gold for the party, red and silver for enemies,
+# The combat columns' portrait frames from spitzdano's art (hud_frames.py): gold for the party, red and silver for enemies,
 # and the soft band the game's colour for a slot (in reach, targeted) shows as.
 import hud_frames  # noqa: E402
 IMAGES += [("frame_party", hud_frames.FRAME_W, hud_frames.FRAME_W, hud_frames.frame_party),

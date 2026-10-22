@@ -1,4 +1,4 @@
-"""turn_order.py: the combat turn order strip's pieces, cut from Dan's concept (art/turn-order/concept.png), for
+"""turn_order.py: the combat turn order strip's pieces, cut from spitzdano's concept (art/turn-order/concept.png), for
 make_branding.py.
 
 The concept is one painted strip: a left end with the round's plate ("Round 1"), the current fighter's portrait in a

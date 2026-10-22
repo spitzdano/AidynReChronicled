@@ -11,7 +11,7 @@
 #   pad.sh shot NAME        screenshot of the game window -> <dev folder>/NAME.png
 #   pad.sh alive            ALIVE / DEAD
 #   pad.sh dell             move the game window to the Dell's workspace (start does this)
-#   pad.sh close            close the test game (only the one this script started, never Dan's)
+#   pad.sh close            close the test game (only the one this script started, never spitzdano's)
 #   pad.sh where            print the dev folder and the log's path
 # The window is moved to the Dell's workspace on start and checked (pad.sh dell does it again); never fullscreen it.
 P=$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")
@@ -21,7 +21,7 @@ else D=$P/build/dev; fi
 mkdir -p "$D"; F=$D/pad.txt
 LOG=$D/play.log; [[ $D == "$P/build/dev" ]] && LOG=$P/build/play.log
 bit() { case $1 in A) echo 8000;; B) echo 4000;; Z) echo 2000;; START) echo 1000;; DU) echo 800;; DD) echo 400;; DL) echo 200;; DR) echo 100;; L) echo 20;; R) echo 10;; CU) echo 8;; CD) echo 4;; CL) echo 2;; CR) echo 1;; R3) echo 10000;; L3) echo 20000;; F2) echo 40000;; NONE) echo 0;; *) echo "pad.sh: unknown button $1" >&2; exit 1;; esac; }
-# The game this script started: the process given this pad file (AIDYN_PAD_FILE). Dan's own game window has the same
+# The game this script started: the process given this pad file (AIDYN_PAD_FILE). spitzdano's own game window has the same
 # class, so windows are always picked by this pid, never by class.
 test_pid() {
   local p
@@ -36,7 +36,7 @@ test_window() {
 for c in json.load(sys.stdin):
     if c["pid"] == int(sys.argv[1]): print(c["workspace"]["name"] if sys.argv[2] == "ws" else c.get("stableId", ""))' "$1" "$2"
 }
-# Tests run on the Dell (Dan plays on the other screens): the window goes to the workspace the Dell shows and stays
+# Tests run on the Dell (spitzdano plays on the other screens): the window goes to the workspace the Dell shows and stays
 # off fullscreen; checked until it's there (a move sent as the window maps can be lost).
 dell_ws() {
   hyprctl monitors -j | python3 -c 'import json,sys
@@ -61,7 +61,7 @@ case $1 in
   start) if test_pid >/dev/null; then echo "pad.sh: a test game is already running (pad.sh close)" >&2; exit 1; fi
          echo "0 0 0" >"$F"
          # Opened by Hyprland straight on the Dell's workspace, without taking the focus (exec_cmd's window rules), so
-         # it never shows on Dan's screen first. Hyprland's own environment is used, so the caller's AIDYN_* settings
+         # it never shows on spitzdano's screen first. Hyprland's own environment is used, so the caller's AIDYN_* settings
          # go into a small launcher script. Without Hyprland or the Dell: started here and moved after.
          ws=$(dell_ws 2>/dev/null)
          L=$D/launch.sh

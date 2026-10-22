@@ -3,7 +3,7 @@
 
     tools/ally/steam_art.py [--scene PNG]
 
-  logo.png      Dan's logo (art/titles/source/aidyn-chronicles-logo-redesign.png, RECHRONICLED included), trimmed and
+  logo.png      spitzdano's logo (art/titles/source/aidyn-chronicles-logo-redesign.png, RECHRONICLED included), trimmed and
                 fitted into 1280x720; transparent
   hero.png      3840x1240: a band of the scene, around the castle (Steam lays the logo over it)
   capsule.png   600x900 (library grid): the scene around the castle, darker towards the logo, with the logo
@@ -15,7 +15,7 @@ is build/ally/scene.png, Gwernia Castle on the sea from the title flyover (about
 RT64 pack, listed last in a scratch settings.json, that replaces the title card's strips, its shadow's and every
 picture of the rechronicled pack with a clear 4x4 PNG (hashes: bigstrips.jobs + portraits.hashes, and the rechronicled
 pack's rt64.json), then tools/dev/pad.sh shots once a second, keeping a frame between "Press Start"'s blinks. The scene
-comes from the game, so it and the art stay in build/; the logo is Dan's own and is in the repository.
+comes from the game, so it and the art stay in build/; the logo is spitzdano's own and is in the repository.
 """
 import argparse
 import subprocess

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""make_logo.py: the title card (BORG8_TitleCard, the AIDYN CHRONICLES logo) and its shadow, from Dan's redesign.
+"""make_logo.py: the title card (BORG8_TitleCard, the AIDYN CHRONICLES logo) and its shadow, from spitzdano's redesign.
 
 art/titles/source/aidyn-chronicles-logo-redesign.png (the logo redrawn whole: the parchment, AIDYN CHRONICLES, THE
 FIRST MAGE and RECHRONICLED, on nothing) is fitted into the card's 188x174 texels, centred, and written at 8x as

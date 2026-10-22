@@ -35,6 +35,20 @@ A release is made with `tools/release/make_release.sh <version> --publish`: it b
 (`tools/ally/build_portable.sh`), packages it with the installer, launcher, icon and title branding pack, tags the
 pushed `main` and creates the GitHub release.
 
+## Found a problem?
+
+Please report it: a crash, a freeze, a glitch, a wrong picture, anything that looks off.
+
+1. **Make a problem report.** If the game crashed, it already made one and said where. Otherwise pause as close as you
+   can to the problem and choose **Report a problem** at the bottom of the **ReChronicled** page (on the pause
+   menu's Menu page): it also keeps a picture of the screen and a save of that moment.
+2. **Open an issue** with the [Problem report form](https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml) and drag in the newest `.zip` from
+   `~/.local/share/AidynReChronicled/reports` (on a Steam Deck or an Ally, switch to Desktop Mode to reach it).
+3. **Say what happened** and what you were doing just before.
+
+A report holds the game's logs, your settings and your saves, nothing from the game's ROM, and your home folder's
+name is left out of it.
+
 ## Building
 
 Needs the [n64-recomp-toolkit](https://github.com/spitzdano/n64-recomp-toolkit) (private) cloned and built on this machine
@@ -265,7 +279,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   (and past the right one on the map page); the clip is now kept between the rollers' middles, which follow the page
   turns (measured in game; only with the pause menu at 4:3, `menus_4_3`).
 - **Titles.** The pause pages' and menus' titles (Menu, Options, Theater, Pause, Enter Name) are drawn like the
-  ReChronicled page's (`art/titles`), and the title card is Dan's redesigned logo (`art/titles/source`, fitted by
+  ReChronicled page's (`art/titles`), and the title card is Spitzdano's redesigned logo (`art/titles/source`, fitted by
   `tools/branding/make_logo.py`, with its shadow), RECHRONICLED included: the game's own "Rechronicled" under the card
   is drawn only while the redrawn art is off (F2, or textures off).
 - **ReChronicled page.** The pause menu's list (`WidgetOptionsMenu::MakeScrollList`) gets one more entry, made the
@@ -333,7 +347,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   box, else above it, and above the controls card. The latest fight is also written to `combat-log.txt` in the data
   folder. All messages go through `copy_string_to_textbox` (hooked); a message repeated in the same turn is left out.
   `combat_log` (the ReChronicled page) turns it off; `AIDYN_COMBAT_LOG_DEBUG=1` prints each message.
-- **Turn order.** In combat an ornate bar across the top (pieces cut from Dan's concept, `art/turn-order`, by
+- **Turn order.** In combat an ornate bar across the top (pieces cut from Spitzdano's concept, `art/turn-order`, by
   `tools/branding/turn_order.py`) shows "Round" and its number on a plate, the turns left in the round from the
   fighter whose turn it is (in a glowing gold frame, the others bronze), then a divider and the next round on its own
   plate, a little darker. Turns come from base DEX as the game counts them: 0 or less one
