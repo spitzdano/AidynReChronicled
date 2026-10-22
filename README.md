@@ -13,6 +13,10 @@ checks it against this SHA-1:
 47ae795a2b12783a13e2b8d03439ce9a39fc826c  baserom.z64
 ```
 
+> **Work in progress.** This is a hobby project I'm making for myself, in my own time. Expect rough edges, unfinished
+> parts and changes between releases, and no schedule. Problem reports are welcome (see
+> [Found a problem?](#found-a-problem)), but there's no promise of support.
+
 > **Unofficial fan project.** Not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. *Aidyn
 > Chronicles: The First Mage* and its characters, art and music belong to their rights holders.
 
