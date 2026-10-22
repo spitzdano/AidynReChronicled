@@ -5,7 +5,7 @@
 #   tools/release/make_release.sh <version> --publish   ... then tag v<version>, push the tag, create the GitHub release
 #
 # The download holds the portable build (tools/ally/build_portable.sh: glibc 2.38+, its own SDL2), the launcher, the
-# installer, the Steam shortcut script, the icon, the title branding pack, the redrawn portraits and icons
+# installer, the Steam shortcut script and its library art, the icon, the title branding pack, the redrawn portraits and icons
 # (rechronicled-art: tools/hdui/art_pack.py from art/) and the HD letters (rechronicled-text: tools/hdui/text_pack.py),
 # all made here from fonts and our own art,
 # README.md (tools/release/README.md) and LICENSE. Nothing from the ROM: the game asks for the player's ROM on its
@@ -53,6 +53,10 @@ mkdir -p "$out/$name/game/texture-packs"
 cp -a build/portable/dist/. "$out/$name/game/"
 cp tools/ally/aidyn-rechronicled.sh tools/ally/steam_shortcut.py "$out/$name/game/"
 python3 tools/ally/steam_art.py --icon "$out/$name/game/icon.png" >/dev/null
+# Steam library art (tools/ally/steam_art.py: the box painting from art/steam with the title card): steam_shortcut.py,
+# run by install.sh, puts it into Steam.
+python3 tools/ally/steam_art.py >/dev/null
+cp -a build/ally/steam-art "$out/$name/game/steam-art"
 cp -a "$pack" "$out/$name/game/texture-packs/rechronicled"
 cp -a "$packs/rechronicled-art" "$out/$name/game/texture-packs/rechronicled-art"
 cp -a "$packs/rechronicled-text" "$out/$name/game/texture-packs/rechronicled-text"

@@ -19,7 +19,9 @@ Unpack the download, then either:
 **Adding it to Steam by hand**, if the installer's Steam step says it can't (it only writes Steam's shortcut file when
 it can read it back exactly): in Desktop Mode, Steam › Games › **Add a Non-Steam Game to My Library** › Browse ›
 `~/Games/AidynReChronicled/aidyn-rechronicled.sh` › Add Selected Programs; then right-click it › **Properties**, name
-it `Aidyn ReChronicled` and pick `~/Games/AidynReChronicled/icon.png` as its icon. It's a native Linux game: under
+it `Aidyn ReChronicled` and pick `~/Games/AidynReChronicled/icon.png` as its icon. Its library art is in
+`~/Games/AidynReChronicled/steam-art/` (right-click it › Manage › Set custom artwork: `capsule.png`; on its page,
+right-click the banner: `hero.png` and `logo.png`). It's a native Linux game: under
 Properties › Compatibility, "Force the use of a specific Steam Play compatibility tool" must stay **unchecked**.
 
 The first start asks for your ROM in a file dialog (or start it with `--rom /path/to/game.z64`). It is checked, kept
