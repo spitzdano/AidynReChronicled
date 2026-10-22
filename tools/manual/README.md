@@ -18,7 +18,7 @@ F1 in the game, and the Manual action of the launchers (`tools/install-launchers
 | `build_manual.py` | Fills it in, writes the page and its files, prints the PDF with headless Chromium (profile in a temp folder) |
 | `romdata.py` | The spell list from a ROM's spell database (the way `SpellDB::Init` reads it), so it is right for the original and for Aidyn Patch |
 | `romart.py` | Portraits, icons and pictures from the ROM's Borg8 images, upscaled with Real-ESRGAN (cached in `build/manual/art`) |
-| `shots.sh` | Plays the test save through `tools/dev/pad.sh` and screenshots the title, menus, field, pause pages and options at 1920x1080 |
+| `shots.sh` | Plays the test save through `tools/dev/pad.sh` (with a scratch copy of your settings: no FPS counter, the controls card on) and screenshots the title, menus, field, pause pages, options and the Display and ReChronicled pages at 1920x1080; the combat shot (`combat.png`) is put in by hand |
 | `initial.svg` | The illuminated initials' gold tile (rendered to PNG by the build: a CSS gradient prints as a page-sized image on every page) |
 | `fonts/` | Uncial Antiqua and Alegreya Sans (SIL OFL 1.1, licences beside them; Marcellus SC comes from `tools/hdui/fonts`) |
 

@@ -461,7 +461,9 @@ attack you switch to <a href="#combat">Combat Mode</a>.</p>
   <dt>The party</dt><dd>Press <kbd class="pad b">B</kbd> to show everyone's portraits along the bottom.</dd>
 </dl>
 <div class="port"><p>In widescreen the sun dial moves to the left edge and the compass to the right edge, leaving the
-middle of the picture clear. The party portraits stay in the middle.</p></div>
+middle of the picture clear. The party portraits stay in the middle. The controls card at the top left lists what the
+buttons do; <kbd class="pad">LB</kbd> hides it or shows it again. The party walks faster than on the N64 (1.5 times
+by default: Walk speed on the ReChronicled page).</p></div>
 
 <h3>Dialogue</h3>
 <p>Walk up to a friendly character and press <kbd class="pad a">A</kbd> to talk. The two of you take turns until the
@@ -479,6 +481,7 @@ an item costs; under Sell, what you would be paid for it.</p>
 
 <section class="chapter" id="combat">
 <h2>Combat</h2>
+<figure data-shot="combat"><img alt="A fight: the turn order across the top, the enemies' column, the combat log and the controls card"></figure>
 <p>When enemies attack, the whole party appears on a battlefield facing them. Fights are turn-based: each character
 moves and acts in turn, and how far they can move depends on their stats. A heavily armoured knight is slow but hits
 hard face to face. A thief darts around a slower enemy to strike from behind. A spellcaster with many spells can catch
@@ -487,7 +490,7 @@ enemies in the open. High ground gives a bonus, and a bow strikes from a distanc
 <h3>Turn-Based Attacks</h3>
 <p>On a character's turn, move them with the stick and press <kbd class="pad a">A</kbd> to attack.
 Spellcasters can cast with <kbd class="pad x">X</kbd> instead. A character who can't attack ends the turn with
-<kbd class="pad">LT</kbd>, <kbd class="pad">LB</kbd> or <kbd class="pad a">A</kbd>.</p>
+<kbd class="pad">LT</kbd> or <kbd class="pad a">A</kbd>.</p>
 
 <h3>The Battlefield</h3>
 <dl>
@@ -557,12 +560,17 @@ to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the in
   widescreen or the N64's 4:3, all the new textures on or off (off: as the N64 drew it), vsync, an FPS counter, the HUD
   at the screen edges and the draw distance.</dd>
   <dt>ReChronicled</dt><dd>This edition's own features, changed while you play: the turn order, the walk speed, the combat log, the controls card,
-  the other button prompts, the smooth walk cycles and the right-stick camera. On both pages
+  the other button prompts, the smooth walk cycles and the right-stick camera; and <strong>Report a problem</strong>
+  (see <a href="#reporting">Reporting a Problem</a>). On both pages
   <kbd class="pad">A</kbd> or left / right changes the highlighted one, <kbd class="pad b">B</kbd> goes back. In a
   battle they are at the end of the list. Turning the textures back on takes a few seconds.</dd>
   <dt>Credits</dt><dd>The people who made the game.</dd>
   <dt>Help</dt><dd>Hints and tips, with a ReChronicled topic for what this edition adds.</dd>
 </dl>
+<div class="half">
+  <figure data-shot="display"><img alt="The Display page"><figcaption>The Display page</figcaption></figure>
+  <figure data-shot="rechronicled"><img alt="The ReChronicled page"><figcaption>The ReChronicled page</figcaption></figure>
+</div>
 
 <h3>Inventory</h3>
 <figure data-shot="inventory"><img alt="The inventory page"></figure>
@@ -783,7 +791,7 @@ pause menu's <em>Display</em> and <em>ReChronicled</em> pages, which save them h
 <tr><td><code>walk_speed</code> *</td><td>1.5</td><td>How fast the party walks in the field: 1 (the original) to 2</td></tr>
 <tr><td><code>widescreen</code> *</td><td><code>true</code></td><td><code>false</code> shows the N64's 4:3 picture</td></tr>
 <tr><td><code>fullscreen</code></td><td><code>false</code></td><td>Start in fullscreen (<kbd>F11</kbd> switches at any time)</td></tr>
-<tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">View</kbd> sets it)</td></tr>
+<tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">LB</kbd> sets it)</td></tr>
 <tr><td><code>hud_at_edges</code> *</td><td><code>true</code></td><td>Widescreen: sun dial, compass and the combat columns at the screen edges</td></tr>
 <tr><td><code>button_prompts</code> *</td><td><code>true</code></td><td>The menus' button hints, LB / RB at the page arrows and the party switch</td></tr>
 <tr><td><code>combat_log</code> *</td><td><code>true</code></td><td>The log of the fight at the bottom left in combat</td></tr>

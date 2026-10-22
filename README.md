@@ -6,7 +6,7 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) with the
 [RT64](https://github.com/rt64/rt64) renderer.
 
-**This repository contains no game data.** You need your own dump of the game. The build
+**This repository contains no game data** (only the screenshots below). You need your own dump of the game. The build
 checks it against this SHA-1:
 
 ```
@@ -21,6 +21,21 @@ checks it against this SHA-1:
 > textures in `art/` were made with an AI image generator from the game's originals, each checked against its
 > original; the HD menu and world texture packs are AI upscales (Real-ESRGAN) of the game's own pictures. Scaffolded
 > by the n64-recomp-toolkit's `new-game.sh`.
+
+## Screenshots
+
+![The same spot on the Nintendo 64 and in ReChronicled](docs/screenshots/n64-vs-rechronicled.jpg)
+
+| | |
+|---|---|
+| ![The title screen](docs/screenshots/title.jpg) | ![The title menu with Continue](docs/screenshots/title-menu.jpg) |
+| The redesigned title card, and the version switch | Continue picks up from your newest save |
+| ![Walking about in the first forest](docs/screenshots/field.jpg) | ![Alaron in the newly painted forest](docs/screenshots/painted-world.jpg) |
+| The new HUD, the controls card, widescreen | Newly painted world textures and portraits |
+| ![A fight](docs/screenshots/combat.jpg) | ![The inventory page](docs/screenshots/inventory.jpg) |
+| The turn order bar, framed portraits and the combat log | The repainted scroll, HD lettering and Xbox prompts |
+| ![The map and calendar page](docs/screenshots/map-and-calendar.jpg) | ![The ReChronicled page](docs/screenshots/rechronicled-page.jpg) |
+| The map page's calendar with its moon phases | This edition's options, changed while you play |
 
 ## Download and play
 
