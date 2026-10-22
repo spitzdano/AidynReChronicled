@@ -51,8 +51,10 @@ name is left out of it.
 
 ## Building
 
-Needs the [n64-recomp-toolkit](https://github.com/spitzdano/n64-recomp-toolkit) (private) cloned and built on this machine
-(`install.sh`, `build.sh`, `doctor.sh`). `tools/toolkit.env` says where it is (`~/Work/n64-recomp-toolkit`); set
+Building it yourself isn't supported: play the [releases](https://github.com/spitzdano/AidynReChronicled/releases).
+For the record, a release is built from this repository and the
+[n64-recomp-toolkit](https://github.com/spitzdano/n64-recomp-toolkit) at commit `e1e4e40`, cloned and built on the
+machine (`install.sh`, `build.sh`, `doctor.sh`). `tools/toolkit.env` says where it is (`~/Work/n64-recomp-toolkit`); set
 `N64RECOMP_TOOLKIT` to override.
 
 ```sh
