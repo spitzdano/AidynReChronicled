@@ -13,7 +13,7 @@ the machine it:
      damaged. A copy is kept as shortcuts.vdf.before-aidyn.
   2. adds the shortcut, or updates the one it added before (found by its Exe: the launcher's file name): name
      "Aidyn ReChronicled", the launcher, the icon, no launch options.
-  3. copies the art in steam-art/ (made from the ROM by tools/ally/steam_art.py, so a release has none) into
+  3. copies the art in steam-art/ (made by tools/ally/steam_art.py from the art repository) into
      userdata/<account>/config/grid, named by the shortcut's app id the way Steam looks for it: <id>p.png (library
      capsule), <id>.png (wide capsule), <id>_hero.png, <id>_logo.png. Missing pictures are skipped.
 Steam picks it all up when it starts again (switching to Game Mode starts it).
