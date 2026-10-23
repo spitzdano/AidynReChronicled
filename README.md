@@ -1,6 +1,6 @@
 # Aidyn ReChronicled
 
-*Aidyn Chronicles: The First Mage* (NTSC-U 1.0), enhanced by Spitzdano: a native Linux build of *AIDYN_CHRONICLES*
+*Aidyn Chronicles: The First Mage* (NTSC-U 1.0), enhanced by Spitzdano: a native Linux and Windows build of *AIDYN_CHRONICLES*
 (NAYE, version 0), made by static
 recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run on
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) with the
@@ -10,8 +10,12 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 
 ## Features
 
-- **A native Linux game**, not an emulator: one download for any current distribution, with an installer that adds
-  it to the app menu and to Steam (Steam Deck and ROG Ally friendly).
+- **A native game for Linux and Windows**, not an emulator. Linux: one download for any current distribution, with an
+  installer that adds it to the app menu and to Steam (Steam Deck and ROG Ally friendly). Windows: a folder to unpack
+  and play (Windows 10 or 11, nothing to install), with an Add to Steam button.
+- **Your ROMs in one folder**: put the 1.0 ROM, and the Aidyn Patch and Aidyn Plus ones if you have them, in the
+  download's `ROMs` folder under any names; the game tells them apart by their contents and lists what it found on the
+  title screen.
 - **Aidyn Patch and Aidyn Plus**: halibabica's community rebalances play as two more versions next to the original.
   Bring your own patched ROM (checked by its hash; nothing of either patch ships here), switch on the title screen, and
   each version keeps its own saves.
@@ -28,7 +32,8 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 - **Clearer combat**: a turn-order bar, a combat log, framed portraits and easier aiming.
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
-- **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options.
+- **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options,
+  windowed or borderless full screen included.
 - **Safe saves**: the Controller Pak's last 20 states are kept, and a problem report gathers what's needed when
   something goes wrong.
 
@@ -70,16 +75,31 @@ checks it against this SHA-1:
 
 ## Download and play
 
-[Releases](https://github.com/spitzdano/AidynReChronicled/releases) have a ready-to-run Linux build
-(`AidynReChronicled-<version>-linux-x86_64.tar.gz`: x86_64, glibc 2.38 or newer, a Vulkan driver). Unpack it and run
-`bash install.sh` (app menu entries and, if wanted, a Steam shortcut) or `game/aidyn-rechronicled.sh` in place. The
-first start asks for your ROM in a file dialog and keeps it; nothing else is needed. The README in the download covers
-controls, Aidyn Patch, Aidyn Plus and settings. Releases carry no game data (nor either patch), and not yet the HD menu
-and world texture packs.
+[Releases](https://github.com/spitzdano/AidynReChronicled/releases) have ready-to-run builds:
 
-A release is made with `tools/release/make_release.sh <version> --publish`: it builds the portable executable
-(`tools/ally/build_portable.sh`), packages it with the installer, launcher, icon and title branding pack, tags the
-pushed `main` and creates the GitHub release.
+- **Linux** (`AidynReChronicled-<version>-linux-x86_64.tar.gz`: x86_64, glibc 2.38 or newer, a Vulkan driver). Unpack
+  it and run `bash install.sh` (app menu entries and, if wanted, a Steam shortcut) or `game/aidyn-rechronicled.sh` in
+  place.
+- **Windows** (`AidynReChronicled-<version>-windows-x86_64.zip`: Windows 10 or 11, 64-bit, a Vulkan driver; the
+  Visual C++ runtime is included, nothing to install). Unpack it anywhere and run `AidynReChronicled.exe`;
+  `Add to Steam.bat` adds it to Steam with its library art.
+
+**Your ROMs:** put them in the download's `ROMs` folder: the NTSC-U 1.0 ROM, and the same ROM with Aidyn Patch or Aidyn
+Plus applied if you have them, under any names (`.z64`, `.n64` or `.v64`). At each start the game looks there for any
+version it doesn't have yet, recognises each by its hash, keeps a copy in its data folder and lists it on the title
+screen; on Linux, `install.sh` copies them to the installed game's `ROMs` folder and keeps that folder through updates.
+If the version you played last has no ROM, the game plays one that has. Without any ROM there, the first start asks for
+one in a file dialog. The README in the download covers controls, Aidyn Patch, Aidyn Plus and settings. Releases carry
+no game data (nor either patch), and not the HD menu and world texture packs; the newly painted art, the HD letters and
+the title branding ship as three `.rtz` texture packs.
+
+The data folder (settings, saves, logs, problem reports, the stored ROMs) is `~/.local/share/AidynReChronicled` on Linux
+and `%APPDATA%\AidynReChronicled` on Windows.
+
+A release is made with `tools/release/make_release.sh <version> --windows --publish`: it builds the portable Linux
+executable (`tools/ally/build_portable.sh`) and the Windows one (`tools/windows/build_windows.sh`, cross-compiled
+here), packages each with its launcher or Add to Steam script, the icon, the Steam art and the texture packs, tags the
+pushed `main` and creates the GitHub release with both.
 
 ## Found a problem?
 
@@ -89,7 +109,8 @@ Please report it: a crash, a freeze, a glitch, a wrong picture, anything that lo
    can to the problem and choose **Report a problem** at the bottom of the **ReChronicled** page (on the pause
    menu's Menu page): it also keeps a picture of the screen and a save of that moment.
 2. **Open an issue** with the [Problem report form](https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml) and drag in the newest `.zip` from
-   `~/.local/share/AidynReChronicled/reports` (on a Steam Deck or an Ally, switch to Desktop Mode to reach it).
+   `~/.local/share/AidynReChronicled/reports` on Linux (on a Steam Deck or an Ally, switch to Desktop Mode to reach
+   it) or `%APPDATA%\AidynReChronicled\reports` on Windows (type that into File Explorer's address bar).
 3. **Say what happened** and what you were doing just before.
 
 A report holds the game's logs, your settings and your saves, nothing from the game's ROM, and your home folder's
@@ -117,6 +138,11 @@ tools/check_recomp.sh # compile-only check of the generated code
 
 Everything under `split/asm`, `split/bin`, `RecompiledFuncs/`, `rsp/` and `build/` is derived
 from the ROM, so it is gitignored and regenerated by the commands above.
+
+The Windows build is cross-compiled on Linux: `tools/windows/build_windows.sh` (clang-cl and lld-link against
+Microsoft's C runtime and Windows SDK, fetched by a pinned [xwin](https://github.com/Jake-Shadle/xwin); Vulkan, as on
+Linux) puts the exe and its DLLs in `build/windows/dist`. It is tested under GE-Proton
+(`tools/dev/windows-steam.sh` adds it to Steam on the Linux PC) and on Windows.
 
 ## Stubs, ignored functions and patches
 
@@ -160,7 +186,8 @@ cmake --build build/cmake --target AidynReChronicled
 build/cmake/AidynReChronicled --rom /path/to/aidyn-chronicles-ntsc-u-1.0.z64    # remembered after the first run
 ```
 F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to compare ("Redrawn art off" shows top right while it's off). F11 / Alt+Enter (or the Display page's Window row): windowed or borderless, remembered. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
-ROMs, texture packs) lives in `~/.local/share/AidynReChronicled`; a folder from the project's earlier name, `AidynRecompiled`, is moved
+ROMs, texture packs) lives in `~/.local/share/AidynReChronicled` (Windows: `%APPDATA%\AidynReChronicled`); ROMs put in
+`ROMs` beside the executable (or one folder up) are found and stored at the start; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
 **Aidyn Patch and Aidyn Plus.** Two community rebalances by halibabica (u/halibabica) can be played instead of the
@@ -169,7 +196,8 @@ more challenging; new weapon skills and items, every spell learnable, elements a
 Aidyn Plus first came out as a ROM download on a site that is gone; it now exists as a patch for the 1.0 ROM (SHA-1
 `47ae795a...`, CRC32 `b1f18186`). Neither comes with this project: get the patch yourself and apply it to your own 1.0 ROM (for
 Aidyn Plus, `AidynPlus.bps` with a BPS patcher such as Flips or Floating IPS), then run the game once with
-`--rom /path/to/that.z64`. Each is checked by its hash and only a match is stored, next to the original ROM:
+`--rom /path/to/that.z64`, or put it in the `ROMs` folder. Each is checked by its hash and only a match is stored, next
+to the original ROM:
 
 | Version | XXH3-64 | SHA-1 |
 |---|---|---|
@@ -187,7 +215,8 @@ Switching versions:
 - **Title screen**: the bottom left lists *Original*, *Aidyn Patch* and *Aidyn Plus*, the running one lit with a copper
   marker. The other two show X (keyboard K) and Y (keyboard I), the upper one X: pressing it saves the choice in
   `settings.json` and restarts the program in place into that version, back at the title. A version whose ROM isn't
-  stored is grey and marked *not found*. The list is on the title card: from the menu Start opens (New Game, Load Game,
+  stored is grey and marked *not found*; if the version in `settings.json` is one of those, the game plays one whose
+ROM is there instead, for that run, and lights that one. The list is on the title card: from the menu Start opens (New Game, Load Game,
   Options), B goes back to it (the game had no way back; `aidyn_title_back` calls its own `IntroMenu::InitTitleCard`).
 - **Version number**: the bottom right of the title screen shows the build's version above the credit: "v0.4.0" for a
   release (`make_release.sh` passes it to the build as `AIDYN_VERSION`), "v0.4.0 dev" for a build after that tag (from
@@ -232,7 +261,8 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 
 ### Settings
 
-`~/.local/share/AidynReChronicled/settings.json` is written with these defaults on the first run:
+`~/.local/share/AidynReChronicled/settings.json` (Windows: `%APPDATA%\AidynReChronicled\settings.json`) is written with
+these defaults on the first run:
 
 ```json
 {
