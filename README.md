@@ -159,7 +159,7 @@ cmake -S . -B build/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER
 cmake --build build/cmake --target AidynReChronicled
 build/cmake/AidynReChronicled --rom /path/to/aidyn-chronicles-ntsc-u-1.0.z64    # remembered after the first run
 ```
-F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to compare ("Redrawn art off" shows top right while it's off). F11 / Alt+Enter: fullscreen. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
+F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to compare ("Redrawn art off" shows top right while it's off). F11 / Alt+Enter (or the Display page's Window row): windowed or borderless, remembered. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
 ROMs, texture packs) lives in `~/.local/share/AidynReChronicled`; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
@@ -276,7 +276,7 @@ With the HD UI pack, the button icons in the game's text are drawn as these Xbox
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |
 | `widescreen` | `false`: 4:3, the N64's picture, whatever `aspect` says (the Display page's switch; turning it on with `"aspect": "4:3"` sets `"16:9"`) |
-| `fullscreen` | `true`: borderless fullscreen on the display the window is on (F11 or Alt+Enter switches while playing); with `"aspect": "window"` the picture takes that display's shape (21:9 on an ultrawide). `AIDYN_WINDOWED=1` starts in a window whatever this says (`tools/dev/pad.sh` uses it) |
+| `fullscreen` | `true`: borderless fullscreen on the display the window is on (F11, Alt+Enter or the Display page's Window row switch while playing, and save it); with `"aspect": "window"` the picture takes that display's shape (21:9 on an ultrawide). `AIDYN_WINDOWED=1` starts in a window whatever this says (`tools/dev/pad.sh` uses it) |
 | `fps_limit` | frames shown a second, 30 to 1000, or 0 for the display's refresh rate; never above the display's rate (default 240: the display's own rate, up to 240). The game makes 60; above that RT64 draws in-between frames, interpolating the camera and every model (see below) |
 | `msaa` | 0, 2, 4 or 8 |
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |

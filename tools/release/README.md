@@ -131,7 +131,7 @@ An Xbox-style controller, or the keyboard:
 | Menu | Enter | Pause menu |
 | Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
 | | F2 | The newly painted art off / on, to compare with what was there before |
-| | F11, Alt+Enter / Shift+Esc | Fullscreen / quit |
+| | F11, Alt+Enter / Shift+Esc | Windowed or borderless full screen (also the Display page's Window row; remembered) / quit |
 
 ## Settings, saves, logs
 

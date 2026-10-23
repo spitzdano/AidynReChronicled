@@ -3826,6 +3826,8 @@ namespace {
         bool (*shown)() = nullptr;  // what the row shows when not just *flag (Widescreen: the picture really wide)
         const RcSteps* steps = nullptr;
         void (*action)(uint8_t* rdram, recomp_context* ctx) = nullptr;  // a row that does something (A), no value
+        const char* on_word = "rc_on";    // a switch's values
+        const char* off_word = "rc_off";
     };
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
@@ -3844,6 +3846,7 @@ namespace {
                   [] { return aidyn::settings::graphics().aspect != aidyn::settings::Aspect::Original; } },
                 { "rc_textures", &gfx.textures, "textures", [](uint8_t* rdram) { aidyn::refresh_textures(); apply_font_widths(rdram); } },
                 { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
+                { "rc_window", &gfx.fullscreen, "fullscreen", nullptr, nullptr, nullptr, nullptr, "rc_borderless", "rc_windowed" },
                 { "rc_fps", &gfx.fps_counter, "fps_counter", nullptr },
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
@@ -3907,6 +3910,8 @@ namespace {
             *r.flag = !rc_on(r);
             if (r.flag == &gfx.controls_card) {
                 aidyn::input::set_controls_card(*r.flag);  // its own state in input.cpp, and saved
+            } else if (r.flag == &gfx.fullscreen) {
+                aidyn::set_borderless(*r.flag);  // through RT64, and saved (src/main/main.cpp)
             } else {
                 aidyn::settings::save_bool("graphics", r.key, *r.flag);
             }
@@ -4077,7 +4082,7 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         ink(k == row ? rc_highlight() : kMenuInk);
         word(r.label, kRowsLeft, y, false);
         if (r.action == nullptr) {
-            word(r.flag != nullptr ? (rc_on(r) ? "rc_on" : "rc_off") : r.steps->words[step_index(*r.steps)], kRowsRight, y, true);
+            word(r.flag != nullptr ? (rc_on(r) ? r.on_word : r.off_word) : r.steps->words[step_index(*r.steps)], kRowsRight, y, true);
         }
     }
     g = prompt_state(rdram, g, (uint8_t)rc.fade);
@@ -4237,7 +4242,7 @@ namespace {
             "On a keyboard the arrows move; Z and X are \\x7F and \\x80; K and I are \\x84 and \\x83; J and L are "
             "\\x82 and \\x81; C, Q and E are \\x87, LB and RB; Enter is \\x85. Hold Tab to fast-forward.",
             "F1 opens this edition's manual in your web browser. F11, or Alt and Enter, switches between a window and "
-            "the full screen." } },
+            "the full screen (borderless), as does Window on the Display page; it's remembered." } },
     };
 }
 

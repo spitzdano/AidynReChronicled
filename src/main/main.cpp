@@ -131,8 +131,8 @@ static void open_manual() {
         fprintf(stderr, "No manual in %s yet: build it with tools/manual/build_manual.py\n", page.parent_path().string().c_str());
         return;
     }
-    if (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) {
-        SDL_SetWindowFullscreen(window, 0);
+    if (aidyn::settings::graphics().fullscreen) {
+        aidyn::set_borderless(false, false);  // for now: the next start is borderless again
     }
 #ifdef _WIN32
     const std::string url = "file:///" + page.generic_string();  // file:///C:/Users/...
@@ -153,8 +153,7 @@ static void update_gfx(void*) {
             return;
         case SDL_KEYDOWN:
             if (event.key.keysym.scancode == SDL_SCANCODE_F11 || (event.key.keysym.scancode == SDL_SCANCODE_RETURN && (event.key.keysym.mod & KMOD_ALT))) {
-                bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
-                SDL_SetWindowFullscreen(window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                aidyn::set_borderless(!aidyn::settings::graphics().fullscreen);
             }
             else if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE && (event.key.keysym.mod & KMOD_SHIFT)) {
                 quit();
@@ -257,6 +256,19 @@ static std::vector<std::string> g_args;
 // The title screen's version list (src/game/patches.cpp): a version is there when its ROM is stored.
 bool aidyn::version_available(aidyn::settings::RomPatch version) {
     return recomp::is_rom_valid(game_id_for(version));
+}
+
+// Windowed or borderless: through RT64, as its own settings change it (RT64Context::update_config ->
+// ApplicationWindow::setFullScreen on the renderer's thread: a borderless window over the whole screen on Windows,
+// SDL's desktop fullscreen elsewhere), so its idea of the window always matches. settings.json graphics.fullscreen.
+void aidyn::set_borderless(bool on, bool save) {
+    aidyn::settings::graphics_rw().fullscreen = on;
+    if (save) {
+        aidyn::settings::save_bool("graphics", "fullscreen", on);
+    }
+    ultramodern::renderer::GraphicsConfig config = ultramodern::renderer::get_graphics_config();
+    config.wm_option = on ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
+    ultramodern::renderer::set_graphics_config(config);
 }
 
 // The window's width / height (the picture's shape with aspect "window"), for the game thread's layout (the combat
