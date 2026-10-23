@@ -12,6 +12,7 @@
 // like a texture pack's, so the menus draw, place and fade it as before. Saves without a copy (made before this, or
 // on another machine) keep the small picture.
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -44,7 +45,7 @@ constexpr gpr kGfxManager = (gpr)(int32_t)0x800D7ED8;       // gGfxManager: Fram
 constexpr uint32_t kWidth = 64, kHeight = 32, kBytes = kWidth * kHeight * 2;  // RGBA16
 constexpr uint32_t kMaxLines = 720;  // copies are averaged down to at most this many lines
 constexpr size_t kKeptInMemory = 6;
-constexpr size_t kKeptOnDisk = 64;
+constexpr size_t kKeptOnDisk = 256;
 
 struct Picture {
     std::vector<uint8_t> rgba;
@@ -239,10 +240,19 @@ extern "C" void aidyn_save_picture_taken(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// Saves made off the Controller Pak (quicksaves, autosaves, a problem report's save of the moment: patches.cpp) are
+// never shown on the Load and Save screens, so their pictures aren't kept: written, they pushed the pak saves' own
+// pictures out of the newest kKeptOnDisk, and those screens showed the small picture again.
+static std::atomic_bool g_off_pak{ false };
+
+void aidyn_save_pictures_off_pak(bool on) {
+    g_off_pak.store(on, std::memory_order_relaxed);
+}
+
 // CopySnapshot's entry (func_80019EF0): the picture goes into a save, so its copy goes to disk.
 extern "C" void aidyn_save_picture_saved(uint8_t* rdram, recomp_context* ctx) {
     const gpr snapshot = MEM_W(0, kSnapshotPointer);
-    if (snapshot == 0) {
+    if (snapshot == 0 || g_off_pak.load(std::memory_order_relaxed)) {
         return;
     }
     const uint64_t key = picture_key(rdram, snapshot);

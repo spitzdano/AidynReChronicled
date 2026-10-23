@@ -5195,6 +5195,7 @@ extern "C" void QuestData__TakeSnapshot(uint8_t* rdram, recomp_context* ctx);
 extern "C" void Crash__ManualCrash(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_8001A448(uint8_t* rdram, recomp_context* ctx);  // QuestData::FreeSnapshot
 extern "C" void func_8001A08C(uint8_t* rdram, recomp_context* ctx);  // QuestData::InitSaveFile(SaveDatStruct*)
+void aidyn_save_pictures_off_pak(bool on);  // src/game/save_pictures.cpp: a save that isn't for the Controller Pak
 extern "C" void func_80019ED4(uint8_t* rdram, recomp_context* ctx);  // QuestData::VerifyChecksum(SaveDatStruct*)
 extern "C" void func_8001A20C(uint8_t* rdram, recomp_context* ctx);  // QuestData::LoadFromMemPak(SaveDatStruct*)
 extern "C" void func_80048E18(uint8_t* rdram, recomp_context* ctx);  // the pause menu's Load callback
@@ -5368,7 +5369,9 @@ namespace {
     void finish_save(uint8_t* rdram, recomp_context* ctx) {
         const bool quick = saves.pending == 1;
         saves.pending = 0;
+        aidyn_save_pictures_off_pak(true);  // not shown on the Load and Save screens: no full-size picture kept
         with_crc_table(rdram, ctx, [&] { return call_game(rdram, ctx, func_8001A08C, (uint32_t)kSaveBuffer); });
+        aidyn_save_pictures_off_pak(false);
         drop_snapshot(rdram, ctx);
         SaveFile f = kQuickFile;
         if (!quick) {  // the older autosave (a missing one first)
@@ -5680,7 +5683,9 @@ void report_problem(uint8_t* rdram, recomp_context* ctx) {
         extra.emplace_back("screen.jpg", std::move(jpeg));
     }
     if (MEM_BU(0, kTrekState) != 3 && heap_pointer(MEM_W(0, kPlayer))) {  // 3: a fight's pause
+        aidyn_save_pictures_off_pak(true);
         with_crc_table(rdram, ctx, [&] { return call_game(rdram, ctx, func_8001A08C, (uint32_t)kSaveBuffer); });
+        aidyn_save_pictures_off_pak(false);
         std::vector<uint8_t> save(kSaveSize);
         for (uint32_t i = 0; i < kSaveSize; i++) {
             save[i] = MEM_BU(i, kSaveBuffer);

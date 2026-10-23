@@ -502,7 +502,8 @@ IMAGES += [("frame_party", hud_frames.FRAME_W, hud_frames.FRAME_W, hud_frames.fr
 # The pause pages' and menus' titles (the game's own pictures, 32-bit, in its decorative capitals), redrawn like the
 # ReChronicled page's title: written into art/titles at 8x their size, where tools/hdui/art_pack.py takes them.
 TITLES = [("TitleMenui", "Menu", 60, 24), ("TitleOptions", "Options", 86, 24), ("TitleTheater", "Theater", 87, 24),
-          ("TitlePause", "Pause", 62, 24), ("TitleEnterName", "Enter Name", 125, 24)]
+          ("TitlePause", "Pause", 62, 24), ("TitleEnterName", "Enter Name", 125, 24),
+          ("LoadGameTitle", "Load Game", 114, 24), ("SaveGameTitle", "Save Game", 111, 24)]
 TITLES_DIR = PROJECT / "art/titles"
 
 
