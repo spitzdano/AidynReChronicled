@@ -66,10 +66,12 @@ Needs: Windows 10 or 11 (64-bit), a graphics driver with Vulkan (any current NVI
 Microsoft Visual C++ Redistributable 2015-2022 (x64), which most PCs already have (if the game says
 `MSVCP140.dll` or `VCRUNTIME140.dll` is missing, get it from https://aka.ms/vs/17/release/vc_redist.x64.exe).
 
-**Adding it to Steam:** Steam › Games › **Add a Non-Steam Game to My Library** › Browse › `AidynReChronicled.exe` ›
-Add Selected Programs, then right-click it › **Properties** and name it `Aidyn ReChronicled`. Its library art is in the
-`steam-art` folder (right-click it › Manage › Set custom artwork: `capsule.png`; on its page, right-click the banner:
-`hero.png` and `logo.png`).
+**Adding it to Steam:** double-click **`Add to Steam.bat`**. It adds "Aidyn ReChronicled" as a non-Steam game with its
+icon and library art (Steam closes for a moment and starts again; running it again updates the shortcut, so do it
+after moving the folder). By hand instead: Steam › Games › **Add a Non-Steam Game to My Library** › Browse ›
+`AidynReChronicled.exe` › Add Selected Programs, then right-click it › **Properties** and name it `Aidyn ReChronicled`.
+Its library art is in the `steam-art` folder (right-click it › Manage › Set custom artwork: `capsule.png`; on its
+page, right-click the banner: `hero.png` and `logo.png`).
 
 ## Your ROM and the data folder
 

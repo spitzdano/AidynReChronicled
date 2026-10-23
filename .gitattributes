@@ -1,0 +1,2 @@
+# cmd.exe wants CRLF: kept exactly as written
+tools/windows/*.bat -text

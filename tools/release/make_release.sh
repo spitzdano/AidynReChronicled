@@ -99,6 +99,9 @@ if (( windows )); then
     cp -a build/ally/steam-art "$out/$wname/steam-art"
     cp "$out/$name/game/texture-packs/"*.rtz "$out/$wname/texture-packs/"
     cp tools/release/README.md LICENSE "$out/$wname/"
+    # Add to Steam.bat runs add-to-steam.ps1 (the Linux install.sh's Steam step, for Windows), both with CRLF.
+    sed 's/$/\r/' tools/windows/add-to-steam.ps1 >"$out/$wname/add-to-steam.ps1"
+    cp "tools/windows/Add to Steam.bat" "$out/$wname/"  # kept with CRLF in the repository
     mkdir -p "$out/$wname/ROMs"
     sed 's/$/\r/' tools/release/ROMs-README.txt >"$out/$wname/ROMs/README.txt"
     stray=$(find "$out/$wname" -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.mpk' \) | head -1)
