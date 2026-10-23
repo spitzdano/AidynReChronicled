@@ -134,7 +134,7 @@ trap 'rm -f "$notes"' EXIT
     echo
     if (( windows )); then
         echo "**Play on Windows:** download \`$wname.zip\`, unpack it anywhere, run \`AidynReChronicled.exe\`. Needs"
-        echo "Windows 10 or 11 (64-bit), a Vulkan driver and the Visual C++ Redistributable 2015-2022 (x64)."
+        echo "Windows 10 or 11 (64-bit) and a Vulkan driver; nothing to install (the Visual C++ runtime is included)."
         echo
     fi
     echo "The first start asks for your own NTSC-U 1.0 ROM (\`.z64\`) and keeps it. The README in the download has the"

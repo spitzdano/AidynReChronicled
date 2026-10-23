@@ -62,9 +62,9 @@ Unpack the download (`…-windows-x86_64.zip`) wherever you like (Documents\Game
 `AidynReChronicled.exe`. The game isn't signed, so the first time Windows may say "Windows protected your PC": choose
 **More info** › **Run anyway**.
 
-Needs: Windows 10 or 11 (64-bit), a graphics driver with Vulkan (any current NVIDIA, AMD or Intel driver), and the
-Microsoft Visual C++ Redistributable 2015-2022 (x64), which most PCs already have (if the game says
-`MSVCP140.dll` or `VCRUNTIME140.dll` is missing, get it from https://aka.ms/vs/17/release/vc_redist.x64.exe).
+Needs: Windows 10 or 11 (64-bit) and a graphics driver with Vulkan (any current NVIDIA, AMD or Intel driver).
+Everything else is in the folder, Microsoft's Visual C++ runtime included (`msvcp140.dll`, `vcruntime140.dll`,
+`vcruntime140_1.dll`, redistributed under Microsoft's terms): nothing to install.
 
 **Adding it to Steam:** double-click **`Add to Steam.bat`**. It adds "Aidyn ReChronicled" as a non-Steam game with its
 icon and library art (Steam closes for a moment and starts again; running it again updates the shortcut, so do it
