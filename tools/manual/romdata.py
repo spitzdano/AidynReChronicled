@@ -14,6 +14,7 @@ its first spell's name, so a patched ROM that moved it still works.
   ingredient  0 none, 1 spice, 2 herb, 3 gemstone (used up when cast)
   exp         rank n costs exp * 50 * n^2 experience (TempSpell::GetExpPrice)
 """
+import re
 from pathlib import Path
 
 SCHOOLS = {1: "Elemental", 2: "Naming", 3: "Necromancy", 4: "Neutral", 5: "Star"}
@@ -72,12 +73,15 @@ def spells(rom_path):
 # records (decomp: include/weapondb.h Weapon_ROM, 48 bytes, 11 weapon classes; include/entity.h Entity_ROM, 136 bytes,
 # 7 categories). Found by their structure (every record a name and an item ID of the database's type), so a patched
 # ROM that moved them still works.
+STATS = ["Intelligence", "Willpower", "Dexterity", "Endurance", "Strength", "Stamina"]
+SKILLS = ["Alchemist", "Diplomat", "Healer", "Loremaster", "Mechanic", "Merchant", "Ranger", "Stealth", "Thief",
+          "Troubadour", "Warrior", "Wizard"]
 WEAPON_CLASSES = ["Bite", "Breath", "Claw", "Hafted", "Missile", "Pole", "Spit", "Sting", "Sword", "Thrown", "Tusk"]
 ELEMENTS = ["", "Earth", "Solar", "Physical", "Necromancy", "Fire", "Lunar", "Naming", "Water", "Magic", "Air", "Star",
             "Elemental", "Chaos", "Cutting", "Smashing", "Holy"]
 
 
-def _find_db(rom, cats, size, name_len, id_off, db_type):
+def _find_db(rom, cats, size, name_len, id_off, db_types):
     for pos in range(0x1000000, len(rom) - 8, 4):
         if rom[pos] == 0:
             continue
@@ -88,7 +92,7 @@ def _find_db(rom, cats, size, name_len, id_off, db_type):
             for _ in range(n):
                 r = rom[q:q + size]
                 s = r[:name_len].split(b"\0")[0]
-                if len(s) < 3 or not all(32 <= c < 127 for c in s) or r[id_off + 1] != db_type:
+                if len(s) < 3 or not all(32 <= c < 127 for c in s) or r[id_off + 1] not in db_types:
                     break
                 q += size
                 got += 1
@@ -115,7 +119,7 @@ def _records(rom, pos, cats, size):
 def weapons(rom_path):
     """[dict] of the weapons the party can use (classes Hafted, Missile, Pole, Sword, Thrown), in database order."""
     rom = Path(rom_path).read_bytes()
-    pos = _find_db(rom, 11, 48, 21, 21, 7)
+    pos = _find_db(rom, 11, 48, 21, 21, {7})
     if pos is None:
         raise SystemExit(f"romdata.py: no weapon database in {rom_path}")
     out = []
@@ -135,7 +139,7 @@ def creatures(rom_path):
     0 immune, 2 half, 4 normal, 5 a weakness). placeholder: an internal record (STER1505, STMI03) or a shopkeeper
     (GW Supply Shop #80), not worth listing."""
     rom = Path(rom_path).read_bytes()
-    pos = _find_db(rom, 7, 136, 20, 41, 2)
+    pos = _find_db(rom, 7, 136, 20, 41, {2})
     if pos is None:
         raise SystemExit(f"romdata.py: no creature database in {rom_path}")
     out = []
@@ -148,4 +152,41 @@ def creatures(rom_path):
                 resists.append((ELEMENTS[e], amount * 25))
         out.append({"name": name, "slot": slot, "id": r[41] | r[42] << 8, "level": r[0x4D], "resists": resists,
                     "placeholder": (name.isupper() and any(ch.isdigit() for ch in name)) or "#" in name})
+    return out
+
+
+def _s8(v):
+    return v - 256 if v > 127 else v
+
+
+def name_is_placeholder(raw):
+    """The unused records' names: "exp 12", "exp24"."""
+    return re.fullmatch(rb"exp ?\d+", raw.split(b"\0")[0]) is not None
+
+
+def armour(rom_path):
+    """[dict] of the body armour and shields (decomp: include/armordb.h ArmorRom, 48 bytes, 2 categories), in
+    database order. Bonuses: the stat and skill it raises or lowers, the spell it holds, the element it resists
+    (damage taken in percent, as creatures')."""
+    rom = Path(rom_path).read_bytes()
+    pos = _find_db(rom, 2, 48, 23, 23, {5, 6})
+    if pos is None:
+        raise SystemExit(f"romdata.py: no armour database in {rom_path}")
+    spell_names = {s["id"]: s["name"] for s in spells(rom_path)}
+    out = []
+    for c, r in _records(rom, pos, 2, 48):
+        bonus = []
+        if r[35] < len(STATS) and r[36]:
+            bonus.append(f"{STATS[r[35]]} {_s8(r[36]):+d}")
+        if r[37] < len(SKILLS) and r[38]:
+            bonus.append(f"{SKILLS[r[37]]} {_s8(r[38]):+d}")
+        for k, lv in ((39, 41), (43, 45)):
+            spell = r[k] | r[k + 1] << 8
+            if spell:
+                bonus.append(f"{spell_names.get(spell, 'a spell')} {r[lv]}")
+        if 0 < r[46] < len(ELEMENTS):
+            bonus.append(f"{ELEMENTS[r[46]]} {r[47] * 25}%")
+        out.append({"name": r[:23].split(b"\0")[0].decode("ascii"), "id": r[23] | r[24] << 8,
+                    "kind": "Shield" if c else "Armour", "defence": r[26], "protection": r[27], "dex": _s8(r[28]),
+                    "stealth": _s8(r[30]), "placeholder": name_is_placeholder(r[:23]), "price": r[31] | r[32] << 8, "bonus": bonus})
     return out

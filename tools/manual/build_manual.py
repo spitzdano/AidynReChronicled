@@ -204,21 +204,22 @@ WEAPON_COLUMNS = [("strength", "Str"), ("hit", "Hit"), ("damage", "Dmg"), ("rang
 
 
 def weapon_table(base, plus, version="Aidyn Plus"):
+    """Renames and element changes go under the name (the table is as wide as a PDF page holds)."""
     by_id = {w["id"]: w for w in base}
     rows = []
     for p in plus:
         b = by_id.get(p["id"])
         if b is None:
-            rows.append((p["name"], p["class"], {}, ["new weapon"]))
+            rows.append((p["name"], p["class"], ["new"], {}))
             continue
         cells = {k: f"<s>{b[k]}</s> {p[k]}" for k, _ in WEAPON_COLUMNS if b[k] != p[k]}
-        other = []
+        notes = []
         if b["name"] != p["name"]:
-            other.append(f"now called {esc(p['name'])}")
+            notes.append(f"now {esc(p['name'])}")
         if b["element"] != p["element"]:
-            other.append(f"now {esc(p['element'])}" if p["element"] else f"no longer {esc(b['element'])}")
-        if cells or other:
-            rows.append((b["name"], b["class"], cells, other))
+            notes.append(f"now {esc(p['element'])}" if p["element"] else f"no longer {esc(b['element'])}")
+        if cells or notes:
+            rows.append((b["name"], b["class"], notes, cells))
     if not rows:
         return ""
     out = [f"<h3>Weapons in {version}</h3><p>{version} changes {len(rows)} of the {len(plus)} weapons. Str is the "
@@ -226,11 +227,49 @@ def weapon_table(base, plus, version="Aidyn Plus"):
            "a missile or thrown weapon goes, Price the merchants' list price before haggling. Struck out the "
            f"original, then {version}'s.</p>",
            '<div class="scroll"><table class="changes"><thead><tr><th>Weapon</th><th>Kind</th>'
-           + "".join(f"<th>{label}</th>" for _, label in WEAPON_COLUMNS) + "<th>Other</th></tr></thead><tbody>"]
-    for name, kind, cells, other in sorted(rows, key=lambda r: (r[1], r[0].lower())):
-        out.append(f"<tr><td>{esc(name)}</td><td>{esc(kind)}</td>"
-                   + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in WEAPON_COLUMNS)
-                   + f"<td>{'; '.join(other)}</td></tr>")
+           + "".join(f"<th>{label}</th>" for _, label in WEAPON_COLUMNS) + "</tr></thead><tbody>"]
+    for name, kind, notes, cells in sorted(rows, key=lambda r: (r[1], r[0].lower())):
+        note = f' <span class="dim">({"; ".join(notes)})</span>' if notes else ""
+        out.append(f"<tr><td>{esc(name)}{note}</td><td>{esc(kind)}</td>"
+                   + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in WEAPON_COLUMNS) + "</tr>")
+    out.append("</tbody></table></div>")
+    return "\n".join(out)
+
+
+ARMOUR_COLUMNS = [("protection", "Prot"), ("defence", "Def"), ("dex", "Dex"), ("stealth", "Stealth"),
+                  ("price", "Price")]
+
+
+def armour_table(base, plus, version="Aidyn Plus"):
+    """Renames and new armour go under the name (the table is as wide as a PDF page holds)."""
+    by_id = {a["id"]: a for a in base}
+    rows, new = [], 0
+    for p in plus:
+        b = by_id.get(p["id"])
+        if b is None or b["placeholder"]:  # the original's unused records ("exp 12") hold new armour in Aidyn Plus
+            if not p["placeholder"]:
+                new += 1
+                cells = {k: str(p[k]) for k, _ in ARMOUR_COLUMNS}
+                rows.append((p["name"], p["kind"], ' <span class="dim">(new)</span>', cells, esc("; ".join(p["bonus"]))))
+            continue
+        cells = {k: f"<s>{b[k]}</s> {p[k]}" for k, _ in ARMOUR_COLUMNS if b[k] != p[k]}
+        bb, pb = "; ".join(b["bonus"]), "; ".join(p["bonus"])
+        bonus = f"<s>{esc(bb) or '—'}</s> {esc(pb) or '—'}" if bb != pb else ""
+        note = f' <span class="dim">(now {esc(p["name"])})</span>' if b["name"] != p["name"] else ""
+        if cells or bonus or note:
+            rows.append((b["name"], b["kind"], note, cells, bonus))
+    if not rows:
+        return ""
+    out = [f"<h3>Armour and shields in {version}</h3><p>{version} changes {len(rows) - new} of the original's "
+           f"{sum(not a['placeholder'] for a in base)} and adds {new} new ones. Prot is the protection armour gives, "
+           "Def a shield's defence, Dex and Stealth what wearing it adds or takes off; Bonuses are the stat, skill "
+           "and spell it gives and the element it guards against (the percentage of that damage taken). Struck out "
+           f"the original, then {version}'s.</p>",
+           '<div class="scroll"><table class="changes"><thead><tr><th>Armour</th><th>Kind</th>'
+           + "".join(f"<th>{label}</th>" for _, label in ARMOUR_COLUMNS) + "<th>Bonuses</th></tr></thead><tbody>"]
+    for name, kind, note, cells, bonus in sorted(rows, key=lambda r: (r[1], r[0].lower())):
+        out.append(f"<tr><td>{esc(name)}{note}</td><td>{esc(kind)}</td>"
+                   + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in ARMOUR_COLUMNS) + f"<td>{bonus}</td></tr>")
     out.append("</tbody></table></div>")
     return "\n".join(out)
 
@@ -339,11 +378,12 @@ def main():
     if args.plus_rom.exists():
         page = page.replace("{{PLUS}}", patch_table(spells, romdata.spells(args.plus_rom), "Aidyn Plus")
                             + weapon_table(romdata.weapons(args.rom), romdata.weapons(args.plus_rom))
+                            + armour_table(romdata.armour(args.rom), romdata.armour(args.plus_rom))
                             + creature_table(romdata.creatures(args.rom), romdata.creatures(args.plus_rom))
                             + plus_warning)
     else:
         page = page.replace("{{PLUS}}", "<p class=\"note\">Store the Aidyn Plus dump and build this manual again to "
-                                        "see what Aidyn Plus changes in the spells, weapons and creatures.</p>" + plus_warning)
+                                        "see what Aidyn Plus changes in the spells, weapons, armour and creatures.</p>" + plus_warning)
     page = page.replace("{{BUILT}}", f"Built {datetime.date.today():%-d %B %Y}.")
     page = page.replace("{{TOC}}", toc(page))
     page = initials(page)
