@@ -694,7 +694,11 @@ extern "C" void aidyn_prop_distance(uint8_t* rdram, recomp_context* ctx) {
         const float nearer = models >= 2 ? read_f32(rdram, prop + 0x28 + 12 * (models - 2)) : 0.0f;
         items_seen++;
         items_before += prox / scale < own;
-        if (prox >= own && prox < reach(own)) {
+        // The game fades its farthest level of detail out over the last unit before far_lod (RenderVoxelScenes); with
+        // the reach drawn past it, that unit would show the item half see-through between two solid stretches (the
+        // chests in Gwernia's barracks, #22), so the reach takes over from the start of that unit.
+        const float start = (far_lod <= size && reach(own) > own + 1.0f) ? own - 1.0f : own;
+        if (prox >= start && prox < reach(own)) {
             // Fading in over the last 15% of the reach (it popped in at full strength): the game fades a model in
             // over the last unit of its farthest level of detail, so the band is mapped there.
             const float r = reach(own), band = 0.15f * r;
