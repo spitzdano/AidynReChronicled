@@ -138,6 +138,13 @@ text = "extern void aidyn_menu_drawn(void); aidyn_menu_drawn();"
 # groups (src/game/patches.cpp, "Frame interpolation"). Entry (a0 = display list; a model whose memory was overwritten
 # is skipped there, "Heap trace"), before a node's gSPMatrix is written at s4 (s7 = s4 + 8), and before the return
 # (v0 = display list).
+# A mesh's texture whose header was overwritten is skipped instead of stopping the game (src/game/patches.cpp,
+# aidyn_texture_intact): the function returns the display list unchanged.
+[[patches.hook]]
+func = "func_80093CAC"
+before_vram = 0x80093CAC
+text = "extern int aidyn_texture_intact(uint8_t* rdram, recomp_context* ctx); if (!aidyn_texture_intact(rdram, ctx)) { ctx->r2 = ctx->r4; return; }"
+
 [[patches.hook]]
 func = "BorgAnimDrawSceneRaw"
 before_vram = 0x80097A90

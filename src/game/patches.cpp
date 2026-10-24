@@ -3142,8 +3142,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         return g;
     }
     copy_branding(rdram);
-    // Not while Menu is held: pausing keeps a picture of the screen as the pause menu's background.
-    if (mode != 0 && aidyn::input::controls_card() && !aidyn::input::start_held()) {
+    // Not while Menu is held: pausing keeps a picture of the screen as the pause menu's background. Nor while a
+    // panel covers the screen: after a fight the game is still in combat while its Train and treasure screens are up,
+    // and the combat card showed at the bottom left under them.
+    if (mode != 0 && aidyn::input::controls_card() && !aidyn::input::start_held() && !inventory_page.seen &&
+        !treasure_title.seen) {
         g = draw_card(rdram, g, mode == 1 ? kFieldCard : kCombatCard);
     }
     if (!aidyn::settings::graphics().button_prompts) {  // the ReChronicled page's Button prompts: off, only the card
@@ -4854,6 +4857,31 @@ bool scene_intact(uint8_t* rdram, gpr scene) {
         std::fflush(stdout);
     }
     return false;
+}
+
+// func_80093CAC's entry (a0 = display list, a1 = a model's mesh): it loads the mesh's texture, whose header (a1 +0x10)
+// starts with its type (0..8), a size looked up by func_80093748, which stops the game (Crash::ManualCrash) on any
+// other value. A texture whose memory was overwritten (spitzdano's game, the first forest at draw distance 3, after
+// opening the pause menu, 2026-10-23: the damage the "Skipped a damaged prop model" check finds in a model's own
+// pointer, here in its texture) is skipped instead: the function returns the display list unchanged, so the mesh draws
+// with the texture before it for that frame. Reported once on stdout, and with AIDYN_HEAP_TRACE=1 its block's history
+// goes to heap-trace.txt.
+extern "C" int aidyn_texture_intact(uint8_t* rdram, recomp_context* ctx) {
+    const gpr mesh = ctx->r5;
+    const gpr texture = heap_pointer(mesh) ? MEM_W(0x10, mesh) : 0;
+    if (heap_pointer(texture) && (uint16_t)MEM_HU(0, texture) <= 8) {
+        return 1;
+    }
+    static std::set<uint32_t> told;
+    if (told.insert((uint32_t)texture).second) {
+        std::fprintf(stdout, "Skipped a damaged texture at %08x (mesh %08x, type %d)\n", (uint32_t)texture,
+                     (uint32_t)mesh, heap_pointer(texture) ? (int)(int16_t)MEM_HU(0, texture) : -1);
+        std::fflush(stdout);
+    }
+    if (heap_trace_on() && !heap_reported && heap_pointer(texture)) {
+        heap_report(rdram, "a damaged texture", -1, -1, texture);
+    }
+    return 0;
 }
 
 void heap_trace_frame(uint8_t* rdram) {
