@@ -86,6 +86,7 @@ add_executable(AidynReChronicled
     src/main/report.cpp
     src/main/platform.cpp
     src/main/packs.cpp
+    src/main/orchestra.cpp
     src/game/pak.cpp
     src/game/page_words.cpp
     src/game/music_log.cpp
@@ -106,6 +107,7 @@ add_dependencies(AidynReChronicled aidyn_version)
 target_include_directories(AidynReChronicled PRIVATE
     ${CMAKE_BINARY_DIR}/generated
     ${CMAKE_SOURCE_DIR}/src/main
+    ${CMAKE_SOURCE_DIR}/lib/tinysoundfont
     ${CMAKE_SOURCE_DIR}/lib/rt64/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
     ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/thirdparty/sse2neon

@@ -1,0 +1,13 @@
+{
+ "0x5a0": {"program": 47, "f0": 68.3, "shift": 36, "what": "timpani (battle bass, title low hits)"},
+ "0x5a1": {"drum": 38, "vel": 0.6, "what": "snare (battle)"},
+ "0x5a2": {"drum": 42, "vel": 0.7, "what": "small cymbal (battle)"},
+ "0x5a3": {"drum": 49, "vel": 0.7, "what": "crash"},
+ "0x5a4": {"program": 60, "f0": 525.0, "shift": 0, "what": "French horns (battle lead)"},
+ "0x5a9": {"program": 46, "f0": 66.0, "shift": 24, "what": "harp (title)"},
+ "0x5ad": {"program": 46, "f0": 152.6, "shift": 12, "what": "harp (title, plucked line)"},
+ "0x5ba": {"drum": 36, "vel": 0.8, "what": "orchestral bass drum (title)"},
+ "0x5d1": {"program": 48, "f0": 256.4, "shift": 0, "what": "string ensemble (title)"},
+ "0x5f8": {"program": 42, "f0": 131.2, "shift": 0, "what": "cellos (title)"},
+ "0x567": {"program": 52, "f0": 155.0, "shift": 0, "vel": 0.8, "what": "choir (title pad)"}
+}
