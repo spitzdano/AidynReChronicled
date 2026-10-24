@@ -313,6 +313,64 @@ def gear_table(base, plus, version="Aidyn Plus"):
     return "\n".join(out)
 
 
+def training_table(base, plus, version="Aidyn Plus"):
+    """What raising each skill and weapon skill costs, where the version changes it."""
+    def cost(v):
+        return "out of reach" if v >= 65535 else ("—" if v == 0 else f"{v:,}")
+    rows = [(name, base["skills"][name], plus["skills"][name]) for name in base["skills"]
+            if base["skills"][name] != plus["skills"][name]]
+    weapons = [(name, base["weapons"][name], plus["weapons"][name]) for name in base["weapons"]
+               if base["weapons"][name] != plus["weapons"][name]]
+    creature = [w for w in weapons if w[1] == 0]
+    rows += [w for w in weapons if w[1] != 0]
+    if creature and len({w[2] for w in creature}) == 1:
+        rows.append((", ".join(w[0] for w in creature) + " (creatures' weapons)", 0, creature[0][2]))
+    else:
+        rows += creature
+    if not rows:
+        return ""
+    out = [f"<h3>Training in {version}</h3><p>Raising a skill or weapon skill to rank <em>n</em> costs <em>n</em>&sup2; "
+           "&times; its figure in experience (so rank 3 costs 9 times the figure). What " + version + " changes, struck "
+           "out the original, then " + version + "'s. The creatures' own weapons (Bite, Claw, Sting...) cost nothing in "
+           "the original but no trainer offers them; " + version + " puts them out of reach.</p>",
+           '<div class="scroll"><table class="changes training"><thead><tr><th>Skill</th><th>XP figure</th>'
+           "</tr></thead><tbody>"]
+    for name, b, p in rows:
+        out.append(f"<tr><td>{esc(name)}</td><td><s>{cost(b)}</s> {cost(p)}</td></tr>")
+    out.append("</tbody></table></div>")
+    return "\n".join(out)
+
+
+POTION_COLUMNS = [("price", "Price"), ("spices", "Spices"), ("herbs", "Herbs"), ("gemstones", "Gems"),
+                  ("alchemist", "Alchemist")]
+
+
+def potion_table(base, plus, version="Aidyn Plus"):
+    by_name = {p["name"]: p for p in base}
+    rows = []
+    for p in plus:
+        b = by_name.get(p["name"])
+        if b is None:
+            continue
+        flat = lambda x: {"price": x["price"], **(x["recipe"] or {})}
+        fb, fp = flat(b), flat(p)
+        cells = {k: f"<s>{fb.get(k, '—')}</s> {fp.get(k, '—')}" for k, _ in POTION_COLUMNS if fb.get(k) != fp.get(k)}
+        if cells:
+            rows.append((p["name"], cells))
+    if not rows:
+        return ""
+    out = [f"<h3>Potions in {version}</h3><p>{version} changes {len(rows)} potions: the price, what an Alchemist needs "
+           "to brew one (spices, herbs and gemstones) and the Alchemist rank it takes. Struck out the original, then "
+           f"{version}'s.</p>",
+           '<div class="scroll"><table class="changes potions"><thead><tr><th>Potion</th>'
+           + "".join(f"<th>{label}</th>" for _, label in POTION_COLUMNS) + "</tr></thead><tbody>"]
+    for name, cells in rows:
+        out.append(f"<tr><td>{esc(name)}</td>" + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in POTION_COLUMNS)
+                   + "</tr>")
+    out.append("</tbody></table></div>")
+    return "\n".join(out)
+
+
 def resist_text(resists):
     """[(element, percent)] -> "weak to Fire (150%); immune to Water"."""
     out = []
@@ -420,10 +478,12 @@ def main():
                             + armour_table(romdata.armour(args.rom), romdata.armour(args.plus_rom))
                             + gear_table(romdata.gear(args.rom), romdata.gear(args.plus_rom))
                             + creature_table(romdata.creatures(args.rom), romdata.creatures(args.plus_rom))
+                            + training_table(romdata.training(args.rom), romdata.training(args.plus_rom))
+                            + potion_table(romdata.potions(args.rom), romdata.potions(args.plus_rom))
                             + plus_warning)
     else:
         page = page.replace("{{PLUS}}", "<p class=\"note\">Store the Aidyn Plus dump and build this manual again to "
-                                        "see what Aidyn Plus changes in the spells, weapons, armour, items and creatures.</p>" + plus_warning)
+                                        "see what Aidyn Plus changes in the spells, weapons, armour, items, creatures, training and potions.</p>" + plus_warning)
     page = page.replace("{{BUILT}}", f"Built {datetime.date.today():%-d %B %Y}.")
     page = page.replace("{{TOC}}", toc(page))
     page = initials(page)

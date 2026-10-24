@@ -15,6 +15,7 @@ its first spell's name, so a patched ROM that moved it still works.
   exp         rank n costs exp * 50 * n^2 experience (TempSpell::GetExpPrice)
 """
 import re
+import struct
 from pathlib import Path
 
 SCHOOLS = {1: "Elemental", 2: "Naming", 3: "Necromancy", 4: "Neutral", 5: "Star"}
@@ -223,4 +224,45 @@ def gear(rom_path):
                     "bonus": [f"{label} {r[k]}" for k, label in ((25, "Protection"), (24, "Damage")) if r[k]]
                     + _bonuses(r, 31, 33, ((35, 37), (39, 41)), 42, spell_names),
                     "placeholder": name_is_placeholder(r[:20])})
+    return out
+
+
+# ---- Training costs and potions (tables in the game's code segment, not its databases) ----
+# The patched ROMs (Aidyn Patch, Aidyn Plus) keep the 1.0 code's layout, so these sit at the same places in all three:
+# a RAM address is ROM offset + 0x80000400 - 0x1000. Decomp: CharSkills::GetSkillXpMod / GetWeaponXpMod (skills.cpp,
+# the XP to raise one a level: (level + 1)^2 x the multiplier), potion_prices (generic.cpp, PotionEnum order) and
+# potionRecipies (crafting/potion.h: potion, spices, herbs, gemstones, Alchemist rank, 2 more).
+POTIONS = ["Fire Flask", "Inferno Flask", "Sleep Gas", "Acid Flask", "Healing Potion", "Stamina Potion",
+           "Curing Potion", "Antidote", "Restore Potion", "Strength Potion", "Dexterity Potion", "Aspect Potion",
+           "Jumping Potion", "Clarity Potion", "Charisma Potion", "Defence Potion", "Stealth Potion"]
+
+
+def _ram(rom, address, size):
+    return rom[address - 0x80000400 + 0x1000:][:size]
+
+
+def training(rom_path):
+    """{"skills": {skill: XP multiplier}, "weapons": {weapon class: XP multiplier}}. A weapon class no trainer
+    teaches has 0 in the original (the creatures' Bite, Claw, Sting...)."""
+    rom = Path(rom_path).read_bytes()
+    skills = struct.unpack(">12i", _ram(rom, 0x800D38D0, 48))
+    weapons = struct.unpack(">11I", _ram(rom, 0x800D3900, 44))
+    if not all(0 < s < 100000 for s in skills):
+        raise SystemExit(f"romdata.py: no skill XP table where the 1.0 has it in {rom_path}")
+    return {"skills": dict(zip(SKILLS, skills)), "weapons": dict(zip(WEAPON_CLASSES, weapons))}
+
+
+def potions(rom_path):
+    """[dict] per potion that can be brewed or bought: name, price, and its recipe (spices, herbs, gemstones, the
+    Alchemist rank it needs), in PotionEnum order."""
+    rom = Path(rom_path).read_bytes()
+    prices = struct.unpack(">17H", _ram(rom, 0x800E2CB0, 34))
+    recipes = {r[0]: r for r in (_ram(rom, 0x800D7960, 0x69)[i:i + 7] for i in range(0, 0x69, 7))}
+    out = []
+    for k, name in enumerate(POTIONS):
+        if k in (11, 12):
+            continue  # Aspect and Jumping: never in the game
+        r = recipes.get(k)
+        out.append({"name": name, "price": prices[k],
+                    "recipe": {"spices": r[1], "herbs": r[2], "gemstones": r[3], "alchemist": r[4]} if r else None})
     return out
