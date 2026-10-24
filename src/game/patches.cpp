@@ -4891,7 +4891,7 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top) 
 // ---- Spell descriptions in combat ----
 // While a spell is highlighted in combat's spell menu (X held), what it does shows beside the menu (#23): the same
 // description the pause menu's spell Details give (WidgetItemDetail(SpellInstance*): the spells' romstrings at ROM
-// 0xB1FCFE30, 0x13A0 bytes, indexed through its spell ID table), wrapped to 150 units in the game's letters, with the
+// 0xB1FCFE30, 0x13A0 bytes, indexed through its spell ID table), wrapped to 140 units in the game's letters, with the
 // combat log's soft shadow. The menu (gCombatCVertMenu, its box from aidyn_combat_menu_drawn): its scroll list +0x7C,
 // that list's substruct +0x40 (rows +0x18, highlight +0x1E, count +0x20); a spell's row has the spell A function
 // (func_80088958, +0x18) and its spellbook index in varU8 (+0x5C). The spell: gCombatP->current_Ent (+0x2C) ->
@@ -4913,6 +4913,7 @@ namespace {
         {0x033a, 0x31},{0x033b, 0x32},{0x033c, 0x33},{0x033d, 0x34},{0x033e, 0x35},{0x033f, 0x36} };
     std::vector<std::string> spell_texts;  // by romstring index, read once
     uint16_t spell_shown = 0;              // the spell whose lines are below
+    float spell_width = 0.0f;              // and the width they're wrapped to
     std::vector<std::string> spell_lines;
 
     void load_spell_texts(uint8_t* rdram, recomp_context* ctx) {
@@ -4976,9 +4977,22 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (spell_texts.empty()) {
         load_spell_texts(rdram, ctx);
     }
-    constexpr float kScale = 0.62f, kLine = 6.6f, kWidth = 150.0f;
-    if (id != spell_shown) {
+    constexpr float kScale = 0.72f, kLine = 7.6f, kWidth = 140.0f;
+    // Right of the menu's box, centred on its height; in 4:3 (no room right, and the combat log and the controls list
+    // on the left) above it instead, under the turn-order bar, wider (clear of the corner portraits). The text is
+    // placed from the picture's left edge (hud_begin), the box in the middle 4:3: shift by the picture's extra width.
+    float aspect = view_aspect();
+    if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Window && aidyn::window_aspect() > 0.0f) {
+        aspect = aidyn::window_aspect();
+    }
+    const float shift = std::max(0.0f, (240.0f * aspect - 320.0f) / 2.0f);
+    constexpr float kAboveWidth = 200.0f, kBarBottom = 28.0f;
+    const float right_x = box.x + box.w + 3.0f, right_room = 320.0f + shift - 4.0f - right_x;
+    const bool right = right_room >= kWidth;
+    const float width = right ? kWidth : kAboveWidth;
+    if (id != spell_shown || width != spell_width) {
         spell_shown = id;
+        spell_width = width;
         spell_lines.clear();
         int at = -1;
         for (int i = 0; i < (int)std::size(kSpellText); i++) {
@@ -4991,7 +5005,7 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
         auto flush_word = [&] {
             if (word.empty()) return;
             const std::string tried = line.empty() ? word : line + " " + word;
-            if (!line.empty() && text_width(rdram, ctx, font, tried) > kWidth) {
+            if (!line.empty() && text_width(rdram, ctx, font, tried) * (kScale / kLogScale) > width) {
                 spell_lines.push_back(line);
                 line = word;
             } else {
@@ -5014,17 +5028,11 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (spell_lines.empty()) {
         return g;
     }
-    // Right of the menu's box, its top level with the box's; left of it when there's no room (4:3). The text is placed
-    // from the picture's left edge (hud_begin), the box in the middle 4:3: shift by the picture's extra width.
-    float aspect = view_aspect();
-    if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Window && aidyn::window_aspect() > 0.0f) {
-        aspect = aidyn::window_aspect();
-    }
-    const float shift = std::max(0.0f, (240.0f * aspect - 320.0f) / 2.0f);
-    const float right_room = 320.0f + shift;
-    float x0 = box.x + box.w + 6.0f;
-    if (x0 + kWidth + 4.0f > right_room) x0 = std::max(4.0f, box.x - 6.0f - kWidth);
-    const float y0 = (float)box.y + 2.0f;
+    const float lines_h = spell_lines.size() * kLine;
+    const float x0 = right ? right_x
+                           : std::clamp(box.x + box.w / 2.0f - width / 2.0f, 4.0f - shift, 316.0f + shift - width);
+    const float y0 = right ? box.y + std::max(0.0f, (box.h - lines_h) / 2.0f)
+                           : std::max(kBarBottom, box.y - 3.0f - lines_h);
     g = hud_begin(rdram, g, false);
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
