@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_pack import PROJECT, image_key  # noqa: E402
 import portraits  # noqa: E402
+import potions  # noqa: E402
 import redone  # noqa: E402
 import romimages  # noqa: E402
 
@@ -94,6 +95,7 @@ def main():
     if not tmemhash.exists():
         sys.exit("build/cmake/tmemhash missing: cmake --build build/cmake --target tmemhash")
     art = redone.collect()
+    art = potions.write_art(art, PROJECT / "build/hdui/potions")  # each potion's colour (#25)
     if not art and not redone.collect_textures():
         sys.exit(f"art_pack.py: no pictures in {redone.ART}")
     final, out = args.out, args.out.with_name(args.out.name + ".new")

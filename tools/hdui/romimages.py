@@ -19,6 +19,7 @@ import numpy as np
 import hudart
 import labels as wordlabels
 import portraits
+import potions
 import redone
 import romassets
 from pngio import decode_borg8, read_png, upscale_bicubic, write_png
@@ -96,6 +97,15 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
             p[(h // 2) * w + w // 2] ^= xor
             images[0x100000 + k] = (fmt, w, h, bytes(p), palette)
             names[0x100000 + k] = name
+    # The potions' own colours (potions.py): copies of the bottle with its palette recoloured, as patches.cpp makes them.
+    b = by_name.get(potions.BASE)
+    for k, colour in enumerate(potions.COLOURS):
+        name = potions.name(k)
+        if colour is None or b not in images or (only_art and name not in art):
+            continue
+        fmt, w, h, pixels, palette = images[b]
+        images[0x200000 + k] = (fmt, w, h, pixels, potions.recolour_rgba16(palette, colour))
+        names[0x200000 + k] = name
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"

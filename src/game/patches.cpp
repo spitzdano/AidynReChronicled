@@ -2123,6 +2123,60 @@ extern "C" void aidyn_weapon_skill_icon(uint8_t* rdram, recomp_context* ctx) {
     MEM_W(0x80, self) = (int32_t)widget;
 }
 
+// Potion colours (#25). Every potion has the same icon (IconItemPotion 0x35E5, 16x16 CI8: a bottle of red liquid).
+// Each potion but Healing gets a copy of it with its palette's red recoloured to the potion's own colour
+// (tools/hdui/potions.py has the colours and the same recolour; the redrawn art pack replaces each copy with the
+// painted bottle recoloured alike). Which potion an icon is for is noted where the game asks for one:
+// GetItemImage's potion case (0x80044F50, the item ID in a2: inventory, shops, treasure, details) and the combat item
+// menu's rows (0x800892BC, the potion in s1); the loadBorg8 that follows (hooked at its entry) recolours the palette of
+// the picture it loads. Every loadBorg8 gives its caller a fresh copy on the heap (getBorgItem with the borg flag set:
+// index -1, freed with the widget), so changing it touches no other icon.
+namespace {
+    constexpr int kPotionCount = 17, kHealing = 4;
+    constexpr uint32_t kPotionIcon = 0x35E5;
+    constexpr uint8_t kPotionColours[kPotionCount][3] = {
+        { 255, 140, 30 }, { 255, 60, 20 }, { 190, 150, 255 }, { 170, 255, 40 }, { 0, 0, 0 }, { 255, 230, 60 },
+        { 255, 110, 190 }, { 60, 220, 90 }, { 225, 235, 255 }, { 205, 110, 45 }, { 40, 230, 230 }, { 255, 200, 80 },
+        { 150, 255, 150 }, { 110, 180, 255 }, { 240, 80, 255 }, { 120, 140, 210 }, { 95, 75, 140 } };
+    int potion_pending = -1;
+}
+
+extern "C" void aidyn_potion_from_id(uint8_t* rdram, recomp_context* ctx) {
+    potion_pending = (int)(ctx->r6 & 0xFF);
+}
+
+extern "C" void aidyn_potion_from_combat(uint8_t* rdram, recomp_context* ctx) {
+    potion_pending = (int)(ctx->r17 & 0xFF);
+}
+
+extern "C" int aidyn_potion_borg(uint8_t* rdram, recomp_context* ctx) {
+    const int k = potion_pending;
+    potion_pending = -1;
+    if (k < 0 || k >= kPotionCount || k == kHealing || ((uint32_t)ctx->r4 & 0xFFFF) != kPotionIcon) {
+        return 0;
+    }
+    const gpr real = (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, kPotionIcon);
+    ctx->r2 = real;
+    if (!heap_pointer(real) || MEM_W(0, real) != -1 || MEM_HU(0x08, real) != 4 || !heap_pointer(MEM_W(0x10, real))) {
+        return 1;  // not a private copy: handed out as it is
+    }
+    const gpr palette = MEM_W(0x10, real), src = palette;
+    const uint8_t* t = kPotionColours[k];
+    for (int i = 0; i < 256; i++) {
+        uint32_t v = MEM_HU(2 * i, src);
+        const int r = (v >> 11) & 31, g = (v >> 6) & 31, b = (v >> 1) & 31, a = v & 1;
+        const int grey = std::min(g, b), amt = r - grey;
+        if (amt > 0) {
+            const int nr = std::min(31, grey + (amt * (t[0] >> 3) + 15) / 31);
+            const int ng = std::min(31, g + (amt * (t[1] >> 3) + 15) / 31);
+            const int nb = std::min(31, b + (amt * (t[2] >> 3) + 15) / 31);
+            v = (uint32_t)(nr << 11 | ng << 6 | nb << 1 | a);
+        }
+        MEM_H(2 * i, palette) = (int16_t)v;
+    }
+    return 1;
+}
+
 // What's in view, for a widescreen picture. renderPlayers draws a character only within 5 units of the camera's aim
 // or within 42.5 degrees of its direction (the cosine of that angle, kept in f24); RenderVoxelScenes draws a scene
 // prop within 37.5 degrees and fades it out by 42.5 (f24, f22). Those angles fit the N64's 4:3 picture: a 16:9

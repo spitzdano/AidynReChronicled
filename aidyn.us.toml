@@ -237,6 +237,23 @@ func = "Compass__Draw"
 before_vram = 0x800246F0
 text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
 
+# Potion colours (src/game/patches.cpp): which potion an icon is for (GetItemImage's potion case, the combat item
+# menu's rows), and loadBorg8's entry handing out that potion's recoloured copy of the bottle.
+[[patches.hook]]
+func = "GetItemImage"
+before_vram = 0x80044F50
+text = "extern void aidyn_potion_from_id(uint8_t* rdram, recomp_context* ctx); aidyn_potion_from_id(rdram, ctx);"
+
+[[patches.hook]]
+func = "WidgetCombatItems__WidgetCombatItems"
+before_vram = 0x800892BC
+text = "extern void aidyn_potion_from_combat(uint8_t* rdram, recomp_context* ctx); aidyn_potion_from_combat(rdram, ctx);"
+
+[[patches.hook]]
+func = "loadBorg8"
+before_vram = 0x8009A7E8
+text = "extern int aidyn_potion_borg(uint8_t* rdram, recomp_context* ctx); if (aidyn_potion_borg(rdram, ctx)) return;"
+
 # The skills lists' weapon-skill and Shield rows get an icon (src/game/patches.cpp, aidyn_weapon_skill_icon), before
 # WidgetSkillInfo's constructor links its icon.
 [[patches.hook]]
