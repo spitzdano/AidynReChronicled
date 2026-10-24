@@ -2189,6 +2189,7 @@ namespace {
 // (gSpellDBp 0x800E2B30: SpellRAM* +0x10, 0x26 bytes each, school +0x1A).
 extern "C" void aidyn_item_image(uint8_t* rdram, recomp_context* ctx) {
     school_pending = -1;
+    potion_pending = -1;  // a call that never loaded its icon leaves no colour for the next bottle
     const uint32_t id = (uint32_t)ctx->r4 & 0xFFFF, type = id >> 8;
     if (type != 13 && type != 17) {
         return;
