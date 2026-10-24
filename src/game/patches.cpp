@@ -2080,6 +2080,32 @@ extern "C" void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// What's in view, for a widescreen picture. renderPlayers draws a character only within 5 units of the camera's aim
+// or within 42.5 degrees of its direction (the cosine of that angle, kept in f24); RenderVoxelScenes draws a scene
+// prop within 37.5 degrees and fades it out by 42.5 (f24, f22). Those angles fit the N64's 4:3 picture: a 16:9
+// one reaches about 51 degrees to the side and a 21:9 one about 58, so characters and props at its edges vanished
+// (#29). Both are widened by the picture's aspect, atan(tan(angle) * aspect / (4/3)), right after the game takes the
+// cosines (aidyn.us.toml hooks); at 4:3 they stay the game's.
+namespace {
+    float in_view_cos(float radians) {
+        float aspect = view_aspect();
+        if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Window && aidyn::window_aspect() > 0.0f) {
+            aspect = aidyn::window_aspect();
+        }
+        const float k = std::max(aspect / (4.0f / 3.0f), 1.0f);
+        return std::cos(std::atan(std::tan(radians) * k));
+    }
+}
+
+extern "C" void aidyn_actors_in_view(uint8_t* rdram, recomp_context* ctx) {
+    ctx->f24.fl = in_view_cos(0.7417525f);
+}
+
+extern "C" void aidyn_props_in_view(uint8_t* rdram, recomp_context* ctx) {
+    ctx->f24.fl = in_view_cos(0.6544875f);
+    ctx->f22.fl = in_view_cos(0.7417525f);
+}
+
 // The indoor minimap (MiniMap::Render: this in a0, the display list in a1; returns it in v0) is drawn in the corner
 // above the compass (x 237 to 297 of 320) or, with B, big in the middle. With hud_at_edges the corner one moves with the
 // compass to the picture's right edge, as the dial and compass do (RT64's rectangle alignment); the big one stays

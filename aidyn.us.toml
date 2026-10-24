@@ -237,6 +237,18 @@ func = "Compass__Draw"
 before_vram = 0x800246F0
 text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
 
+# Characters and props at the edges of a widescreen picture stay drawn (src/game/patches.cpp, "What's in view"): the
+# view angles' cosines, replaced right after renderPlayers and RenderVoxelScenes take them.
+[[patches.hook]]
+func = "renderPlayers"
+before_vram = 0x80013E58
+text = "extern void aidyn_actors_in_view(uint8_t* rdram, recomp_context* ctx); aidyn_actors_in_view(rdram, ctx);"
+
+[[patches.hook]]
+func = "RenderVoxelScenes"
+before_vram = 0x8000C70C
+text = "extern void aidyn_props_in_view(uint8_t* rdram, recomp_context* ctx); aidyn_props_in_view(rdram, ctx);"
+
 # The indoor minimap at the right edge with the compass (src/game/patches.cpp, aidyn_minimap_begin): entry (display
 # list in a1) and before the return (v0).
 [[patches.hook]]
