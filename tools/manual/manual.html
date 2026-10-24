@@ -527,7 +527,8 @@ Spellcasters can cast with <kbd class="pad x">X</kbd> instead. A character who c
   is hurt; when it is gone the character falls. Enemies have bars too.</dd>
   <dt>Messages</dt><dd>The bottom of the screen says whose turn it is and whether an attack hit or missed.</dd>
   <dt>Spells and items</dt><dd>Hold <kbd class="pad x">X</kbd> (spells) or <kbd class="pad y">Y</kbd> (items) and move
-  the stick up and down to choose; let go and press <kbd class="pad a">A</kbd> to use it.</dd>
+  the stick up and down to choose; let go and press <kbd class="pad a">A</kbd> to use it. While a spell or potion is
+  highlighted, what it does shows beside the list.</dd>
 </dl>
 
 <h3 id="after-combat">After Combat</h3>
@@ -672,10 +673,12 @@ character can learn.</p>
   <dt><img class="icon" data-art="IconItemRing1" alt=""> Rings</dt>
   <dd>Change a character's protection, spellcasting or fighting ability.</dd>
   <dt><img class="icon" data-art="IconItemPotion" alt=""> Potions</dt>
-  <dd>Healing and curing potions save lives deep in the forest. Remember them in combat.</dd>
+  <dd>Healing and curing potions save lives deep in the forest. Remember them in combat. Each kind of potion has its
+  own colour (Healing red, Antidote green, Fire Flask orange...).</dd>
   <dt><img class="icon" data-art="IconItemScroll" alt=""> Scrolls</dt>
   <dd>Spells written down. Equip a scroll and its spell can be cast in battle with <kbd class="pad x">X</kbd>; use it from
-  the inventory page to learn the spell for good.</dd>
+  the inventory page to learn the spell for good. Scrolls and wands take the colour of their spell's school: Elemental
+  amber, Naming green, Necromancy violet, Star blue, Chaos red.</dd>
 </dl>
 <h3>Treasure Chests</h3>
 <p>Beaten enemies drop items, and chests are hidden all over the realm, usually off the beaten path. They hold anything
@@ -821,7 +824,8 @@ pause menu's <em>Display</em> and <em>ReChronicled</em> pages, which save them h
 <tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">LB</kbd> sets it)</td></tr>
 <tr><td><code>hud_at_edges</code> *</td><td><code>true</code></td><td>Widescreen: sun dial, compass and the combat columns at the screen edges</td></tr>
 <tr><td><code>button_prompts</code> *</td><td><code>true</code></td><td>The menus' button hints, LB / RB at the page arrows and the party switch</td></tr>
-<tr><td><code>combat_log</code> *</td><td><code>true</code></td><td>The log of the fight at the bottom left in combat</td></tr>
+<tr><td><code>combat_log</code> *</td><td><code>true</code></td><td>The log of the fight at the bottom left in combat, and what a spell or potion does beside the held X and Y
+lists</td></tr>
 <tr><td><code>turn_order</code> *</td><td><code>true</code></td><td>The turn order across the top of the screen in combat</td></tr>
 <tr><td><code>textures</code> *</td><td><code>true</code></td><td>All the new textures: HD menus, letters, portraits, world and title art; <code>false</code> shows the game as the N64 drew it</td></tr>
 <tr><td><code>vsync</code> *</td><td><code>true</code></td><td>Wait for the display's refresh: no tearing (off suits a G-Sync or FreeSync display)</td></tr>
