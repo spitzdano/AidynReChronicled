@@ -315,6 +315,10 @@ def main():
             else:
                 missing_hd += 1
 
+    if not entries:  # --to-paint with nothing left: say so rather than write an empty package
+        print("export_textures.py: nothing left to paint"
+              + "".join(f"; {v} {k} left out" for k, v in sorted(left_out.items())))
+        return
     (root / "manifest.json").write_text(json.dumps({
         "game": "Aidyn Chronicles: The First Mage (N64, NTSC-U 1.0)",
         "scale": SCALE,
