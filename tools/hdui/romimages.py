@@ -106,6 +106,15 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         fmt, w, h, pixels, palette = images[b]
         images[0x200000 + k] = (fmt, w, h, pixels, potions.recolour_rgba16(palette, colour))
         names[0x200000 + k] = name
+    for j, base in enumerate(potions.SCHOOL_BASES):
+        b = by_name.get(base)
+        for k, colour in enumerate(potions.SCHOOL_COLOURS):
+            name = potions.school_name(base, k)
+            if colour is None or b not in images or (only_art and name not in art):
+                continue
+            fmt, w, h, pixels, palette = images[b]
+            images[0x210000 + 16 * j + k] = (fmt, w, h, pixels, potions.recolour_rgba16(palette, colour, blue=True))
+            names[0x210000 + 16 * j + k] = name
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"

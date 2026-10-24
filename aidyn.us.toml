@@ -241,6 +241,11 @@ text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hu
 # menu's rows), and loadBorg8's entry handing out that potion's recoloured copy of the bottle.
 [[patches.hook]]
 func = "GetItemImage"
+before_vram = 0x80044F10
+text = "extern void aidyn_item_image(uint8_t* rdram, recomp_context* ctx); aidyn_item_image(rdram, ctx);"
+
+[[patches.hook]]
+func = "GetItemImage"
 before_vram = 0x80044F50
 text = "extern void aidyn_potion_from_id(uint8_t* rdram, recomp_context* ctx); aidyn_potion_from_id(rdram, ctx);"
 

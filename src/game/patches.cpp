@@ -2141,6 +2141,36 @@ namespace {
         { 255, 110, 190 }, { 60, 220, 90 }, { 225, 235, 255 }, { 205, 110, 45 }, { 40, 230, 230 }, { 255, 200, 80 },
         { 150, 255, 150 }, { 110, 180, 255 }, { 240, 80, 255 }, { 120, 140, 210 }, { 95, 75, 140 } };
     int potion_pending = -1;
+    // Scrolls and wands (#25): their spell's school colour on the icon's blue (tools/hdui/potions.py's "blue" mode).
+    constexpr uint32_t kScrollIcon = 0x35E9, kWandIcon = 0x35F1;
+    constexpr uint8_t kSchoolColours[6][3] = { { 235, 45, 45 }, { 255, 150, 30 }, { 60, 210, 90 }, { 150, 60, 210 },
+                                               { 0, 0, 0 }, { 70, 120, 255 } };  // Chaos, Elemental, Naming, Necro, -, Star
+    int school_pending = -1;
+}
+
+// GetItemImage's entry (a0 the item ID): a scroll (type 17) or wand (13) notes its spell's school. The item database
+// (gItemDBp 0x800E2980: total +0, Gear_RAM* +0x18, 0x30 bytes each, ID +0, spell index +0x25) and the spell database
+// (gSpellDBp 0x800E2B30: SpellRAM* +0x10, 0x26 bytes each, school +0x1A).
+extern "C" void aidyn_item_image(uint8_t* rdram, recomp_context* ctx) {
+    school_pending = -1;
+    const uint32_t id = (uint32_t)ctx->r4 & 0xFFFF, type = id >> 8;
+    if (type != 13 && type != 17) {
+        return;
+    }
+    const gpr items = MEM_W(0, (gpr)(int32_t)0x800E2980), spells_db = MEM_W(0, (gpr)(int32_t)0x800E2B30);
+    if (!heap_pointer(items) || !heap_pointer(spells_db)) return;
+    const gpr gear = MEM_W(0x18, items), spells = MEM_W(0x10, spells_db);
+    if (!heap_pointer(gear) || !heap_pointer(spells)) return;
+    const uint32_t total = MEM_BU(0, items);
+    for (uint32_t i = 0; i < total; i++) {
+        const gpr g = gear + 0x30 * i;
+        if (MEM_HU(0, g) != id) continue;
+        const uint32_t spell = MEM_BU(0x25, g), count = MEM_BU(0, spells_db);
+        if (spell >= count) return;
+        const uint32_t school = MEM_BU(0x1A, spells + 0x26 * spell);
+        if (school < 6 && school != 4) school_pending = (int)school;
+        return;
+    }
 }
 
 extern "C" void aidyn_potion_from_id(uint8_t* rdram, recomp_context* ctx) {
@@ -2152,26 +2182,29 @@ extern "C" void aidyn_potion_from_combat(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" int aidyn_potion_borg(uint8_t* rdram, recomp_context* ctx) {
-    const int k = potion_pending;
+    const uint32_t icon = (uint32_t)ctx->r4 & 0xFFFF;
+    const int k = potion_pending, school = school_pending;
     potion_pending = -1;
-    if (k < 0 || k >= kPotionCount || k == kHealing || ((uint32_t)ctx->r4 & 0xFFFF) != kPotionIcon) {
+    school_pending = -1;
+    const bool blue = school >= 0 && (icon == kScrollIcon || icon == kWandIcon);
+    if (!blue && (k < 0 || k >= kPotionCount || k == kHealing || icon != kPotionIcon)) {
         return 0;
     }
-    const gpr real = (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, kPotionIcon);
+    const gpr real = (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, icon);
     ctx->r2 = real;
     if (!heap_pointer(real) || MEM_W(0, real) != -1 || MEM_HU(0x08, real) != 4 || !heap_pointer(MEM_W(0x10, real))) {
         return 1;  // not a private copy: handed out as it is
     }
     const gpr palette = MEM_W(0x10, real), src = palette;
-    const uint8_t* t = kPotionColours[k];
+    const uint8_t* t = blue ? kSchoolColours[school] : kPotionColours[k];
     for (int i = 0; i < 256; i++) {
         uint32_t v = MEM_HU(2 * i, src);
         const int r = (v >> 11) & 31, g = (v >> 6) & 31, b = (v >> 1) & 31, a = v & 1;
-        const int grey = std::min(g, b), amt = r - grey;
+        const int grey = blue ? std::min(r, g) : std::min(g, b), amt = (blue ? b : r) - grey;
         if (amt > 0) {
-            const int nr = std::min(31, grey + (amt * (t[0] >> 3) + 15) / 31);
+            const int nr = std::min(31, (blue ? r : grey) + (amt * (t[0] >> 3) + 15) / 31);
             const int ng = std::min(31, g + (amt * (t[1] >> 3) + 15) / 31);
-            const int nb = std::min(31, b + (amt * (t[2] >> 3) + 15) / 31);
+            const int nb = std::min(31, (blue ? grey : b) + (amt * (t[2] >> 3) + 15) / 31);
             v = (uint32_t)(nr << 11 | ng << 6 | nb << 1 | a);
         }
         MEM_H(2 * i, palette) = (int16_t)v;
