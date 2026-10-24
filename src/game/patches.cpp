@@ -2974,8 +2974,30 @@ namespace {
 // The journal (Camp > Journal on the map page) is a book over the map page, whose painted arrow is still drawn under
 // it: told by its own background (JournalBG, 320x240 CI8, the FNV hash of its rows 100..103), so that arrow gets no LB.
 static bool journal_frame = false;
+// The map page's and the journal's texel (0, 0) on screen, scale and fade, this frame (their button hints, #11).
+static TitleSeen map_page, journal_page;
 
-static void note_journal(uint8_t* rdram, gpr img) {
+// A 320x240 page's texel (0, 0) on screen, scale and fade, from N64BorgImageDraw's arguments.
+static TitleSeen page_origin(uint8_t* rdram, recomp_context* ctx) {
+    const gpr sp = ctx->r29;
+    const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+    float x, y;
+    uint32_t bits = (uint32_t)ctx->r6;
+    std::memcpy(&x, &bits, 4);
+    bits = (uint32_t)ctx->r7;
+    std::memcpy(&y, &bits, 4);
+    const float xs = read_f32(rdram, sp + 0x20), ys = read_f32(rdram, sp + 0x24);
+    TitleSeen o;
+    o.seen = true;
+    o.x = (x - (float)(int)MEM_HU(0x12, sp) * xs) * hs;
+    o.y = (y - (float)(int)MEM_HU(0x16, sp) * ys) * vs;
+    o.sx = xs * hs;
+    o.sy = ys * vs;
+    o.alpha = MEM_BU(0x37, sp);
+    return o;
+}
+
+static void note_journal(uint8_t* rdram, recomp_context* ctx, gpr img) {
     const gpr pixels = MEM_W(0x14, img);
     uint64_t hash = 0xCBF29CE484222325ULL;
     for (uint32_t i = 100 * 320; i < 104 * 320; i++) {
@@ -2983,6 +3005,9 @@ static void note_journal(uint8_t* rdram, gpr img) {
     }
     if (hash == 0x5E583A6EAD9F819CULL) {
         journal_frame = true;
+        if (!journal_page.seen) {
+            journal_page = page_origin(rdram, ctx);  // the first (whole) draw: the game redraws strips of it after
+        }
     }
 }
 
@@ -3018,6 +3043,7 @@ static void note_map_page_arrow(uint8_t* rdram, recomp_context* ctx, gpr img) {
     if (a.alpha != 0 && page_arrows.size() < 8) {
         page_arrows.push_back(a);
     }
+    map_page = page_origin(rdram, ctx);
 }
 
 void note_treasure_title(uint8_t* rdram, recomp_context* ctx, gpr img) {
@@ -3215,7 +3241,7 @@ void note_page_arrow(uint8_t* rdram, recomp_context* ctx) {
     if (img != 0 && MEM_HU(0x08, img) == 4 && MEM_HU(0x0A, img) == 320 && MEM_HU(0x0C, img) == 240) {
         note_map_page_arrow(rdram, ctx, img);
         note_inventory_page(rdram, ctx, img);
-        note_journal(rdram, img);
+        note_journal(rdram, ctx, img);
         return;
     }
     if (img == 0 || MEM_HU(0x08, img) != 5 || MEM_HU(0x0C, img) != 8) {
@@ -3280,11 +3306,14 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     aidyn::input::set_card_mode(mode);
     combat_card_top = 240.0f;
     combat_log_frame = mode == 2 && !aidyn::input::start_held();
+    const bool journal = journal_frame;
     if (journal_frame) {
         journal_frame = false;
         page_arrows.clear();  // the map page's arrow, under the journal
+        map_page.seen = false;
     }
-    if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen && !combat_menu_box.seen) {
+    if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen && !combat_menu_box.seen &&
+        !map_page.seen && !journal_page.seen) {
         return g;
     }
     copy_branding(rdram);
@@ -3300,6 +3329,8 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         treasure_title.seen = false;
         inventory_page.seen = false;
         combat_menu_box.seen = false;
+        map_page.seen = false;
+        journal_page.seen = false;
         return g;
     }
     const int lb = branding_index("prompt_lb"), rb = branding_index("prompt_rb");
@@ -3388,9 +3419,22 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         g = draw_hint_row(rdram, g, origin, row, 2, combat_menu_box.x + combat_menu_box.w / 2.0f,
                           (float)(combat_menu_box.y + combat_menu_box.h + 3), true);
     }
+    // The map page: what A does with Camp and Journal (page texels 191..257, y 160..188), under them, clear of the LB
+    // arrow (x 142..177). The journal: up / down scroll it, B closes it; at the foot of the book's page (its text
+    // ends at y 210, the page spans x 62..245).
+    if (map_page.seen && map_page.alpha != 0 && !journal) {
+        const int row[] = { branding_index("hint_open") };
+        g = draw_hint_row(rdram, g, map_page, row, 1, 224.0f, 193.0f, true);
+    }
+    if (journal && journal_page.seen && journal_page.alpha != 0) {
+        const int row[] = { branding_index("hint_scroll"), branding_index("hint_close") };
+        g = draw_hint_row(rdram, g, journal_page, row, 2, 153.0f, 222.0f, true);
+    }
     treasure_title.seen = false;
     inventory_page.seen = false;
     combat_menu_box.seen = false;
+    map_page.seen = false;
+    journal_page.seen = false;
     return g;
 }
 

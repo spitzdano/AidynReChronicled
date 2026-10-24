@@ -330,7 +330,8 @@ def menu_hint(label, button, light=False):
 HINTS = [("hint_take", "Take", "A"), ("hint_putback", "Put back", "A"), ("hint_leave", "Leave", "B"),
          ("hint_switch", "Switch", "DPAD"), ("hint_equip", "Equip", "A"), ("hint_unequip", "Unequip", "A"),
          ("hint_use", "Use", "A"), ("hint_lists", "Lists", "DPAD"), ("hint_train", "Train", "A"),
-         ("hint_buy", "Buy", "A"), ("hint_sell", "Sell", "A"), ("hint_appraise", "Appraise", "CU")]
+         ("hint_buy", "Buy", "A"), ("hint_sell", "Sell", "A"), ("hint_appraise", "Appraise", "CU"),
+         ("hint_open", "Open", "A"), ("hint_scroll", "Scroll", "DPAD"), ("hint_close", "Close", "B")]
 
 CONTROLS = [
     ("ctl_walk", (("LS",), "Walk")),
