@@ -61,8 +61,11 @@ MAP_NUMBERS = (156, 44, 306, 140)
 STATS_CORDS = [(218, 22, 304, 36), (134, 92, 163, 214)]
 # The two lines around the game's INVENTORY title: erased from the painting (it has them 2 texels high) and drawn at
 # the game's rows.
-STATS_LINES_ERASE = (156, 80, 320, 101)
-STATS_LINES = [(86, 161, 318), (97, 171, 308)]     # (row, x0, x1) in texels
+STATS_LINES_ERASE = (156, 78, 320, 101)
+# (row, x0, x1) in texels. The game's upper line ran at row 86, through its list titles (Inventory, Skills, Sell...:
+# rows 81-98) above their small lowercase; the redrawn titles' small capitals are taller, so the line cut through them.
+# It runs above the titles now (row 79), the two lines framing them.
+STATS_LINES = [(79, 161, 318), (97, 171, 308)]
 # The page's bottom row (the hints along it hung off the torn edge): DETAILS and its button 4 texels higher than the
 # game's own (the port's Unequip and Lists hints move with them, src/game/patches.cpp "Inventory page hints").
 DETAILS_UP = 4
