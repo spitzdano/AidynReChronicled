@@ -77,7 +77,7 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         if rom.entry(index)[0] != romassets.IMAGE or (names.get(index, "").startswith("Portrait")
                                                         and names.get(index) != "PortraitHighlight"):
             continue
-        if only_art and names.get(index) not in art and names.get(index) not in hudart.NAMES:
+        if only_art and names.get(index) not in art and not hudart.handles(names.get(index, "")):
             continue  # only_art: the redrawn pictures, and the ones hudart.py draws (not from the ROM either)
         fmt, w, h, pixels, palette = img = rom.image(index)
         if w * h <= 4 or not fits(fmt, w, h) or key_of(*img) in skip_keys:
@@ -102,7 +102,7 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
         src.mkdir()
         big.mkdir()
         for index, (fmt, w, h, pixels, palette) in images.items():
-            if names.get(index) in hudart.NAMES or names.get(index) in art or index in label_of:
+            if hudart.handles(names.get(index, "")) or names.get(index) in art or index in label_of:
                 continue  # redrawn (hudart.py, art/, labels.py), not upscaled
             rgba = decode_borg8(fmt, w, h, pixels, palette)
             if fmt in (4, 7):
@@ -130,7 +130,7 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
                                                    entry["text"], font, scale, entry.get("dot"), entry.get("fit", False))
             elif names.get(index) in art:
                 W, H, up = redone.load(art[names[index]], w, h)
-            elif names.get(index) in hudart.NAMES:
+            elif hudart.handles(names.get(index, "")):
                 W, H, up = hudart.redraw(names[index], w, h, decode_borg8(fmt, w, h, pixels, palette))
             else:
                 W, H, up = read_png(big / f"{index}.png")

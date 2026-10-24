@@ -25,6 +25,12 @@ entries below or above; shop, inventory, spells, skills, trainer, combat menus):
 menus' hint ink (make_branding.py menu_hint, #945A4A): a 1.1-texel stem and a notched head 4.6 wide at the end it
 points to.
 
+The indoor minimap's rooms (MiniMap*, 187 pictures, IA8: white, the game tints them grey, the room you're in
+brighter): a solid outline and a fainter fill, upscaled into soft blobs. Redrawn from the originals themselves: each of a picture's alpha levels is a shape of its own, upscaled
+bicubically and its edge pulled tight around the texel boundary (as upscale_glyph does for letters), and the levels
+added up again, so outlines stay their thickness and crisp, and the fill keeps its see-through level. (The map's frame
+and backing, WhiteBorderAlphaSquare and WhiteBorderGraySquare, are soft glows and keep their upscale.)
+
 HealthBar (77x8 colour, drawn stretched to 80x10, cut from the left to show the hit points left): a twisted rope.
 Its original's faint middle stretch upscaled into a smear. Redrawn in the original's reddish browns: a strand every
 4.6 texels, each round and lit from the upper left with fine fibres and a little variety from strand to strand; the
@@ -38,6 +44,45 @@ NAMES = ({"SundailCross", "SundailSunSmall", "SundailSunBig"} | {f"SundailMoon{i
          | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "LongUpArrow", "LongDownArrow"}
          | {"CompassNorth", "CompassEast", "CompassSouth", "CompassWest"} | {"ScrollBarArrowUp", "ScrollBarArrowDown"})
 INK = (0x94, 0x5A, 0x4A)  # the menus' hint ink
+
+
+def handles(name):
+    """Drawn here rather than upscaled: NAMES, and the minimap's rooms and frame (redrawn from the originals)."""
+    return name in NAMES or name.startswith("MiniMap")
+
+
+def _cubic_matrix(n, scale):
+    """(n * scale, n) weights of a bicubic (Keys, a = -0.5) upscale along one axis; outside the picture counts as 0."""
+    out = np.zeros((n * scale, n), np.float32)
+    for o in range(n * scale):
+        f = (o + 0.5) / scale - 0.5
+        i0 = int(np.floor(f))
+        for k in range(i0 - 1, i0 + 3):
+            t = abs(f - k)
+            wgt = 1.5 * t ** 3 - 2.5 * t ** 2 + 1 if t < 1 else (-0.5 * t ** 3 + 2.5 * t ** 2 - 4 * t + 2 if t < 2 else 0)
+            if 0 <= k < n:
+                out[o, k] += wgt
+    return out
+
+
+def _crisp_levels(w, h, rgba):
+    """The picture's alpha, every level a crisp shape of its own (see the module's docstring), at SCALE."""
+    a = np.frombuffer(bytes(rgba), np.uint8).reshape(h, w, 4)[..., 3].astype(np.float32) / 255.0
+    my, mx = _cubic_matrix(h, SCALE), _cubic_matrix(w, SCALE)
+    out = np.zeros((h * SCALE, w * SCALE), np.float32)
+    # The main levels (each at least 4% of the picture's opaque texels: the outline, the fill); the original's
+    # in-between edge texels snap to the nearest, so each edge is one clean step, not a stripe per level.
+    values, counts = np.unique(np.round(a[a > 0], 4), return_counts=True)
+    main = np.array([0.0] + [v for v, c in zip(values, counts) if c >= 0.04 * counts.sum()], np.float32)
+    a = main[np.abs(a[..., None] - main).argmin(axis=-1)]
+    below = 0.0
+    for level in main[1:]:
+        mask = (a >= level - 1e-4).astype(np.float32)
+        up = my @ mask @ mx.T
+        t = np.clip((up - 0.4) / 0.2, 0.0, 1.0)
+        out += (t * t * (3 - 2 * t)) * (level - below)
+        below = level
+    return out
 LETTERS = {"CompassNorth": "N", "CompassEast": "E", "CompassSouth": "S", "CompassWest": "W"}
 SCALE = 8
 SS = 4  # supersampling
@@ -236,6 +281,11 @@ def redraw(name, w, h, rgba=None):
         a = _down(alpha, w, h)
         out = np.zeros(a.shape + (4,), np.uint8)
         out[..., :3] = np.clip(c + 0.5, 0, 255).astype(np.uint8)
+        out[..., 3] = np.clip(a * 255.0 + 0.5, 0, 255).astype(np.uint8)
+        return w * SCALE, h * SCALE, bytearray(out.tobytes())
+    if name.startswith("MiniMap"):
+        a = _crisp_levels(w, h, rgba)
+        out = np.full(a.shape + (4,), 255, np.uint8)
         out[..., 3] = np.clip(a * 255.0 + 0.5, 0, 255).astype(np.uint8)
         return w * SCALE, h * SCALE, bytearray(out.tobytes())
     if name.startswith("ScrollBarArrow"):

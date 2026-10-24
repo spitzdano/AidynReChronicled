@@ -237,6 +237,18 @@ func = "Compass__Draw"
 before_vram = 0x800246F0
 text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
 
+# The indoor minimap at the right edge with the compass (src/game/patches.cpp, aidyn_minimap_begin): entry (display
+# list in a1) and before the return (v0).
+[[patches.hook]]
+func = "MiniMap__Render"
+before_vram = 0x8004AD14
+text = "extern void aidyn_minimap_begin(uint8_t* rdram, recomp_context* ctx); aidyn_minimap_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "MiniMap__Render"
+before_vram = 0x8004AEF4
+text = "extern void aidyn_minimap_end(uint8_t* rdram, recomp_context* ctx); aidyn_minimap_end(rdram, ctx);"
+
 # Startup logos skipped (src/game/patches.cpp aidyn_splash_loaded): before load_splashscreen_data returns.
 [[patches.hook]]
 func = "load_splashscreen_data"

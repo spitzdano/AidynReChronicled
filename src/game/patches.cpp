@@ -2080,6 +2080,29 @@ extern "C" void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// The indoor minimap (MiniMap::Render: this in a0, the display list in a1; returns it in v0) is drawn in the corner
+// above the compass (x 237 to 297 of 320) or, with B, big in the middle. With hud_at_edges the corner one moves with the
+// compass to the picture's right edge, as the dial and compass do (RT64's rectangle alignment); the big one stays
+// centred. Its left edge (mapX, +0x78) tells them apart: 237 in the corner, 52 when big (MiniMap::LoadData).
+namespace {
+    bool minimap_wide = false;  // this Render call is aligned right
+}
+
+extern "C" void aidyn_minimap_begin(uint8_t* rdram, recomp_context* ctx) {
+    const gpr map = ctx->r4;
+    minimap_wide = hud_wide() && MEM_W(0, map) != 0 && read_f32(rdram, map + 0x78) > 160.0f;
+    if (minimap_wide) {
+        ctx->r5 = hud_begin(rdram, ctx->r5, true);
+    }
+}
+
+extern "C" void aidyn_minimap_end(uint8_t* rdram, recomp_context* ctx) {
+    if (minimap_wide) {
+        ctx->r2 = hud_end(rdram, ctx->r2);
+        minimap_wide = false;
+    }
+}
+
 // Fast-forward. Every mode of the game (walking, combat, menus, cutscenes) measures its frame's time step by counting
 // the controller samples queued since the last frame: Controller::GetInput pops one and returns 1, and the frame calls
 // it until it returns 0, then steps that many ticks of 1/60 s (capped at 6: made for the N64's 10 to 20 frames a
