@@ -456,7 +456,10 @@ load from the main menu or the pause menu.</p>
 <div class="port">
   <p>The Controller Pak is a file, <code>aidyn.mpk</code> in the data folder (<code>aidyn-patch.mpk</code> for Aidyn
   Patch). It is written the moment the game saves. It is the same kind of file N64 emulators use, so a pak can be
-  copied in or out.</p>
+  copied in or out: Project64's <code>.mpk</code> and ares' <code>.pak</code> as they are. Mupen64Plus (and RMG,
+  simple64) keeps all four controllers' paks in one <code>.mpk</code>, and RetroArch its paks inside the game's
+  <code>.srm</code>: copy either in as <code>aidyn.mpk</code> and the game takes the pak with an Aidyn save from it
+  when it starts, keeping the whole original file in <code>backups/</code>.</p>
   <p>The game keeps copies of it in <code>backups/</code> in the data folder: one each time the game starts and one
   before each save, the newest 20. If a save goes wrong, or Alaron falls, copy one back over <code>aidyn.mpk</code>
   while the game is closed.</p>

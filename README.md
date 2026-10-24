@@ -166,7 +166,10 @@ libultra layout, `~/.local/share/AidynReChronicled/aidyn.mpk` (`AIDYN_MPK=/path`
 (`__osContRamRead` / `__osContRamWrite`, 32 bytes each) plus the PIF-level `osPfsIsPlug`, `__osPfsGetStatus` and `osPfsChecker` are
 ours; the file system on top (ID and inode tables, note directory, free-page accounting, the `PFS_ERR_*` codes) is the game's own libultra
 code, recompiled. A new image is created formatted (as `osPfsReFormat` leaves one). Every write is flushed at once through a temp file and a
-rename. An existing file must be exactly 32768 bytes (an emulator's `.mpk` works); anything else stops the program and is left untouched.
+rename. An existing file must be exactly 32768 bytes (Project64's `.mpk` and ares' `.pak` work as they are), or a file holding four
+controllers' packs, which is converted when the game starts: Mupen64Plus' 128 KiB `.mpk` (RMG, simple64) and RetroArch's `.srm`
+(Mupen64Plus-Next, ParaLLEl-N64). The pack with an Aidyn save (else the first formatted one) becomes the 32 KiB file and the original
+is kept in `backups/`. Anything else stops the program and is left untouched.
 Ports 2 to 4 report no pack. `osPfsChecker` always reports "consistent": it talks to the PIF directly.
 
 Runtime-shell stubs (`src/game/stubs.cpp`): `__osSiGetAccess` / `__osSiRelAccess` (no-op), `__osSpDeviceBusy` (never busy), `__osGetSR`

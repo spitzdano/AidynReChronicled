@@ -192,6 +192,89 @@ void backup_locked(const char* why) {
     }
 }
 
+// Emulators that keep all four controllers' packs in one file: Mupen64Plus and the front ends built on it (RMG,
+// simple64) as four 32 KiB banks, RetroArch's Mupen64Plus-Next and ParaLLEl-N64 in their .srm (2 KiB EEPROM, the
+// four packs, 32 KiB SRAM, 128 KiB FlashRAM). Such a file is converted when the game starts: the pack holding an
+// Aidyn save (a note with the game's code, NAYE), else the first formatted one, becomes the 32 KiB file, and the
+// whole original is kept in backups/ (never rotated away).
+struct Container {
+    size_t size, first;
+    const char* what;
+};
+constexpr Container kContainers[] = {
+    { 4 * kImageSize, 0, "a Mupen64Plus pack file (four controllers' packs)" },
+    { 0x800 + 4 * kImageSize + 0x8000 + 0x20000, 0x800, "a RetroArch save (.srm)" },
+};
+
+bool id_valid(const uint8_t* bank) {
+    const uint8_t* id = bank + kBlock;
+    uint16_t sum, inverted;
+    id_checksum(id, sum, inverted);
+    return ((id[0x1C] << 8) | id[0x1D]) == sum && ((id[0x1E] << 8) | id[0x1F]) == inverted;
+}
+
+bool has_aidyn_save(const uint8_t* bank) {
+    for (int n = 0; n < 16; n++) {
+        if (std::memcmp(bank + 24 * kBlock + n * kBlock, "NAYE", 4) == 0) {  // the note directory, blocks 24..39
+            return true;
+        }
+    }
+    return false;
+}
+
+// True when g_path was such a file and is now the 32 KiB pack (g_image).
+bool convert_locked(uintmax_t size) {
+    namespace fs = std::filesystem;
+    const Container* c = nullptr;
+    for (const auto& k : kContainers) {
+        if (k.size == size) c = &k;
+    }
+    if (c == nullptr) {
+        return false;
+    }
+    std::vector<uint8_t> file(size);
+    {
+        std::ifstream in(g_path, std::ios::binary);
+        if (!in.read(reinterpret_cast<char*>(file.data()), file.size())) {
+            fatal("cannot read " + g_path.string());
+        }
+    }
+    int pick = -1;
+    for (int pass = 0; pass < 2 && pick < 0; pass++) {
+        for (int b = 0; b < 4 && pick < 0; b++) {
+            const uint8_t* bank = file.data() + c->first + b * kImageSize;
+            if (id_valid(bank) && (pass == 1 || has_aidyn_save(bank))) pick = b;
+        }
+    }
+    if (pick < 0) {
+        fatal(g_path.string() + " looks like " + c->what + ", but none of its packs is formatted; move it away");
+    }
+    std::error_code ec;
+    const fs::path dir = g_path.parent_path() / "backups";
+    fs::create_directories(dir, ec);
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm);
+    const fs::path original =
+        dir / (g_path.stem().string() + "-emulator-original-" + stamp + g_path.extension().string());
+    fs::copy_file(g_path, original, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        fatal("cannot keep a copy of " + g_path.string() + " in " + dir.string() + " before converting it: " +
+              ec.message());
+    }
+    std::memcpy(g_image.data(), file.data() + c->first + pick * kImageSize, kImageSize);
+    flush_locked();
+    fprintf(stderr, "Controller Pak: %s was %s: took controller %d's pack (the original is %s)\n",
+            g_path.string().c_str(), c->what, pick + 1, original.string().c_str());
+    return true;
+}
+
 void load_locked() {
     if (g_loaded) {
         return;
@@ -201,8 +284,10 @@ void load_locked() {
     }
     std::error_code ec;
     if (std::filesystem::exists(g_path, ec)) {
-        // A pack from an emulator (.mpk) is the same raw 32 KiB image. Anything else is refused untouched.
-        if (std::filesystem::file_size(g_path, ec) != kImageSize) {
+        // A pack from an emulator (Project64's .mpk, ares' .pak) is the same raw 32 KiB image; one holding four
+        // controllers' packs is converted (convert_locked). Anything else is refused untouched.
+        const uintmax_t size = std::filesystem::file_size(g_path, ec);
+        if (size != kImageSize && !convert_locked(size)) {
             fatal(g_path.string() + " is not a 32 KiB Controller Pak image; move it away or fix it");
         }
         g_disk_time = std::filesystem::last_write_time(g_path, ec);
