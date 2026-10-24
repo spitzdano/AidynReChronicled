@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """build_manual.py: build the Aidyn ReChronicled manual (HTML + PDF) from manual.html and the player's ROM.
 
-    tools/manual/build_manual.py [--rom ROM] [--patch-rom ROM] [--out DIR] [--no-pdf]
+    tools/manual/build_manual.py [--rom ROM] [--patch-rom ROM] [--plus-rom ROM] [--out DIR] [--no-pdf]
 
 1. Pictures: every <img data-art="Name"> is a Borg8 image: the redrawn one in art/ if there is one (portraits, item
    and slot icons), else the ROM's, upscaled by romart.py (cached in build/manual/art); every <figure data-shot="name"> is build/manual/shots/<name>.png from shots.sh, saved as JPEG.
    A figure without its screenshot is left out (or shows the Borg8 image named in data-fallback).
-2. The spell list is read from the ROM (romdata.py); with the Aidyn Patch ROM too, a table of what the patch changes.
+2. The spell list is read from the ROM (romdata.py); with the Aidyn Patch and Aidyn Plus ROMs too, a table each of
+   what they change.
 3. Writes DIR/index.html with fonts/, art/, shots/ next to it, then DIR/Aidyn ReChronicled Manual.pdf (Chromium,
    headless, its profile in a temp folder).
 Defaults: the ROMs the game stored in ~/.local/share/AidynReChronicled (else baserom.z64), output in its manual/ folder.
@@ -172,7 +173,7 @@ def other_changes(b, p):
     return out
 
 
-def patch_table(base, patched):
+def patch_table(base, patched, version="Aidyn Patch"):
     by_id = {s["id"]: s for s in base}
     rows = []
     for p in patched:
@@ -185,9 +186,9 @@ def patch_table(base, patched):
         if cells or other:
             rows.append((b["name"], cells, other))
     if not rows:
-        return "<p>Aidyn Patch leaves every spell as it was.</p>"
-    out = [f"<h3>Spells in Aidyn Patch</h3><p>What the patch changes in the spell list: {len(rows)} of {len(patched)} "
-           "spells, read from both of your dumps. Each cell shows the original value struck out, then the patch's. "
+        return f"<p>{version} leaves every spell as it was.</p>"
+    out = [f"<h3>Spells in {version}</h3><p>What {version} changes in the spell list: {len(rows)} of {len(patched)} "
+           f"spells, read from both of your dumps. Each cell shows the original value struck out, then {version}'s. "
            "Columns as in the <a href=\"#spells\">Spell List</a>; reach is how far the spell goes.</p>",
            '<div class="scroll"><table class="changes"><thead><tr><th>Spell</th>'
            + "".join(f"<th>{label}</th>" for _, label in COLUMNS) + "<th>Other</th></tr></thead><tbody>"]
@@ -239,6 +240,7 @@ def main():
     stored = DATA / "aidyn.n64.us.1.0.z64"
     ap.add_argument("--rom", type=Path, default=stored if stored.exists() else PROJECT / "baserom.z64")
     ap.add_argument("--patch-rom", type=Path, default=DATA / "aidyn.n64.us.1.0.aidyn-patch.z64")
+    ap.add_argument("--plus-rom", type=Path, default=DATA / "aidyn.n64.us.1.0.aidyn-plus.z64")
     ap.add_argument("--out", type=Path, default=DATA / "manual")
     ap.add_argument("--no-pdf", action="store_true")
     args = ap.parse_args()
@@ -257,6 +259,15 @@ def main():
         page = page.replace("{{PATCH}}", "<p class=\"note\">Store the Aidyn Patch dump (start the game once with "
                                          "<code>--rom</code> and the patched file) and build this manual again to see "
                                          "what the patch changes in the spell list.</p>")
+    # Aidyn Plus: its spell table, and a word on the descriptions that freeze the game (its own FAQ lists them).
+    plus_warning = ("<p class=\"note\">Aidyn Plus warns in its own FAQ that the description of a few of its items "
+                    "and spells freezes the game when opened, and that a few spells misbehave in combat. That is "
+                    "the romhack, not this port: check its FAQ before opening an unfamiliar description.</p>")
+    if args.plus_rom.exists():
+        page = page.replace("{{PLUS}}", patch_table(spells, romdata.spells(args.plus_rom), "Aidyn Plus") + plus_warning)
+    else:
+        page = page.replace("{{PLUS}}", "<p class=\"note\">Store the Aidyn Plus dump and build this manual again to "
+                                        "see what Aidyn Plus changes in the spell list.</p>" + plus_warning)
     page = page.replace("{{BUILT}}", f"Built {datetime.date.today():%-d %B %Y}.")
     page = page.replace("{{TOC}}", toc(page))
     page = initials(page)
