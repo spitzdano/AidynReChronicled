@@ -226,7 +226,7 @@ def weapon_table(base, plus, version="Aidyn Plus"):
            "strength a character needs to wield it well, Hit and Dmg its chance to hit and its damage, Reach how far "
            "a missile or thrown weapon goes, Price the merchants' list price before haggling. Struck out the "
            f"original, then {version}'s.</p>",
-           '<div class="scroll"><table class="changes"><thead><tr><th>Weapon</th><th>Kind</th>'
+           '<div class="scroll"><table class="changes weapons"><thead><tr><th>Weapon</th><th>Kind</th>'
            + "".join(f"<th>{label}</th>" for _, label in WEAPON_COLUMNS) + "</tr></thead><tbody>"]
     for name, kind, notes, cells in sorted(rows, key=lambda r: (r[1], r[0].lower())):
         note = f' <span class="dim">({"; ".join(notes)})</span>' if notes else ""
@@ -265,11 +265,50 @@ def armour_table(base, plus, version="Aidyn Plus"):
            "Def a shield's defence, Dex and Stealth what wearing it adds or takes off; Bonuses are the stat, skill "
            "and spell it gives and the element it guards against (the percentage of that damage taken). Struck out "
            f"the original, then {version}'s.</p>",
-           '<div class="scroll"><table class="changes"><thead><tr><th>Armour</th><th>Kind</th>'
+           '<div class="scroll"><table class="changes armour"><thead><tr><th>Armour</th><th>Kind</th>'
            + "".join(f"<th>{label}</th>" for _, label in ARMOUR_COLUMNS) + "<th>Bonuses</th></tr></thead><tbody>"]
     for name, kind, note, cells, bonus in sorted(rows, key=lambda r: (r[1], r[0].lower())):
         out.append(f"<tr><td>{esc(name)}{note}</td><td>{esc(kind)}</td>"
                    + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in ARMOUR_COLUMNS) + f"<td>{bonus}</td></tr>")
+    out.append("</tbody></table></div>")
+    return "\n".join(out)
+
+
+GEAR_COLUMNS = [("price", "Price")]
+
+
+def gear_table(base, plus, version="Aidyn Plus"):
+    """The other items, by kind (same slots in both: Aidyn Plus fills the original's unused "key17" records)."""
+    rows, new = [], 0
+    for b, p in zip(base, plus):
+        if p["placeholder"]:
+            continue
+        if b["placeholder"]:
+            new += 1
+            cells = {k: str(p[k]) for k, _ in GEAR_COLUMNS}
+            rows.append((p["name"], p["kind"], ' <span class="dim">(new)</span>', cells, esc("; ".join(p["bonus"]))))
+            continue
+        cells = {k: f"<s>{b[k]}</s> {p[k]}" for k, _ in GEAR_COLUMNS if b[k] != p[k]}
+        bb, pb = "; ".join(b["bonus"]), "; ".join(p["bonus"])
+        bonus = f"<s>{esc(bb) or '—'}</s> {esc(pb) or '—'}" if bb != pb else ""
+        notes = [f"now {esc(p['name'])}"] if b["name"] != p["name"] else []
+        if p["broken"]:
+            notes.append("its ID is missing in Aidyn Plus: avoid")
+        note = f' <span class="dim">({"; ".join(notes)})</span>' if notes else ""
+        if cells or bonus or note:
+            rows.append((b["name"], b["kind"], note, cells, bonus))
+    if not rows:
+        return ""
+    kinds = [k for _, k in romdata.GEAR_KINDS]
+    out = [f"<h3>Other items in {version}</h3><p>Helmets, cloaks, gloves, rings, belts, boots, amulets, wands, "
+           f"scrolls, maps and the rest: {version} changes {len(rows) - new} and adds {new} new ones (mostly parts "
+           "taken from creatures, to sell or craft with). Bonuses as for armour: the protection or damage it adds, "
+           f"the stat and skill it raises, the spells it holds and their level, the element it guards against. Struck out the original, then {version}'s.</p>",
+           '<div class="scroll"><table class="changes gear"><thead><tr><th>Item</th><th>Kind</th>'
+           + "".join(f"<th>{label}</th>" for _, label in GEAR_COLUMNS) + "<th>Bonuses</th></tr></thead><tbody>"]
+    for name, kind, note, cells, bonus in sorted(rows, key=lambda r: (kinds.index(r[1]), r[0].lower())):
+        out.append(f"<tr><td>{esc(name)}{note}</td><td>{esc(kind)}</td>"
+                   + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in GEAR_COLUMNS) + f"<td>{bonus}</td></tr>")
     out.append("</tbody></table></div>")
     return "\n".join(out)
 
@@ -304,7 +343,7 @@ def creature_table(base, plus, version="Aidyn Plus"):
            f"weakness and a resistance: {len(rows)} creatures and people change. The percentage is the damage it "
            "takes from that element (100% is normal, 0% none at all). Struck out the original, then "
            f"{version}'s; the people of the party are here too.</p>",
-           '<div class="scroll"><table class="changes"><thead><tr><th>Creature</th><th>Level</th>'
+           '<div class="scroll"><table class="changes creatures"><thead><tr><th>Creature</th><th>Level</th>'
            "<th>Weak to, resists</th></tr></thead><tbody>"]
     out += [row for _, row in sorted(rows, key=lambda r: r[0].lower())]
     out.append("</tbody></table></div>")
@@ -379,11 +418,12 @@ def main():
         page = page.replace("{{PLUS}}", patch_table(spells, romdata.spells(args.plus_rom), "Aidyn Plus")
                             + weapon_table(romdata.weapons(args.rom), romdata.weapons(args.plus_rom))
                             + armour_table(romdata.armour(args.rom), romdata.armour(args.plus_rom))
+                            + gear_table(romdata.gear(args.rom), romdata.gear(args.plus_rom))
                             + creature_table(romdata.creatures(args.rom), romdata.creatures(args.plus_rom))
                             + plus_warning)
     else:
         page = page.replace("{{PLUS}}", "<p class=\"note\">Store the Aidyn Plus dump and build this manual again to "
-                                        "see what Aidyn Plus changes in the spells, weapons, armour and creatures.</p>" + plus_warning)
+                                        "see what Aidyn Plus changes in the spells, weapons, armour, items and creatures.</p>" + plus_warning)
     page = page.replace("{{BUILT}}", f"Built {datetime.date.today():%-d %B %Y}.")
     page = page.replace("{{TOC}}", toc(page))
     page = initials(page)

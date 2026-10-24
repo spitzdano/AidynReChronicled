@@ -160,8 +160,8 @@ def _s8(v):
 
 
 def name_is_placeholder(raw):
-    """The unused records' names: "exp 12", "exp24"."""
-    return re.fullmatch(rb"exp ?\d+", raw.split(b"\0")[0]) is not None
+    """The unused records' names: "exp 12", "exp24", "key17"."""
+    return re.fullmatch(rb"(exp|key) ?\d+", raw.split(b"\0")[0]) is not None
 
 
 def armour(rom_path):
@@ -175,18 +175,52 @@ def armour(rom_path):
     spell_names = {s["id"]: s["name"] for s in spells(rom_path)}
     out = []
     for c, r in _records(rom, pos, 2, 48):
-        bonus = []
-        if r[35] < len(STATS) and r[36]:
-            bonus.append(f"{STATS[r[35]]} {_s8(r[36]):+d}")
-        if r[37] < len(SKILLS) and r[38]:
-            bonus.append(f"{SKILLS[r[37]]} {_s8(r[38]):+d}")
-        for k, lv in ((39, 41), (43, 45)):
-            spell = r[k] | r[k + 1] << 8
-            if spell:
-                bonus.append(f"{spell_names.get(spell, 'a spell')} {r[lv]}")
-        if 0 < r[46] < len(ELEMENTS):
-            bonus.append(f"{ELEMENTS[r[46]]} {r[47] * 25}%")
+        bonus = _bonuses(r, 35, 37, ((39, 41), (43, 45)), 46, spell_names)
         out.append({"name": r[:23].split(b"\0")[0].decode("ascii"), "id": r[23] | r[24] << 8,
                     "kind": "Shield" if c else "Armour", "defence": r[26], "protection": r[27], "dex": _s8(r[28]),
                     "stealth": _s8(r[30]), "placeholder": name_is_placeholder(r[:23]), "price": r[31] | r[32] << 8, "bonus": bonus})
+    return out
+
+
+# The item database's 11 categories, with the item type (high byte of the ID) of each.
+GEAR_KINDS = [(1, "Other"), (9, "Helmet"), (10, "Cloak"), (11, "Gloves"), (12, "Ring"), (13, "Wand"), (14, "Belt"),
+              (15, "Boots"), (17, "Scroll"), (18, "Key item"), (19, "Amulet")]
+
+
+def _bonuses(r, stat, skill, spells_at, element, spell_names):
+    """The stat and skill an item raises, the spells it holds (offset of the ID, offset of its level) and the
+    element it guards against, as text."""
+    out = []
+    if r[stat] < len(STATS) and r[stat + 1]:
+        out.append(f"{STATS[r[stat]]} {_s8(r[stat + 1]):+d}")
+    if r[skill] < len(SKILLS) and r[skill + 1]:
+        out.append(f"{SKILLS[r[skill]]} {_s8(r[skill + 1]):+d}")
+    for k, lv in spells_at:
+        spell = r[k] | r[k + 1] << 8
+        if spell:
+            out.append(f"{spell_names.get(spell, 'a spell')} {r[lv]}" if r[lv] else spell_names.get(spell, "a spell"))
+    if 0 < r[element] < len(ELEMENTS):
+        out.append(f"{ELEMENTS[r[element]]} {r[element + 1] * 25}%")
+    return out
+
+
+def gear(rom_path):
+    """[dict] of the other equipment and items: helmets, cloaks, gloves, rings, wands, belts, boots, scrolls,
+    amulets, key and other items (decomp: include/itemDB.h Gear_Rom, 44 bytes, 11 categories), in database order.
+    Aidyn Plus has two scrolls with an empty ID (type 0, "` Dispel Necro"): allowed, as broken: True. It also starts
+    names with a marker its font draws as a symbol ("~ Gwernia" a map, "* Bear Claw" a crafting part, "| Moon Gem" a
+    wand, "^ Fireball" and "< Haste" scrolls by school): left out of name."""
+    rom = Path(rom_path).read_bytes()
+    pos = _find_db(rom, 11, 44, 20, 20, {t for t, _ in GEAR_KINDS} | {0})
+    if pos is None:
+        raise SystemExit(f"romdata.py: no item database in {rom_path}")
+    spell_names = {s["id"]: s["name"] for s in spells(rom_path)}
+    out = []
+    for c, r in _records(rom, pos, 11, 44):
+        name = r[:20].split(b"\0")[0].decode("ascii")
+        out.append({"name": name.lstrip("`~*|^<>_ "), "id": r[20] | r[21] << 8, "kind": GEAR_KINDS[c][1], "broken": r[21] == 0,
+                    "price": r[28] | r[29] << 8,
+                    "bonus": [f"{label} {r[k]}" for k, label in ((25, "Protection"), (24, "Damage")) if r[k]]
+                    + _bonuses(r, 31, 33, ((35, 37), (39, 41)), 42, spell_names),
+                    "placeholder": name_is_placeholder(r[:20])})
     return out
