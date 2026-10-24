@@ -50,6 +50,23 @@ namespace aidyn {
 }
 extern int aidyn_sky_horizon;  // "Below the horizon", below: this frame's horizon row, or -1
 
+// The display lists' size. The game gives each of its two lists 0x32000 bytes with the Expansion Pak (0x19000
+// without), from its heap. The widescreen picture (more characters and props in view), the far map cells at draw
+// distance 2-3 and this edition's HUD already fill a forest frame to three quarters of that, and a frame that runs
+// past the end stops the game ("GLIST OVERWRITE!!": appProc checks after Graphics::EndList). Graphics::initGfx is
+// hooked where the size is chosen ($s3, before the two HALLOCs) for twice the room, and appProc's check (its limit
+// in commands, $a3, 0x6400) follows it.
+constexpr uint32_t kDisplayListBytes = 0x64000;
+
+extern "C" void aidyn_display_list_size(uint8_t* rdram, recomp_context* ctx) {
+    fprintf(stderr, "Display lists: 2 x %u bytes (the game's own: %u)\n", kDisplayListBytes, (uint32_t)ctx->r19);
+    ctx->r19 = kDisplayListBytes;
+}
+
+extern "C" void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx) {
+    ctx->r7 = kDisplayListBytes / 8;
+}
+
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     aidyn::set_gap_fill_horizon(aidyn_sky_horizon);
     aidyn_sky_horizon = -1;
@@ -82,6 +99,23 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     }
     put(rdram, g, 0xE9000000, 0);              // gDPFullSync
     put(rdram, g, 0xDF000000, 0);              // gSPEndDisplayList
+    // How full the frame's display list got (aidyn_display_list_size; gGfxManager.GfxLists[bufferChoice] at +4 /
+    // +0x19A). Each new most is logged from three quarters of the game's own size on (past 100% there, the game's own
+    // list would have run out).
+    {
+        constexpr uint32_t kGameListBytes = 0x32000;
+        static uint32_t most = 0;
+        const gpr start = MEM_W(4 + 4 * MEM_BU(0x19A, (gpr)gGfxManager), (gpr)gGfxManager);
+        const uint32_t used = (uint32_t)(g - start);
+        if (used > most && used < 0x1000000) {
+            most = used;
+            if (used > kGameListBytes * 3 / 4) {
+                fprintf(stderr, "Display list: %u bytes, %u%% of the game's own size, %u%% of this one's%s\n", used,
+                        used * 100 / kGameListBytes, used * 100 / kDisplayListBytes,
+                        used > kDisplayListBytes ? ": PAST ITS END" : "");
+            }
+        }
+    }
     MEM_B(kUnk19C, (gpr)gGfxManager) = 0;
     // osWritebackDCacheAll: nothing to write back on the runtime.
     ctx->r2 = g;

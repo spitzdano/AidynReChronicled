@@ -788,3 +788,13 @@ text = "extern void aidyn_game_crash(uint8_t* rdram, recomp_context* ctx); aidyn
 func = "ProcessGameCamera_mode0"
 before_vram = 0x800A7284
 text = "extern void aidyn_camera_walls(uint8_t* rdram, recomp_context* ctx); aidyn_camera_walls(rdram, ctx);"
+
+[[patches.hook]]
+func = "Graphics__initGfx"
+before_vram = 0x80005514
+text = "extern void aidyn_display_list_size(uint8_t* rdram, recomp_context* ctx); aidyn_display_list_size(rdram, ctx);"
+
+[[patches.hook]]
+func = "appProc"
+before_vram = 0x8001AA4C
+text = "extern void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx); aidyn_display_list_limit(rdram, ctx);"
