@@ -14,7 +14,8 @@
 # first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
 # The Windows zip (tools/windows/build_windows.sh, cross-compiled here) holds the exe and its DLLs, the same packs and
 # Steam art, README.md and LICENSE, in one folder to unpack and play.
-# tools/release/notes/<version>.md, if there, goes into the release notes (what's new).
+# tools/release/notes/<version>.md goes into the GitHub release's notes (what's new), and every download carries
+# RELEASE-NOTES.md: all the notes files, newest first. --publish needs this version's notes file.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/../.."
 die() { echo "make_release.sh: $*" >&2; exit 1; }
@@ -40,6 +41,7 @@ if (( publish )); then
     git fetch -q origin main
     [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || die "HEAD isn't origin/main: push first"
     git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag exists already"
+    [[ -f tools/release/notes/$version.md ]] || die "no release notes: write tools/release/notes/$version.md first"
 fi
 
 echo "== portable build"
@@ -57,6 +59,24 @@ python3 tools/hdui/art_pack.py
 echo "== HD letters pack"
 python3 tools/hdui/text_pack.py
 
+# Every release's notes in one file, newest first, for the downloads (each notes file's own headings one level down).
+release_notes=$out/RELEASE-NOTES.md
+mkdir -p "$out"
+python3 -I - tools/release/notes "$release_notes" <<'PY'
+import re, sys
+from pathlib import Path
+notes = sorted(Path(sys.argv[1]).glob("*.md"),
+               key=lambda p: [int(x) for x in re.findall(r"\d+", p.stem)], reverse=True)
+out = ["# Aidyn ReChronicled: release notes", "",
+       "What each release changed, newest first. The full list of releases: "
+       "https://github.com/spitzdano/AidynReChronicled/releases", ""]
+for p in notes:
+    out += [f"## {p.stem}", ""]
+    out += [re.sub(r"^(#+) ", r"\1# ", line) for line in p.read_text().rstrip().splitlines()]
+    out.append("")
+Path(sys.argv[2]).write_text("\n".join(out) + "\n")
+PY
+
 echo "== $name"
 rm -rf "$out/$name" "$out/$name.tar.gz" "$out/$name.tar.gz.sha256"
 mkdir -p "$out/$name/game/texture-packs"
@@ -71,7 +91,7 @@ cp -a build/ally/steam-art "$out/$name/game/steam-art"
 for p in rechronicled rechronicled-art rechronicled-text; do
     python3 -I tools/release/rtz.py "$packs/$p" "$out/$name/game/texture-packs/$p.rtz"
 done
-cp tools/ally/install.sh tools/release/README.md LICENSE "$out/$name/"
+cp tools/ally/install.sh tools/release/README.md LICENSE "$release_notes" "$out/$name/"
 mkdir -p "$out/$name/ROMs"  # the player's ROMs go here (src/main/main.cpp, store_roms_from_folders)
 cp tools/release/ROMs-README.txt "$out/$name/ROMs/README.txt"
 chmod +x "$out/$name/install.sh" "$out/$name/game/aidyn-rechronicled.sh" "$out/$name/game/steam_shortcut.py"
@@ -98,7 +118,7 @@ if (( windows )); then
     cp -a build/windows/dist/. "$out/$wname/"
     cp -a build/ally/steam-art "$out/$wname/steam-art"
     cp "$out/$name/game/texture-packs/"*.rtz "$out/$wname/texture-packs/"
-    cp tools/release/README.md LICENSE "$out/$wname/"
+    cp tools/release/README.md LICENSE "$release_notes" "$out/$wname/"
     # Add to Steam.bat runs add-to-steam.ps1 (the Linux install.sh's Steam step, for Windows), both with CRLF.
     sed 's/$/\r/' tools/windows/add-to-steam.ps1 >"$out/$wname/add-to-steam.ps1"
     cp "tools/windows/Add to Steam.bat" "$out/$wname/"  # kept with CRLF in the repository

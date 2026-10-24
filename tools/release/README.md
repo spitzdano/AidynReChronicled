@@ -9,6 +9,8 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 > so playtests and problem reports from further along are very welcome (see "Found a problem?" below);
 > I'll work on them when I can.
 
+**What's new:** `RELEASE-NOTES.md`, next to this file, has what each release changed, newest first.
+
 ## Features
 
 - **A native game**, not an emulator: for Linux, one download for any current distribution, with an installer that
@@ -20,18 +22,20 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 - **Widescreen**: 16:9, 21:9 or any width, with the HUD at the screen edges; the menus stay 4:3, as they were made.
 - **Smooth**: the game runs at 60 frames a second (the N64 managed 15 to 20), with frames drawn in between up to your
   display's rate, and walk cycles without their stutter.
-- **Newly painted art**: about 1,500 world textures, every portrait, the icons, the HUD and a repainted pause scroll,
+- **Newly painted art**: 2,113 of the game's 2,115 world textures, every portrait, an icon of its own for every item
+  (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
   plus HD lettering and Xbox button prompts. F2 shows what was there before.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
 - **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
-- **Clearer combat**: a turn-order bar, a combat log, framed portraits and easier aiming.
+- **Clearer combat**: a turn-order bar, a combat log, framed portraits, easier aiming, and what a spell or potion does
+  shown while you choose it.
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
 - **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options.
-- **Safe saves**: the Controller Pak's last 20 states are kept, and a problem report gathers what's needed when
-  something goes wrong.
+- **Safe saves**: the Controller Pak's last 20 states are kept, an emulator's save (Project64, ares, Mupen64Plus,
+  RetroArch) can be copied in, and a problem report gathers what's needed when something goes wrong.
 
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
 `47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Nothing from the game is in this download.
@@ -142,7 +146,9 @@ All in the data folder (see "Your ROM and the data folder"):
 - `settings.json`: resolution, aspect (`"16:9"`, `"21:9"`, `"4:3"`…), frame rate, anti-aliasing, draw distance and
   more, written with defaults on the first start. Edit it while the game is closed. `camera_invert_y` /
   `camera_invert_x` invert the camera.
-- `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's. `backups/` keeps its last
+- `aidyn.mpk` (`aidyn-patch.mpk`): your saves, a Controller Pak image like an emulator's (an emulator's own can be
+  copied in under this name: Project64's and ares' as they are, Mupen64Plus' and RetroArch's are converted when the game
+  starts, the original kept in `backups/`). `backups/` keeps its last
   20 states (at each start and before each save).
 - `aidyn-patch-quicksave.sav`, `-autosave-1.sav`, `-autosave-2.sav`, `-lastsave.sav`: the quicksave (View while
   walking about), the two newest autosaves and a copy of the last save made on the pak, for Quick Load and Continue.
@@ -151,8 +157,8 @@ All in the data folder (see "Your ROM and the data folder"):
   crashes, or by **Report a problem** on the pause menu's ReChronicled page. Send the newest with a few words on what
   happened.
 - `texture-packs/`: HD texture packs of your own (folders, or `.rtz` files). This release includes, next to the game (in its own
-  `texture-packs`), newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces and
-  the first world textures: Alaron, the starting forest, part of Gwernia Castle), the HD letters and Xbox button
+  `texture-packs`), newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces, the map page's land and
+  2,113 of the 2,115 world textures), the HD letters and Xbox button
   icons for all the game's text and the redrawn menu titles and inventory words (`rechronicled-text`, drawn from fonts;
   they win over any HD menu pack's, so the text always matches this version's spacing and lettering) and the title-screen branding (`rechronicled`); the HD menu and world
   packs (upscales of the game's own pictures) are not part of it.

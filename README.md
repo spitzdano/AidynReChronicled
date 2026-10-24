@@ -23,19 +23,21 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 - **Widescreen**: 16:9, 21:9 or any width, with the HUD at the screen edges; the menus stay 4:3, as they were made.
 - **Smooth**: the game runs at 60 frames a second (the N64 managed 15 to 20), with frames drawn in between up to your
   display's rate, and walk cycles without their stutter.
-- **Newly painted art**: about 1,500 world textures, every portrait, the icons, the HUD and a repainted pause scroll,
+- **Newly painted art**: 2,113 of the game's 2,115 world textures, every portrait, an icon of its own for every item
+  (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
   plus HD lettering and Xbox button prompts. F2 shows what was there before.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
 - **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
-- **Clearer combat**: a turn-order bar, a combat log, framed portraits and easier aiming.
+- **Clearer combat**: a turn-order bar, a combat log, framed portraits, easier aiming, and what a spell or potion does
+  shown while you choose it.
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
 - **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options,
   windowed or borderless full screen included.
-- **Safe saves**: the Controller Pak's last 20 states are kept, and a problem report gathers what's needed when
-  something goes wrong.
+- **Safe saves**: the Controller Pak's last 20 states are kept, an emulator's save (Project64, ares, Mupen64Plus,
+  RetroArch) can be copied in, and a problem report gathers what's needed when something goes wrong.
 
 **This repository contains no game data** (only the pictures on this page). You need your own dump of the game. The build
 checks it against this SHA-1:
@@ -89,7 +91,8 @@ Plus applied if you have them, under any names (`.z64`, `.n64` or `.v64`). At ea
 version it doesn't have yet, recognises each by its hash, keeps a copy in its data folder and lists it on the title
 screen; on Linux, `install.sh` copies them to the installed game's `ROMs` folder and keeps that folder through updates.
 If the version you played last has no ROM, the game plays one that has. Without any ROM there, the first start asks for
-one in a file dialog. The README in the download covers controls, Aidyn Patch, Aidyn Plus and settings. Releases carry
+one in a file dialog. The README in the download covers controls, Aidyn Patch, Aidyn Plus and settings, and
+RELEASE-NOTES.md what each release changed (`tools/release/notes`). Releases carry
 no game data (nor either patch), and not the HD menu and world texture packs; the newly painted art, the HD letters and
 the title branding ship as three `.rtz` texture packs.
 
@@ -211,7 +214,8 @@ to the original ROM:
 Both change only game data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell,
 item and chest databases; compared byte by byte with the 1.0 ROM), no code, so they run on the same recompiled code.
 You can have none, one or both. Each game keeps its own Controller Pak: `aidyn-patch.mpk`, `aidyn-plus.mpk`; copy
-`aidyn.mpk` over one to carry a save across. Aidyn Plus's own FAQ warns that some of its items and spells freeze the
+`aidyn.mpk` over one to carry a save across (not into Aidyn Plus: its databases differ enough that such a save can
+crash it, #31). Aidyn Plus's own FAQ warns that some of its items and spells freeze the
 game when you look at their description; that is the romhack, not the port.
 
 Switching versions:
@@ -256,7 +260,8 @@ steps, and how to add it by hand).
 
 **Manual.** `tools/manual/build_manual.py` builds a PC edition of the instruction booklet (HTML and an A5 PDF) into
 `~/.local/share/AidynReChronicled/manual`: new text following the original booklet's chapters, with the spell list,
-portraits and icons read from your own ROM (and a table of what Aidyn Patch changes, when that ROM is stored), and
+portraits and icons read from your own ROM (and tables of what Aidyn Patch and Aidyn Plus change: spells, weapons,
+armour, items, creatures, training and potions, when those ROMs are stored), and
 screenshots from `tools/manual/shots.sh`. F1 in the game and the launchers' Manual action open it. See
 `tools/manual/README.md`.
 
