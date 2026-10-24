@@ -5006,8 +5006,8 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, 
 // potions' at 0xB1FD1960 (0xA80 bytes, without their crafting recipe), wrapped to 140 units in the game's letters,
 // with the combat log's soft shadow. The menu (gCombatCVertMenu, its box from aidyn_combat_menu_drawn): its scroll
 // list +0x7C, that list's substruct +0x40 (rows +0x18, highlight +0x1E, count +0x20); each row's kind and what it
-// holds: combat_entry_key. Aidyn Patch and Aidyn Plus carry their own texts in the same places. settings.json
-// graphics.combat_log off hides it too.
+// holds: combat_entry_key. Aidyn Patch and Aidyn Plus keep the 1.0's texts (the same bytes, even for the spells
+// they change). settings.json graphics.combat_log off hides it too.
 extern "C" void func_romstrings(uint8_t* rdram, recomp_context* ctx);  // RomString::Load(rom, size)
 extern "C" void RomString__Free(uint8_t* rdram, recomp_context* ctx);
 
