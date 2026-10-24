@@ -1754,8 +1754,11 @@ namespace {
 
 extern "C" void func_8008FAB0(uint8_t* rdram, recomp_context* ctx);  // the recompiled DCM::StopVoice(voice, id)
 
+extern "C" void aidyn_music_tick(uint8_t* rdram, recomp_context* ctx);  // src/game/music_log.cpp
+
 // DCM::VoiceHandler's entry (audio thread).
 extern "C" void aidyn_dcm_tick(uint8_t* rdram, recomp_context* ctx) {
+    aidyn_music_tick(rdram, ctx);
     static const bool log = std::getenv("AIDYN_INTRO_LOG") != nullptr;
     if (!log && !intro_seek) {
         return;

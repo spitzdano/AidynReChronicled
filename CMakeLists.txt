@@ -88,6 +88,7 @@ add_executable(AidynReChronicled
     src/main/packs.cpp
     src/game/pak.cpp
     src/game/page_words.cpp
+    src/game/music_log.cpp
     src/game/patches.cpp
     src/game/save_pictures.cpp
     src/game/stubs.cpp

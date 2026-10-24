@@ -803,3 +803,34 @@ text = "extern void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx
 func = "WidgetMenuWorldMap__Tick"
 before_vram = 0x80049428
 text = "extern void aidyn_world_map_tick(uint8_t* rdram, recomp_context* ctx); aidyn_world_map_tick(rdram, ctx);"
+
+# AIDYN_MUSIC_LOG (src/game/music_log.cpp): the DCM player's voice calls, for the orchestral music (#12).
+[[patches.hook]]
+func = "func_8008F778"
+before_vram = 0x8008F778
+text = "extern void aidyn_music_add(uint8_t* rdram, recomp_context* ctx); aidyn_music_add(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8008F778"
+before_vram = 0x8008F960
+text = "extern void aidyn_music_added(uint8_t* rdram, recomp_context* ctx); aidyn_music_added(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8008F968"
+before_vram = 0x8008F968
+text = "extern void aidyn_music_set(uint8_t* rdram, recomp_context* ctx, const char* what); aidyn_music_set(rdram, ctx, \"pitch\");"
+
+[[patches.hook]]
+func = "func_8008F9D0"
+before_vram = 0x8008F9D0
+text = "extern void aidyn_music_set(uint8_t* rdram, recomp_context* ctx, const char* what); aidyn_music_set(rdram, ctx, \"vol\");"
+
+[[patches.hook]]
+func = "func_8008FA40"
+before_vram = 0x8008FA40
+text = "extern void aidyn_music_set(uint8_t* rdram, recomp_context* ctx, const char* what); aidyn_music_set(rdram, ctx, \"pan\");"
+
+[[patches.hook]]
+func = "func_8008FAB0"
+before_vram = 0x8008FAB0
+text = "extern void aidyn_music_stop(uint8_t* rdram, recomp_context* ctx); aidyn_music_stop(rdram, ctx);"
