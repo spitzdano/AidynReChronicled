@@ -2897,7 +2897,7 @@ namespace {
     gpr combat_menu = 0;
     int combat_menu_kind = 0;  // 1 items (Y), 0 spells and skills (X)
     struct { bool seen; int x, y, w, h; } combat_menu_box{};
-    struct { bool seen; int x, y, w, h; } spell_info_box{};  // the spell menu's box this frame, for draw_spell_info
+    struct { bool seen; int x, y, w, h; } spell_info_box{};  // the held menu's box this frame, for draw_spell_info
 
     bool heap_pointer(gpr p) {
         const uint32_t u = (uint32_t)p;
@@ -3177,7 +3177,7 @@ extern "C" void aidyn_combat_menu_drawn(uint8_t* rdram) {
     }
     combat_menu_box = { true, x0, y0, x1 - x0, y1 - y0 };
     combat_menu_open = true;
-    spell_info_box = { combat_menu_kind == 0, x0, y0, x1 - x0, y1 - y0 };
+    spell_info_box = { true, x0, y0, x1 - x0, y1 - y0 };
     static const bool log = std::getenv("AIDYN_HINT_LOG") != nullptr;
     static int last[4] = {};
     const int now[4] = { x0, y0, x1 - x0, y1 - y0 };
@@ -4895,15 +4895,15 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, 
     return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
-// ---- Spell descriptions in combat ----
-// While a spell is highlighted in combat's spell menu (X held), what it does shows beside the menu (#23): the same
-// description the pause menu's spell Details give (WidgetItemDetail(SpellInstance*): the spells' romstrings at ROM
-// 0xB1FCFE30, 0x13A0 bytes, indexed through its spell ID table), wrapped to 140 units in the game's letters, with the
-// combat log's soft shadow. The menu (gCombatCVertMenu, its box from aidyn_combat_menu_drawn): its scroll list +0x7C,
-// that list's substruct +0x40 (rows +0x18, highlight +0x1E, count +0x20); a spell's row has the spell A function
-// (func_80088958, +0x18) and its spellbook index in varU8 (+0x5C). The spell: gCombatP->current_Ent (+0x2C) ->
-// charSheetP (+0x40) -> spellbook (+0x2C) -> spells (+0) [index] -> its ID (+0). Aidyn Patch and Aidyn Plus carry their
-// own texts in the same place. settings.json graphics.combat_log off hides it too.
+// ---- Spell and item descriptions in combat ----
+// While an entry is highlighted in combat's held menus, what it does shows beside the menu (#23): a spell (X), and in
+// the item menu (Y) a potion or the spell an item holds (a wand, a ring...). The text is the pause menu's Details
+// (WidgetItemDetail): the spells' romstrings at ROM 0xB1FCFE30 (0x13A0 bytes, indexed through the spell ID table), the
+// potions' at 0xB1FD1960 (0xA80 bytes, without their crafting recipe), wrapped to 140 units in the game's letters,
+// with the combat log's soft shadow. The menu (gCombatCVertMenu, its box from aidyn_combat_menu_drawn): its scroll
+// list +0x7C, that list's substruct +0x40 (rows +0x18, highlight +0x1E, count +0x20); each row's kind and what it
+// holds: combat_entry_key. Aidyn Patch and Aidyn Plus carry their own texts in the same places. settings.json
+// graphics.combat_log off hides it too.
 extern "C" void func_romstrings(uint8_t* rdram, recomp_context* ctx);  // RomString::Load(rom, size)
 extern "C" void RomString__Free(uint8_t* rdram, recomp_context* ctx);
 
@@ -4918,18 +4918,29 @@ namespace {
         {0x032b, 0x23},{0x032d, 0x24},{0x032e, 0x25},{0x032f, 0x26},{0x0330, 0x27},{0x0331, 0x28},{0x0332, 0x29},
         {0x0333, 0x2a},{0x0334, 0x2b},{0x0335, 0x2c},{0x0336, 0x2d},{0x0337, 0x2e},{0x0338, 0x2f},{0x0339, 0x30},
         {0x033a, 0x31},{0x033b, 0x32},{0x033c, 0x33},{0x033d, 0x34},{0x033e, 0x35},{0x033f, 0x36} };
-    std::vector<std::string> spell_texts;  // by romstring index, read once
-    uint16_t spell_shown = 0;              // the spell whose lines are below
-    float spell_width = 0.0f;              // and the width they're wrapped to
+    // The potions' Details texts (String/PotionDetails), in PotionEnum order without Aspect and Jumping (never in the
+    // game): Fire, Inferno, Sleep, Acid, Healing, Stamina, Curing, Antidote, Restore, Strength, Dexterity, Clarity,
+    // Charisma, Defence, Stealth (the game's own Details table gives Stealth Defence's text, 13). Each ends with the
+    // Alchemist's recipe ("Creating a Fire Flask requires..."), left out in combat.
+    constexpr uint32_t kPotionStrings = 0xB1FD1960, kPotionStringsSize = 0xA80;
+    constexpr int kPotionText[17] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1, -1, 11, 12, 13, 14 };
+    constexpr uint32_t kPotionAFunc = 0x80089114, kItemSpellAFunc = 0x80089178;  // the item menu's two row kinds
+    std::vector<std::string> spell_texts;   // by romstring index, read once
+    std::vector<std::string> potion_texts;  // likewise
+    uint32_t text_shown = 0;                // the entry whose lines are below (combat_entry_key)
+    float spell_width = 0.0f;               // and the width they're wrapped to
     std::vector<std::string> spell_lines;
 
-    void load_spell_texts(uint8_t* rdram, recomp_context* ctx) {
-        const gpr strings = (gpr)(int32_t)call_game(rdram, ctx, func_romstrings, kSpellStrings, kSpellStringsSize);
+    // A romstring table's first count strings: each is its length (the byte before it), then its decoded letters
+    // (func_romstrings): not aligned, so read byte by byte.
+    std::vector<std::string> load_romstrings(uint8_t* rdram, recomp_context* ctx, uint32_t rom, uint32_t size,
+                                             int count) {
+        std::vector<std::string> out;
+        const gpr strings = (gpr)(int32_t)call_game(rdram, ctx, func_romstrings, rom, size);
         if (!heap_pointer(strings)) {
-            return;
+            return out;
         }
-        for (int i = 0; i < (int)std::size(kSpellText); i++) {
-            // Each string is its length (the byte before it), then its decoded letters (func_romstrings): not aligned.
+        for (int i = 0; i < count; i++) {
             const gpr str = MEM_W(4 * i, strings);
             const uint32_t u = (uint32_t)str;
             std::string text;
@@ -4941,13 +4952,19 @@ namespace {
                     text += c;
                 }
             }
-            spell_texts.push_back(text);
+            out.push_back(text);
         }
         call_game(rdram, ctx, RomString__Free, (uint32_t)strings);
+        return out;
     }
 
-    // The highlighted spell's ID, or 0.
-    uint16_t highlighted_spell(uint8_t* rdram) {
+    // The highlighted entry of the held X or Y menu: 0x10000 | a spell's ID (a spell, or the spell an item holds:
+    // a wand, a ring...), 0x20000 | a potion (PotionEnum), else 0. The menu's rows: A function +0x18, varU8 +0x5C,
+    // varU16 +0x5E. A spell row (func_80088958): its spellbook index in varU8. A potion row (WidgetCombatItems,
+    // func_80089114): its item ID in varU16. An item's spell (func_80089178): varU16 where (2 armour, 3 shield,
+    // 4 weapon, 5 gear) and varU8 the gear slot; the item (CharSheet +0x20 armour[2], +0x24 weapon, +0x28 gear list
+    // -> pItem[]) -> spellCharge (+0x10) -> Spell (+0) -> its ID (+0).
+    uint32_t combat_entry_key(uint8_t* rdram) {
         const gpr menu = combat_menu;
         if (!heap_pointer(menu) || MEM_W(0, (gpr)(int32_t)0x800E3170) != menu) return 0;
         const gpr list = MEM_W(0x7C, menu);
@@ -4957,16 +4974,59 @@ namespace {
         const uint32_t hl = MEM_HU(0x1E, sub), count = MEM_HU(0x20, sub);
         if (!heap_pointer(rows) || hl >= count) return 0;
         const gpr row = MEM_W(4 * hl, rows);
-        if (!heap_pointer(row) || (uint32_t)MEM_W(0x18, row) != kSpellAFunc) return 0;
-        const uint32_t index = MEM_BU(0x5C, row);
+        if (!heap_pointer(row)) return 0;
+        const uint32_t afunc = (uint32_t)MEM_W(0x18, row), var8 = MEM_BU(0x5C, row), var16 = MEM_HU(0x5E, row);
         const gpr combat = MEM_W(0, kCombatP);
         const gpr ent = heap_pointer(combat) ? MEM_W(kCurrentEnt, combat) : 0;
         const gpr sheet = heap_pointer(ent) ? MEM_W(0x40, ent) : 0;
-        const gpr book = heap_pointer(sheet) ? MEM_W(0x2C, sheet) : 0;
-        if (!heap_pointer(book) || index >= MEM_BU(4, book)) return 0;
-        const gpr spells = MEM_W(0, book);
-        const gpr spell = heap_pointer(spells) ? MEM_W(4 * index, spells) : 0;
-        return heap_pointer(spell) ? MEM_HU(0, spell) : 0;
+        if (!heap_pointer(sheet)) return 0;
+        auto spell_key = [&](gpr spell) -> uint32_t { return heap_pointer(spell) ? 0x10000u | MEM_HU(0, spell) : 0; };
+        if (afunc == kSpellAFunc) {
+            const gpr book = MEM_W(0x2C, sheet);
+            if (!heap_pointer(book) || var8 >= MEM_BU(4, book)) return 0;
+            const gpr spells = MEM_W(0, book);
+            return heap_pointer(spells) ? spell_key(MEM_W(4 * var8, spells)) : 0;
+        }
+        if (afunc == kPotionAFunc) {
+            return (var16 >> 8) == 16 && (var16 & 0xFF) < 17 ? 0x20000u | (var16 & 0xFF) : 0;
+        }
+        if (afunc == kItemSpellAFunc) {
+            gpr item = 0;
+            if (var16 == 2 || var16 == 3) {
+                const gpr armour = MEM_W(0x20, sheet);
+                item = heap_pointer(armour) ? MEM_W(4 * (var16 - 2), armour) : 0;
+            } else if (var16 == 4) {
+                item = MEM_W(0x24, sheet);
+            } else if (var16 == 5) {
+                const gpr gear = MEM_W(0x28, sheet);
+                const gpr items = heap_pointer(gear) ? MEM_W(0, gear) : 0;
+                item = heap_pointer(items) && var8 < 12 ? MEM_W(4 * var8, items) : 0;
+            }
+            const gpr charge = heap_pointer(item) ? MEM_W(0x10, item) : 0;
+            return heap_pointer(charge) ? spell_key(MEM_W(0, charge)) : 0;
+        }
+        return 0;
+    }
+
+    // That entry's description, or "".
+    std::string combat_entry_text(uint8_t* rdram, recomp_context* ctx, uint32_t key) {
+        if (key >> 16 == 1) {
+            if (spell_texts.empty()) {
+                spell_texts = load_romstrings(rdram, ctx, kSpellStrings, kSpellStringsSize, (int)std::size(kSpellText));
+            }
+            for (const auto& [id, at] : kSpellText) {
+                if (id == (key & 0xFFFF)) return at < spell_texts.size() ? spell_texts[at] : "";
+            }
+        } else if (key >> 16 == 2) {
+            if (potion_texts.empty()) {
+                potion_texts = load_romstrings(rdram, ctx, kPotionStrings, kPotionStringsSize, 15);
+            }
+            const int at = kPotionText[key & 0xFF];
+            std::string text = at >= 0 && at < (int)potion_texts.size() ? potion_texts[at] : "";
+            const size_t recipe = text.find(" Creating ");  // what it does, not how an Alchemist makes it
+            return recipe == std::string::npos ? text : text.substr(0, recipe);
+        }
+        return "";
     }
 }
 
@@ -4977,12 +5037,9 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (!box.seen || !aidyn::settings::graphics().combat_log || !heap_pointer(font)) {
         return g;
     }
-    const uint16_t id = highlighted_spell(rdram);
-    if (id == 0) {
+    const uint32_t key = combat_entry_key(rdram);
+    if (key == 0) {
         return g;
-    }
-    if (spell_texts.empty()) {
-        load_spell_texts(rdram, ctx);
     }
     constexpr float kScale = 0.72f, kLine = 7.6f, kWidth = 140.0f;
     // Right of the menu's box, centred on its height; in 4:3 (no room right, and the combat log and the controls list
@@ -4997,15 +5054,11 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const float right_x = box.x + box.w + 3.0f, right_room = 320.0f + shift - 4.0f - right_x;
     const bool right = right_room >= kWidth;
     const float width = right ? kWidth : kAboveWidth;
-    if (id != spell_shown || width != spell_width) {
-        spell_shown = id;
+    if (key != text_shown || width != spell_width) {
+        text_shown = key;
         spell_width = width;
         spell_lines.clear();
-        int at = -1;
-        for (int i = 0; i < (int)std::size(kSpellText); i++) {
-            if (kSpellText[i][0] == id) at = kSpellText[i][1];
-        }
-        const std::string text = at >= 0 && at < (int)spell_texts.size() ? spell_texts[at] : "";
+        const std::string text = combat_entry_text(rdram, ctx, key);
         const FontState st = font_save(rdram, font);
         call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
         std::string line, word;
