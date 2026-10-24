@@ -4920,8 +4920,8 @@ namespace {
         {0x033a, 0x31},{0x033b, 0x32},{0x033c, 0x33},{0x033d, 0x34},{0x033e, 0x35},{0x033f, 0x36} };
     // The potions' Details texts (String/PotionDetails), in PotionEnum order without Aspect and Jumping (never in the
     // game): Fire, Inferno, Sleep, Acid, Healing, Stamina, Curing, Antidote, Restore, Strength, Dexterity, Clarity,
-    // Charisma, Defence, Stealth (the game's own Details table gives Stealth Defence's text, 13). Each ends with the
-    // Alchemist's recipe ("Creating a Fire Flask requires..."), left out in combat.
+    // Charisma, Defence, Stealth (as the game's own table at 0x800CF760 maps them). Each ends with the Alchemist's
+    // recipe ("Creating a Fire Flask requires..."), left out in combat.
     constexpr uint32_t kPotionStrings = 0xB1FD1960, kPotionStringsSize = 0xA80;
     constexpr int kPotionText[17] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1, -1, 11, 12, 13, 14 };
     constexpr uint32_t kPotionAFunc = 0x80089114, kItemSpellAFunc = 0x80089178;  // the item menu's two row kinds
