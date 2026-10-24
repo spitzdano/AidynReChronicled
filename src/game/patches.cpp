@@ -34,6 +34,7 @@ gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
+gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Spell descriptions in combat", below
 gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Quick and auto saves", below
 void all_props_frame_end();  // "Every prop considered", below
@@ -60,6 +61,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     if (combat_log_frame) {
         g = draw_combat_log(rdram, ctx, g, combat_card_top);
     }
+    g = draw_spell_info(rdram, ctx, g);
     g = aidyn_rc_page(rdram, ctx, g);
     g = draw_fps_counter(rdram, ctx, g);
     g = draw_save_notice(rdram, ctx, g);
@@ -2860,6 +2862,7 @@ namespace {
     gpr combat_menu = 0;
     int combat_menu_kind = 0;  // 1 items (Y), 0 spells and skills (X)
     struct { bool seen; int x, y, w, h; } combat_menu_box{};
+    struct { bool seen; int x, y, w, h; } spell_info_box{};  // the spell menu's box this frame, for draw_spell_info
 
     bool heap_pointer(gpr p) {
         const uint32_t u = (uint32_t)p;
@@ -3138,6 +3141,7 @@ extern "C" void aidyn_combat_menu_drawn(uint8_t* rdram) {
         return;
     }
     combat_menu_box = { true, x0, y0, x1 - x0, y1 - y0 };
+    spell_info_box = { combat_menu_kind == 0, x0, y0, x1 - x0, y1 - y0 };
     static const bool log = std::getenv("AIDYN_HINT_LOG") != nullptr;
     static int last[4] = {};
     const int now[4] = { x0, y0, x1 - x0, y1 - y0 };
@@ -4836,6 +4840,169 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top) 
     return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
+// ---- Spell descriptions in combat ----
+// While a spell is highlighted in combat's spell menu (X held), what it does shows beside the menu (#23): the same
+// description the pause menu's spell Details give (WidgetItemDetail(SpellInstance*): the spells' romstrings at ROM
+// 0xB1FCFE30, 0x13A0 bytes, indexed through its spell ID table), wrapped to 150 units in the game's letters, with the
+// combat log's soft shadow. The menu (gCombatCVertMenu, its box from aidyn_combat_menu_drawn): its scroll list +0x7C,
+// that list's substruct +0x40 (rows +0x18, highlight +0x1E, count +0x20); a spell's row has the spell A function
+// (func_80088958, +0x18) and its spellbook index in varU8 (+0x5C). The spell: gCombatP->current_Ent (+0x2C) ->
+// charSheetP (+0x40) -> spellbook (+0x2C) -> spells (+0) [index] -> its ID (+0). Aidyn Patch and Aidyn Plus carry their
+// own texts in the same place. settings.json graphics.combat_log off hides it too.
+extern "C" void func_romstrings(uint8_t* rdram, recomp_context* ctx);  // RomString::Load(rom, size)
+extern "C" void RomString__Free(uint8_t* rdram, recomp_context* ctx);
+
+namespace {
+    constexpr uint32_t kSpellStrings = 0xB1FCFE30, kSpellStringsSize = 0x13A0, kSpellAFunc = 0x80088958;
+    constexpr uint16_t kSpellText[][2] = {
+        {0x0300, 0x00},{0x0301, 0x01},{0x0302, 0x02},{0x0303, 0x03},{0x0304, 0x04},{0x0305, 0x05},{0x0306, 0x06},
+        {0x0308, 0x07},{0x0309, 0x08},{0x030a, 0x09},{0x030c, 0x0a},{0x030d, 0x0b},{0x0310, 0x0c},{0x0312, 0x0d},
+        {0x0313, 0x0e},{0x0314, 0x0f},{0x0315, 0x10},{0x0316, 0x11},{0x0317, 0x12},{0x0318, 0x13},{0x0319, 0x14},
+        {0x031a, 0x15},{0x031b, 0x16},{0x031c, 0x17},{0x031d, 0x18},{0x031e, 0x19},{0x031f, 0x1a},{0x0320, 0x1b},
+        {0x0321, 0x1c},{0x0322, 0x1d},{0x0323, 0x1e},{0x0324, 0x1f},{0x0326, 0x20},{0x0329, 0x21},{0x032a, 0x22},
+        {0x032b, 0x23},{0x032d, 0x24},{0x032e, 0x25},{0x032f, 0x26},{0x0330, 0x27},{0x0331, 0x28},{0x0332, 0x29},
+        {0x0333, 0x2a},{0x0334, 0x2b},{0x0335, 0x2c},{0x0336, 0x2d},{0x0337, 0x2e},{0x0338, 0x2f},{0x0339, 0x30},
+        {0x033a, 0x31},{0x033b, 0x32},{0x033c, 0x33},{0x033d, 0x34},{0x033e, 0x35},{0x033f, 0x36} };
+    std::vector<std::string> spell_texts;  // by romstring index, read once
+    uint16_t spell_shown = 0;              // the spell whose lines are below
+    std::vector<std::string> spell_lines;
+
+    void load_spell_texts(uint8_t* rdram, recomp_context* ctx) {
+        const gpr strings = (gpr)(int32_t)call_game(rdram, ctx, func_romstrings, kSpellStrings, kSpellStringsSize);
+        if (!heap_pointer(strings)) {
+            return;
+        }
+        for (int i = 0; i < (int)std::size(kSpellText); i++) {
+            // Each string is its length (the byte before it), then its decoded letters (func_romstrings): not aligned.
+            const gpr str = MEM_W(4 * i, strings);
+            const uint32_t u = (uint32_t)str;
+            std::string text;
+            if (u >= 0x80000400u && u < 0x80E6A000u) {
+                const int len = MEM_BU(-1, str);
+                for (int k = 0; k < len; k++) {
+                    const char c = (char)MEM_BU(k, str);
+                    if (c == 0) break;
+                    text += c;
+                }
+            }
+            spell_texts.push_back(text);
+        }
+        call_game(rdram, ctx, RomString__Free, (uint32_t)strings);
+    }
+
+    // The highlighted spell's ID, or 0.
+    uint16_t highlighted_spell(uint8_t* rdram) {
+        const gpr menu = combat_menu;
+        if (!heap_pointer(menu) || MEM_W(0, (gpr)(int32_t)0x800E3170) != menu) return 0;
+        const gpr list = MEM_W(0x7C, menu);
+        const gpr sub = heap_pointer(list) ? MEM_W(0x40, list) : 0;
+        if (!heap_pointer(sub)) return 0;
+        const gpr rows = MEM_W(0x18, sub);
+        const uint32_t hl = MEM_HU(0x1E, sub), count = MEM_HU(0x20, sub);
+        if (!heap_pointer(rows) || hl >= count) return 0;
+        const gpr row = MEM_W(4 * hl, rows);
+        if (!heap_pointer(row) || (uint32_t)MEM_W(0x18, row) != kSpellAFunc) return 0;
+        const uint32_t index = MEM_BU(0x5C, row);
+        const gpr combat = MEM_W(0, kCombatP);
+        const gpr ent = heap_pointer(combat) ? MEM_W(kCurrentEnt, combat) : 0;
+        const gpr sheet = heap_pointer(ent) ? MEM_W(0x40, ent) : 0;
+        const gpr book = heap_pointer(sheet) ? MEM_W(0x2C, sheet) : 0;
+        if (!heap_pointer(book) || index >= MEM_BU(4, book)) return 0;
+        const gpr spells = MEM_W(0, book);
+        const gpr spell = heap_pointer(spells) ? MEM_W(4 * index, spells) : 0;
+        return heap_pointer(spell) ? MEM_HU(0, spell) : 0;
+    }
+}
+
+gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    const auto box = spell_info_box;
+    spell_info_box.seen = false;
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!box.seen || !aidyn::settings::graphics().combat_log || !heap_pointer(font)) {
+        return g;
+    }
+    const uint16_t id = highlighted_spell(rdram);
+    if (id == 0) {
+        return g;
+    }
+    if (spell_texts.empty()) {
+        load_spell_texts(rdram, ctx);
+    }
+    constexpr float kScale = 0.62f, kLine = 6.6f, kWidth = 150.0f;
+    if (id != spell_shown) {
+        spell_shown = id;
+        spell_lines.clear();
+        int at = -1;
+        for (int i = 0; i < (int)std::size(kSpellText); i++) {
+            if (kSpellText[i][0] == id) at = kSpellText[i][1];
+        }
+        const std::string text = at >= 0 && at < (int)spell_texts.size() ? spell_texts[at] : "";
+        const FontState st = font_save(rdram, font);
+        call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+        std::string line, word;
+        auto flush_word = [&] {
+            if (word.empty()) return;
+            const std::string tried = line.empty() ? word : line + " " + word;
+            if (!line.empty() && text_width(rdram, ctx, font, tried) > kWidth) {
+                spell_lines.push_back(line);
+                line = word;
+            } else {
+                line = tried;
+            }
+            word.clear();
+        };
+        for (char c : text) {
+            if (c == ' ' || c == '\n') {
+                flush_word();
+                if (c == '\n' && !line.empty()) { spell_lines.push_back(line); line.clear(); }
+            } else {
+                word += c;
+            }
+        }
+        flush_word();
+        if (!line.empty()) spell_lines.push_back(line);
+        font_restore(rdram, font, st);
+    }
+    if (spell_lines.empty()) {
+        return g;
+    }
+    // Right of the menu's box, its top level with the box's; left of it when there's no room (4:3). The text is placed
+    // from the picture's left edge (hud_begin), the box in the middle 4:3: shift by the picture's extra width.
+    float aspect = view_aspect();
+    if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Window && aidyn::window_aspect() > 0.0f) {
+        aspect = aidyn::window_aspect();
+    }
+    const float shift = std::max(0.0f, (240.0f * aspect - 320.0f) / 2.0f);
+    const float right_room = 320.0f + shift;
+    float x0 = box.x + box.w + 6.0f;
+    if (x0 + kWidth + 4.0f > right_room) x0 = std::max(4.0f, box.x - 6.0f - kWidth);
+    const float y0 = (float)box.y + 2.0f;
+    g = hud_begin(rdram, g, false);
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    for (int pass = 0; pass < 2; pass++) {
+        GfxCommand a[2];
+        const int d = pass == 0 ? 2 : 0;
+        gEXSetRectAlign(&a[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, d, d, d, d);
+        g = put_cmds(rdram, g, a, 2);
+        for (size_t k = 0; k < spell_lines.size(); k++) {
+            MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xF2E6C8FFu);
+            put_text(rdram, spell_lines[k]);
+            MEM_W(0, kLogGfx) = (int32_t)g;
+            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                            (uint32_t)(int)std::lround(x0 + shift),
+                            { (uint32_t)(int)std::lround(y0 + k * kLine), f32_bits(kScale), f32_bits(kScale) });
+            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+        }
+    }
+    font_restore(rdram, font, st);
+    g = hud_end(rdram, g);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
+}
+
 // ---- Buckler ----
 // The Buckler's model (BORG5_ShieldBuckler; its vertices and display list are BORG2 asset 0x3520) was exported with
 // every texture coordinate inside a patch of about 5x5 of its texture's 32x32 texels, so in the game its face shows a
