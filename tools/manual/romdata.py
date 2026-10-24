@@ -65,3 +65,87 @@ def spells(rom_path):
     if len(out) != total:
         raise SystemExit(f"romdata.py: {len(out)} spells read, the header says {total}")
     return out
+
+
+# ---- Weapons and creatures (for the Aidyn Plus tables) ----
+# Both databases are laid out like the spells': a count (u8 + 3 junk), then per category a count and that many packed
+# records (decomp: include/weapondb.h Weapon_ROM, 48 bytes, 11 weapon classes; include/entity.h Entity_ROM, 136 bytes,
+# 7 categories). Found by their structure (every record a name and an item ID of the database's type), so a patched
+# ROM that moved them still works.
+WEAPON_CLASSES = ["Bite", "Breath", "Claw", "Hafted", "Missile", "Pole", "Spit", "Sting", "Sword", "Thrown", "Tusk"]
+ELEMENTS = ["", "Earth", "Solar", "Physical", "Necromancy", "Fire", "Lunar", "Naming", "Water", "Magic", "Air", "Star",
+            "Elemental", "Chaos", "Cutting", "Smashing", "Holy"]
+
+
+def _find_db(rom, cats, size, name_len, id_off, db_type):
+    for pos in range(0x1000000, len(rom) - 8, 4):
+        if rom[pos] == 0:
+            continue
+        total, q, got = rom[pos], pos + 4, 0
+        for _ in range(cats):
+            n = rom[q]
+            q += 4
+            for _ in range(n):
+                r = rom[q:q + size]
+                s = r[:name_len].split(b"\0")[0]
+                if len(s) < 3 or not all(32 <= c < 127 for c in s) or r[id_off + 1] != db_type:
+                    break
+                q += size
+                got += 1
+            else:
+                continue
+            break
+        else:
+            if got == total:
+                return pos
+    return None
+
+
+def _records(rom, pos, cats, size):
+    q, out = pos + 4, []
+    for c in range(cats):
+        n = rom[q]
+        q += 4
+        for _ in range(n):
+            out.append((c, rom[q:q + size]))
+            q += size
+    return out
+
+
+def weapons(rom_path):
+    """[dict] of the weapons the party can use (classes Hafted, Missile, Pole, Sword, Thrown), in database order."""
+    rom = Path(rom_path).read_bytes()
+    pos = _find_db(rom, 11, 48, 21, 21, 7)
+    if pos is None:
+        raise SystemExit(f"romdata.py: no weapon database in {rom_path}")
+    out = []
+    for c, r in _records(rom, pos, 11, 48):
+        if WEAPON_CLASSES[c] not in ("Hafted", "Missile", "Pole", "Sword", "Thrown"):
+            continue
+        out.append({"name": r[:21].split(b"\0")[0].decode("ascii"), "id": r[21] | r[22] << 8,
+                    "class": WEAPON_CLASSES[c], "strength": r[24], "hit": r[25], "damage": r[26],
+                    "price": r[27] | r[28] << 8, "range": r[30],
+                    "element": ELEMENTS[r[34]] if r[34] < len(ELEMENTS) else ""})
+    return out
+
+
+def creatures(rom_path):
+    """[dict] of the creatures and people, in database order (slot): level and the two
+    element resistances, as damage taken in percent (the game multiplies damage by the amount x 0.25:
+    0 immune, 2 half, 4 normal, 5 a weakness). placeholder: an internal record (STER1505, STMI03) or a shopkeeper
+    (GW Supply Shop #80), not worth listing."""
+    rom = Path(rom_path).read_bytes()
+    pos = _find_db(rom, 7, 136, 20, 41, 2)
+    if pos is None:
+        raise SystemExit(f"romdata.py: no creature database in {rom_path}")
+    out = []
+    for slot, (c, r) in enumerate(_records(rom, pos, 7, 136)):
+        name = r[:20].split(b"\0")[0].decode("ascii")
+        resists = []
+        for k in (0x76, 0x78):
+            e, amount = r[k], r[k + 1]
+            if 0 < e < len(ELEMENTS):
+                resists.append((ELEMENTS[e], amount * 25))
+        out.append({"name": name, "slot": slot, "id": r[41] | r[42] << 8, "level": r[0x4D], "resists": resists,
+                    "placeholder": (name.isupper() and any(ch.isdigit() for ch in name)) or "#" in name})
+    return out

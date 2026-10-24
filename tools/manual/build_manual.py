@@ -199,6 +199,79 @@ def patch_table(base, patched, version="Aidyn Patch"):
     return "\n".join(out)
 
 
+# Aidyn Plus also rebalances the weapons and the creatures: a table of each, from the two databases (romdata.py).
+WEAPON_COLUMNS = [("strength", "Str"), ("hit", "Hit"), ("damage", "Dmg"), ("range", "Reach"), ("price", "Price")]
+
+
+def weapon_table(base, plus, version="Aidyn Plus"):
+    by_id = {w["id"]: w for w in base}
+    rows = []
+    for p in plus:
+        b = by_id.get(p["id"])
+        if b is None:
+            rows.append((p["name"], p["class"], {}, ["new weapon"]))
+            continue
+        cells = {k: f"<s>{b[k]}</s> {p[k]}" for k, _ in WEAPON_COLUMNS if b[k] != p[k]}
+        other = []
+        if b["name"] != p["name"]:
+            other.append(f"now called {esc(p['name'])}")
+        if b["element"] != p["element"]:
+            other.append(f"now {esc(p['element'])}" if p["element"] else f"no longer {esc(b['element'])}")
+        if cells or other:
+            rows.append((b["name"], b["class"], cells, other))
+    if not rows:
+        return ""
+    out = [f"<h3>Weapons in {version}</h3><p>{version} changes {len(rows)} of the {len(plus)} weapons. Str is the "
+           "strength a character needs to wield it well, Hit and Dmg its chance to hit and its damage, Reach how far "
+           "a missile or thrown weapon goes, Price the merchants' list price before haggling. Struck out the "
+           f"original, then {version}'s.</p>",
+           '<div class="scroll"><table class="changes"><thead><tr><th>Weapon</th><th>Kind</th>'
+           + "".join(f"<th>{label}</th>" for _, label in WEAPON_COLUMNS) + "<th>Other</th></tr></thead><tbody>"]
+    for name, kind, cells, other in sorted(rows, key=lambda r: (r[1], r[0].lower())):
+        out.append(f"<tr><td>{esc(name)}</td><td>{esc(kind)}</td>"
+                   + "".join(f"<td>{cells.get(k, '')}</td>" for k, _ in WEAPON_COLUMNS)
+                   + f"<td>{'; '.join(other)}</td></tr>")
+    out.append("</tbody></table></div>")
+    return "\n".join(out)
+
+
+def resist_text(resists):
+    """[(element, percent)] -> "weak to Fire (150%); immune to Water"."""
+    out = []
+    for element, pct in resists:
+        if pct == 0:
+            out.append(f"immune to {element}")
+        elif pct < 100:
+            out.append(f"resists {element} ({pct}%)")
+        elif pct > 100:
+            out.append(f"weak to {element} ({pct}%)")
+    return "; ".join(out) or "—"
+
+
+def creature_table(base, plus, version="Aidyn Plus"):
+    rows = []
+    for b, p in zip(base, plus):  # same slots in both (romdata.creatures)
+        if b["placeholder"] or p["placeholder"]:
+            continue
+        level = f"<s>{b['level']}</s> {p['level']}" if b["level"] != p["level"] else str(p["level"])
+        rb, rp = resist_text(b["resists"]), resist_text(p["resists"])
+        resists = f"<s>{esc(rb)}</s> {esc(rp)}" if rb != rp else esc(rp)
+        if b["level"] != p["level"] or rb != rp or b["name"] != p["name"]:
+            was = f' <span class="dim">(was {esc(b["name"])})</span>' if b["name"] != p["name"] else ""
+            rows.append((p["name"], f"<tr><td>{esc(p['name'])}{was}</td><td>{level}</td><td>{resists}</td></tr>"))
+    if not rows:
+        return ""
+    out = [f"<h3>Creatures in {version}</h3><p>{version} raises most creatures' levels and gives nearly every one a "
+           f"weakness and a resistance: {len(rows)} creatures and people change. The percentage is the damage it "
+           "takes from that element (100% is normal, 0% none at all). Struck out the original, then "
+           f"{version}'s; the people of the party are here too.</p>",
+           '<div class="scroll"><table class="changes"><thead><tr><th>Creature</th><th>Level</th>'
+           "<th>Weak to, resists</th></tr></thead><tbody>"]
+    out += [row for _, row in sorted(rows, key=lambda r: r[0].lower())]
+    out.append("</tbody></table></div>")
+    return "\n".join(out)
+
+
 def toc(page):
     items = []
     for sid, title in re.findall(r'<section class="chapter" id="([\w-]+)">\s*<h2>(.*?)</h2>', page):
@@ -264,10 +337,13 @@ def main():
                     "and spells freezes the game when opened, and that a few spells misbehave in combat. That is "
                     "the romhack, not this port: check its FAQ before opening an unfamiliar description.</p>")
     if args.plus_rom.exists():
-        page = page.replace("{{PLUS}}", patch_table(spells, romdata.spells(args.plus_rom), "Aidyn Plus") + plus_warning)
+        page = page.replace("{{PLUS}}", patch_table(spells, romdata.spells(args.plus_rom), "Aidyn Plus")
+                            + weapon_table(romdata.weapons(args.rom), romdata.weapons(args.plus_rom))
+                            + creature_table(romdata.creatures(args.rom), romdata.creatures(args.plus_rom))
+                            + plus_warning)
     else:
         page = page.replace("{{PLUS}}", "<p class=\"note\">Store the Aidyn Plus dump and build this manual again to "
-                                        "see what Aidyn Plus changes in the spell list.</p>" + plus_warning)
+                                        "see what Aidyn Plus changes in the spells, weapons and creatures.</p>" + plus_warning)
     page = page.replace("{{BUILT}}", f"Built {datetime.date.today():%-d %B %Y}.")
     page = page.replace("{{TOC}}", toc(page))
     page = initials(page)
