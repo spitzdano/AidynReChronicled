@@ -237,6 +237,13 @@ func = "Compass__Draw"
 before_vram = 0x800246F0
 text = "extern void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx); aidyn_hud_end(rdram, ctx);"
 
+# The skills lists' weapon-skill and Shield rows get an icon (src/game/patches.cpp, aidyn_weapon_skill_icon), before
+# WidgetSkillInfo's constructor links its icon.
+[[patches.hook]]
+func = "func_80036E10"
+before_vram = 0x80037028
+text = "extern void aidyn_weapon_skill_icon(uint8_t* rdram, recomp_context* ctx); aidyn_weapon_skill_icon(rdram, ctx);"
+
 # Characters and props at the edges of a widescreen picture stay drawn (src/game/patches.cpp, "What's in view"): the
 # view angles' cosines, replaced right after renderPlayers and RenderVoxelScenes take them.
 [[patches.hook]]

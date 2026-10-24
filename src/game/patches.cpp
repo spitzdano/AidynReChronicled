@@ -2080,6 +2080,49 @@ extern "C" void aidyn_hud_end(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// Skill icons for the weapon skills and Shield (#24). The skills lists (WidgetSkillInfo's constructor, func_80036E10:
+// this in s3, the subtype in s4, the kind in s6: 0 a skill, 1 a weapon skill, 2 Shield) give only the 12 skills an
+// icon (the game's table at 0x800DEF7C); the weapon rows and Shield had none, a gap at the left of the row. Before
+// the icon is linked (0x80037028, aidyn.us.toml hook) those rows get one of the game's own item icons (painted in the
+// redrawn art pack) for their kind of weapon, shown at the skill icons' 10x10.
+extern "C" void new_(uint8_t* rdram, recomp_context* ctx);
+extern "C" void loadBorg8(uint8_t* rdram, recomp_context* ctx);
+extern "C" void WidgetBorg8__WidgetBorg8(uint8_t* rdram, recomp_context* ctx);
+
+extern "C" void aidyn_weapon_skill_icon(uint8_t* rdram, recomp_context* ctx) {
+    const gpr self = ctx->r19;
+    const int kind = (int)(ctx->r22 & 0xFF), sub = (int)(ctx->r20 & 0xFFFF);
+    if (!heap_pointer(self) || MEM_W(0x80, self) != 0 || (kind != 1 && kind != 2)) {
+        return;
+    }
+    // WeaponClassEnum: 3 Hafted, 4 Missile, 5 Pole, 8 Sword, 9 Thrown (the rest are monsters' attacks).
+    uint32_t icon = 0;
+    if (kind == 2) {
+        icon = 0x35EB;  // IconItemShield1
+    } else {
+        switch (sub) {
+            case 3: icon = 0x35C5; break;  // IconItemAxe (axes, maces, clubs)
+            case 4: icon = 0x35CA; break;  // IconItemBowArrow
+            case 5: icon = 0x35E3; break;  // IconItemPike
+            case 8: icon = 0x35EE; break;  // IconItemSword2
+            case 9: icon = 0x35F0; break;  // IconItemThrowIron
+            default: return;
+        }
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr borg = (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, icon);
+    const gpr widget = (gpr)(int32_t)call_game(rdram, ctx, WidgetBorg8__WidgetBorg8, (uint32_t)memory, (uint32_t)borg);
+    if (!heap_pointer(widget)) {
+        return;
+    }
+    MEM_H(0x74, widget) = 10;  // width, height: the skill icons' size
+    MEM_H(0x72, widget) = 10;
+    MEM_W(0x80, self) = (int32_t)widget;
+}
+
 // What's in view, for a widescreen picture. renderPlayers draws a character only within 5 units of the camera's aim
 // or within 42.5 degrees of its direction (the cosine of that angle, kept in f24); RenderVoxelScenes draws a scene
 // prop within 37.5 degrees and fades it out by 42.5 (f24, f22). Those angles fit the N64's 4:3 picture: a 16:9
