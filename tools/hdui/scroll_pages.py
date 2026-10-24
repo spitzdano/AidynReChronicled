@@ -417,6 +417,9 @@ def main():
         colour = repaint.word_colour(orig["PauseBGStats"], (x0, y0, bw, bh))
         if text == "DETAILS":
             y0 -= DETAILS_UP
+            # A button hint like the menus' (make_branding.py menu_hint: "Sell", "Switch"): small capitals in their
+            # ink, not the original's all-capitals in the page's lighter brown.
+            text, colour = "Details", (0x94, 0x5A, 0x4A)
         stats = repaint.draw_word(W, H, stats, (x0, y0, bw, bh), text, colour, FONT, S)
     pages[1] = as_float(W, H, stats)
     for x0, y0, bw, bh, button in STATS_LABELS["buttons"]:

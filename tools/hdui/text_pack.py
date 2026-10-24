@@ -125,6 +125,8 @@ def page_words(labelled, font, out, scale=PAGE_SCALE):
         layer = bytearray(W * H * 4)
         for x0, y0, bw, bh, text in entry.get("words", []):
             colour = repaint.word_colour(img, (x0, y0, bw, bh))
+            if text == "DETAILS":  # a button hint like the menus' ("Sell", "Switch"), as scroll_pages.py draws it
+                text, colour = "Details", (0x94, 0x5A, 0x4A)
             layer = repaint.draw_word(W, H, layer, (x0, y0, bw, bh), text, colour, font, scale)
         for x0, y0, bw, bh, button in entry.get("buttons", []):
             icon = buttons.icon_for(button, bw, bh, scale)
