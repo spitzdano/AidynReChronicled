@@ -222,33 +222,10 @@ bool has_aidyn_save(const uint8_t* bank) {
     return false;
 }
 
-// True when g_path was such a file and is now the 32 KiB pack (g_image).
-bool convert_locked(uintmax_t size) {
+// A copy of the file as it is on disk in backups/ (<stem>-<label>-<time><ext>, never rotated away): its path, or
+// empty when it couldn't be made.
+std::filesystem::path keep_file_copy(const char* label) {
     namespace fs = std::filesystem;
-    const Container* c = nullptr;
-    for (const auto& k : kContainers) {
-        if (k.size == size) c = &k;
-    }
-    if (c == nullptr) {
-        return false;
-    }
-    std::vector<uint8_t> file(size);
-    {
-        std::ifstream in(g_path, std::ios::binary);
-        if (!in.read(reinterpret_cast<char*>(file.data()), file.size())) {
-            fatal("cannot read " + g_path.string());
-        }
-    }
-    int pick = -1;
-    for (int pass = 0; pass < 2 && pick < 0; pass++) {
-        for (int b = 0; b < 4 && pick < 0; b++) {
-            const uint8_t* bank = file.data() + c->first + b * kImageSize;
-            if (id_valid(bank) && (pass == 1 || has_aidyn_save(bank))) pick = b;
-        }
-    }
-    if (pick < 0) {
-        fatal(g_path.string() + " looks like " + c->what + ", but none of its packs is formatted; move it away");
-    }
     std::error_code ec;
     const fs::path dir = g_path.parent_path() / "backups";
     fs::create_directories(dir, ec);
@@ -261,15 +238,49 @@ bool convert_locked(uintmax_t size) {
 #endif
     char stamp[32];
     std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm);
-    const fs::path original =
-        dir / (g_path.stem().string() + "-emulator-original-" + stamp + g_path.extension().string());
-    fs::copy_file(g_path, original, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        fatal("cannot keep a copy of " + g_path.string() + " in " + dir.string() + " before converting it: " +
-              ec.message());
+    const fs::path copy = dir / (g_path.stem().string() + "-" + label + "-" + stamp + g_path.extension().string());
+    fs::copy_file(g_path, copy, fs::copy_options::overwrite_existing, ec);
+    return ec ? fs::path{} : copy;
+}
+
+// When g_path (size bytes) is such a file: its pack in bank, the original copied to backups/, true. A problem stops
+// the game at start (fatal) and is only reported while it runs (false: the game keeps its copy).
+bool take_from_container(uintmax_t size, std::array<uint8_t, kImageSize>& bank, bool at_start) {
+    auto fail = [&](const std::string& message) {
+        if (at_start) fatal(message);
+        fprintf(stderr, "Controller Pak: %s (kept the game's copy)\n", message.c_str());
+        return false;
+    };
+    namespace fs = std::filesystem;
+    const Container* c = nullptr;
+    for (const auto& k : kContainers) {
+        if (k.size == size) c = &k;
     }
-    std::memcpy(g_image.data(), file.data() + c->first + pick * kImageSize, kImageSize);
-    flush_locked();
+    if (c == nullptr) {
+        return false;
+    }
+    std::vector<uint8_t> file(size);
+    {
+        std::ifstream in(g_path, std::ios::binary);
+        if (!in.read(reinterpret_cast<char*>(file.data()), file.size())) {
+            return fail("cannot read " + g_path.string());
+        }
+    }
+    int pick = -1;
+    for (int pass = 0; pass < 2 && pick < 0; pass++) {
+        for (int b = 0; b < 4 && pick < 0; b++) {
+            const uint8_t* bank = file.data() + c->first + b * kImageSize;
+            if (id_valid(bank) && (pass == 1 || has_aidyn_save(bank))) pick = b;
+        }
+    }
+    if (pick < 0) {
+        return fail(g_path.string() + " looks like " + c->what + ", but none of its packs is formatted; move it away");
+    }
+    const fs::path original = keep_file_copy("emulator-original");
+    if (original.empty()) {
+        return fail("cannot keep a copy of " + g_path.string() + " in backups/ before converting it");
+    }
+    std::memcpy(bank.data(), file.data() + c->first + pick * kImageSize, kImageSize);
     fprintf(stderr, "Controller Pak: %s was %s: took controller %d's pack (the original is %s)\n",
             g_path.string().c_str(), c->what, pick + 1, original.string().c_str());
     return true;
@@ -285,10 +296,13 @@ void load_locked() {
     std::error_code ec;
     if (std::filesystem::exists(g_path, ec)) {
         // A pack from an emulator (Project64's .mpk, ares' .pak) is the same raw 32 KiB image; one holding four
-        // controllers' packs is converted (convert_locked). Anything else is refused untouched.
+        // controllers' packs is converted (take_from_container). Anything else is refused untouched.
         const uintmax_t size = std::filesystem::file_size(g_path, ec);
-        if (size != kImageSize && !convert_locked(size)) {
-            fatal(g_path.string() + " is not a 32 KiB Controller Pak image; move it away or fix it");
+        if (size != kImageSize) {
+            if (!take_from_container(size, g_image, true)) {
+                fatal(g_path.string() + " is not a 32 KiB Controller Pak image; move it away or fix it");
+            }
+            flush_locked();
         }
         g_disk_time = std::filesystem::last_write_time(g_path, ec);
         std::ifstream in(g_path, std::ios::binary);
@@ -325,21 +339,35 @@ void refresh_locked(uint8_t* rdram) {
     }
     g_disk_time = time;
     std::array<uint8_t, kImageSize> disk{};
-    std::ifstream in(g_path, std::ios::binary);
-    if (std::filesystem::file_size(g_path, ec) != kImageSize ||
-        !in.read(reinterpret_cast<char*>(disk.data()), disk.size())) {
-        fprintf(stderr, "Controller Pak: %s changed, but isn't a 32 KiB pack now: kept the game's copy\n",
-                g_path.string().c_str());
+    const uintmax_t size = std::filesystem::file_size(g_path, ec);
+    // An emulator's four-pack file put in its place is converted as at start. Any other file that isn't a pack is
+    // copied to backups/ first: the game keeps its own copy and its next save writes that over the file.
+    const bool container = size != kImageSize && take_from_container(size, disk, false);
+    if (size != kImageSize && !container) {
+        const auto copy = keep_file_copy("replaced");
+        fprintf(stderr, "Controller Pak: %s changed, but isn't a 32 KiB pack now: kept the game's copy (%s)\n",
+                g_path.string().c_str(),
+                copy.empty() ? "COULD NOT copy the file to backups/" : ("the file is kept as " + copy.string()).c_str());
         return;
+    }
+    if (!container) {
+        std::ifstream in(g_path, std::ios::binary);  // closed before anything replaces the file (Windows)
+        if (!in.read(reinterpret_cast<char*>(disk.data()), disk.size())) {
+            fprintf(stderr, "Controller Pak: %s changed, but couldn't be read: kept the game's copy\n",
+                    g_path.string().c_str());
+            return;
+        }
     }
     for (size_t block : kIdBlocks) {
         std::memcpy(&disk[block * kBlock], &g_image[block * kBlock], kBlock);
     }
     if (disk == g_image) {
+        if (container) flush_locked();
         return;
     }
     backup_locked("replaced by a newer file");
     g_image = disk;
+    if (container) flush_locked();
     g_written = false;  // the next save backs the new contents up first
     MEM_W(0, (gpr)kInodeCacheChannel) = -1;
     MEM_B(0, (gpr)kInodeCacheBank) = (int8_t)250;  // libultra's "nothing cached"
