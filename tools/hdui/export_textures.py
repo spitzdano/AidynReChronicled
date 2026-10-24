@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """export_textures.py: the game's 3D textures (characters, land, buildings, items) as a package, for redrawing them.
 
-    tools/hdui/export_textures.py [--rom ROM] [--no-hd] [--to-paint]
+    tools/hdui/export_textures.py [--rom ROM] [--no-hd] [--to-paint | --upscale-only]
         -> build/art-export/AidynTextures/ and AidynTextures.zip
 
 Every world texture (Borg1 asset, romtextures.py), sorted by what uses it. The models are found the way the game
@@ -32,6 +32,8 @@ original/ (1 pixel per texel), x8/ (8x nearest-neighbour), current-hd/ (the hd-w
 --to-paint exports only what is left to paint: it leaves out the textures already redrawn (art/textures) and those
 triage_textures.py sorts to "upscale" (flat colours, tints, effects, scrolling haze: nothing for a painter to add), and
 gives each texture left its "triage" (painted: wanted, optional: later) and "triage_why" in manifest.json.
+--upscale-only exports just those set aside as upscale-only (glows and shading the game tints, spell effects, flat
+colours), with their triage_why: for redrawing them anyway once everything else is painted.
 """
 import argparse
 import json
@@ -242,6 +244,8 @@ def main():
     ap.add_argument("--no-hd", action="store_true", help="leave out current-hd/ (the zip is much smaller)")
     ap.add_argument("--to-paint", action="store_true",
                     help="only what is left to paint: not redrawn yet (art/textures), not upscale-only (triage)")
+    ap.add_argument("--upscale-only", action="store_true",
+                    help="only the textures triage sets aside as upscale-only (not redrawn yet)")
     args = ap.parse_args()
     tool = PROJECT / "build/cmake/tmemhash"
     if not tool.exists():
@@ -295,6 +299,12 @@ def main():
             "used_by": sorted({label for _, _, label in uses}),
             "areas": sorted({g for c, g, _ in uses if c == "world"}),
             "redo_size": [w * SCALE, ht * SCALE]}
+        if args.upscale_only:
+            bucket, why = triage_textures.classify(entry, triage_textures.measure_rgba(img), done)
+            if bucket != "upscale":
+                left_out[bucket] += 1
+                continue
+            entry["triage"], entry["triage_why"] = bucket, why
         if args.to_paint:
             bucket, why = triage_textures.classify(entry, triage_textures.measure_rgba(img), done)
             if bucket in ("done", "upscale"):
@@ -324,6 +334,8 @@ def main():
         "scale": SCALE,
         **({"selection": "left to paint: not redrawn yet, not upscale-only; triage: painted (wanted) or optional "
                          "(later)"} if args.to_paint else {}),
+        **({"selection": "upscale-only: set aside from painting (triage_why says why), not redrawn yet"}
+           if args.upscale_only else {}),
         "variants": {"original": "as stored in the ROM (mip level 0)", "x8": "nearest-neighbour 8x",
                      "current-hd": "the hd-world pack's picture, 8x", "redone": "new versions go here"},
         "textures": entries}, indent=1) + "\n")
