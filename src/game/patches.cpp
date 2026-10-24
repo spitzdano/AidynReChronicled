@@ -2182,7 +2182,15 @@ namespace {
     constexpr uint8_t kSchoolColours[6][3] = { { 235, 45, 45 }, { 255, 150, 30 }, { 60, 210, 90 }, { 150, 60, 210 },
                                                { 0, 0, 0 }, { 70, 120, 255 } };  // Chaos, Elemental, Naming, Necro, -, Star
     int school_pending = -1;
+    // Item icons (#25): an item that shares its icon with others (item_icons.h, from tools/hdui/item_icons.py) gets a
+    // copy of it that draws the same but is a texture of its own, which the redrawn art pack replaces with its own
+    // painted icon: for its variant j, the j-th palette entry the picture doesn't use takes the colour of its middle
+    // texel, and the middle texel points at that entry (item_icons.py's variant(), the same change).
+    int item_icon_variant = -1;
+    uint32_t item_icon_base = 0;
 }
+
+#include "item_icons.h"
 
 // GetItemImage's entry (a0 the item ID): a scroll (type 17) or wand (13) notes its spell's school. The item database
 // (gItemDBp 0x800E2980: total +0, Gear_RAM* +0x18, 0x30 bytes each, ID +0, spell index +0x25) and the spell database
@@ -2190,7 +2198,14 @@ namespace {
 extern "C" void aidyn_item_image(uint8_t* rdram, recomp_context* ctx) {
     school_pending = -1;
     potion_pending = -1;  // a call that never loaded its icon leaves no colour for the next bottle
+    item_icon_variant = -1;
     const uint32_t id = (uint32_t)ctx->r4 & 0xFFFF, type = id >> 8;
+    for (const ItemIcon& e : kItemIcons) {
+        if (e.item == id) {
+            item_icon_variant = e.variant;
+            item_icon_base = e.icon;
+        }
+    }
     if (type != 13 && type != 17) {
         return;
     }
@@ -2221,10 +2236,13 @@ extern "C" void aidyn_potion_from_combat(uint8_t* rdram, recomp_context* ctx) {
 extern "C" int aidyn_potion_borg(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t icon = (uint32_t)ctx->r4 & 0xFFFF;
     const int k = potion_pending, school = school_pending;
+    const bool item = item_icon_variant >= 0 && icon == item_icon_base;
+    const int variant = item_icon_variant;
     potion_pending = -1;
     school_pending = -1;
+    item_icon_variant = -1;
     const bool blue = school >= 0 && (icon == kScrollIcon || icon == kWandIcon);
-    if (!blue && (k < 0 || k >= kPotionCount || k == kHealing || icon != kPotionIcon)) {
+    if (!item && !blue && (k < 0 || k >= kPotionCount || k == kHealing || icon != kPotionIcon)) {
         return 0;
     }
     const gpr real = (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, icon);
@@ -2233,6 +2251,27 @@ extern "C" int aidyn_potion_borg(uint8_t* rdram, recomp_context* ctx) {
         return 1;  // not a private copy: handed out as it is
     }
     const gpr palette = MEM_W(0x10, real), src = palette;
+    if (item) {
+        // The variant's change (item_icons.py's variant()): CI8 pixels at +0x14, width +0x0A, height +0x0C.
+        const gpr pixels = MEM_W(0x14, real);
+        const uint32_t w = MEM_HU(0x0A, real), h = MEM_HU(0x0C, real);
+        if (!heap_pointer(pixels) || w * h > 4096 || w * h == 0) {
+            return 1;
+        }
+        bool used[256] = {};
+        for (uint32_t i = 0; i < w * h; i++) used[MEM_BU(i, pixels)] = true;
+        int left = variant;
+        for (int e = 0; e < 256; e++) {
+            if (used[e]) continue;
+            if (left-- == 0) {
+                const uint32_t mid = (h / 2) * w + w / 2;
+                MEM_H(2 * e, palette) = (int16_t)MEM_HU(2 * MEM_BU(mid, pixels), palette);
+                MEM_B(mid, pixels) = (int8_t)e;
+                break;
+            }
+        }
+        return 1;
+    }
     const uint8_t* t = blue ? kSchoolColours[school] : kPotionColours[k];
     for (int i = 0; i < 256; i++) {
         uint32_t v = MEM_HU(2 * i, src);

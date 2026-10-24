@@ -19,6 +19,7 @@ import numpy as np
 import hudart
 import labels as wordlabels
 import portraits
+import item_icons
 import potions
 import redone
 import romassets
@@ -115,6 +116,14 @@ def build(rom_path, decomp, tool, esrgan, model, out, scale, skip_keys, key_of, 
             fmt, w, h, pixels, palette = images[b]
             images[0x210000 + 16 * j + k] = (fmt, w, h, pixels, potions.recolour_rgba16(palette, colour, blue=True))
             names[0x210000 + 16 * j + k] = name
+    # Each item's own icon (item_icons.py): a copy of the icon it shares, changed so it draws the same but is a texture
+    # of its own, as patches.cpp makes it ("Item icons").
+    for n, icon in enumerate(item_icons.load()):
+        if icon["base"] not in images or (only_art and icon["name"] not in art):
+            continue
+        fmt, w, h, pixels, palette = images[icon["base"]]
+        images[0x220000 + n] = (fmt, w, h) + item_icons.variant(fmt, w, h, pixels, palette, icon["variant"])
+        names[0x220000 + n] = icon["name"]
     entries = []
     with tempfile.TemporaryDirectory() as t:
         src, big = Path(t) / "in", Path(t) / "out"

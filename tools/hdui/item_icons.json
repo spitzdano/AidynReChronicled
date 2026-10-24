@@ -1,0 +1,1435 @@
+{
+ "icons": [
+  {
+   "name": "Item-helm-of-tempests",
+   "base": 13785,
+   "base_name": "IconItemLeatherHood",
+   "variant": 0,
+   "items": [
+    2305
+   ]
+  },
+  {
+   "name": "Item-helm-of-defense",
+   "base": 13785,
+   "base_name": "IconItemLeatherHood",
+   "variant": 1,
+   "items": [
+    2306
+   ]
+  },
+  {
+   "name": "Item-helm-of-wisdom",
+   "base": 13785,
+   "base_name": "IconItemLeatherHood",
+   "variant": 2,
+   "items": [
+    2307
+   ]
+  },
+  {
+   "name": "Item-helm-of-charisma",
+   "base": 13785,
+   "base_name": "IconItemLeatherHood",
+   "variant": 3,
+   "items": [
+    2308
+   ]
+  },
+  {
+   "name": "Item-spiritdrake-helm",
+   "base": 13785,
+   "base_name": "IconItemLeatherHood",
+   "variant": 4,
+   "items": [
+    2342
+   ]
+  },
+  {
+   "name": "Item-leather-cloak",
+   "base": 13771,
+   "base_name": "IconItemCloakA",
+   "variant": 0,
+   "items": [
+    2560
+   ]
+  },
+  {
+   "name": "Item-phantom-cloak",
+   "base": 13771,
+   "base_name": "IconItemCloakA",
+   "variant": 1,
+   "items": [
+    2561
+   ]
+  },
+  {
+   "name": "Item-gloves-of-healing",
+   "base": 13781,
+   "base_name": "IconItemLeatherGlove",
+   "variant": 0,
+   "items": [
+    2816
+   ]
+  },
+  {
+   "name": "Item-tinker-s-gloves",
+   "base": 13781,
+   "base_name": "IconItemLeatherGlove",
+   "variant": 1,
+   "items": [
+    2817
+   ]
+  },
+  {
+   "name": "Item-bardic-gloves",
+   "base": 13781,
+   "base_name": "IconItemLeatherGlove",
+   "variant": 2,
+   "items": [
+    2818
+   ]
+  },
+  {
+   "name": "Item-stormdrake-claws",
+   "base": 13781,
+   "base_name": "IconItemLeatherGlove",
+   "variant": 3,
+   "items": [
+    2857
+   ]
+  },
+  {
+   "name": "Item-jundar-gauntlets",
+   "base": 13777,
+   "base_name": "IconItem2Pads",
+   "variant": 0,
+   "items": [
+    2819
+   ]
+  },
+  {
+   "name": "Item-plate-gauntlets",
+   "base": 13777,
+   "base_name": "IconItem2Pads",
+   "variant": 1,
+   "items": [
+    2820
+   ]
+  },
+  {
+   "name": "Item-lunar-ring",
+   "base": 13798,
+   "base_name": "IconItemRing1",
+   "variant": 0,
+   "items": [
+    3080
+   ]
+  },
+  {
+   "name": "Item-witch-ring",
+   "base": 13798,
+   "base_name": "IconItemRing1",
+   "variant": 1,
+   "items": [
+    3081
+   ]
+  },
+  {
+   "name": "Item-etherial-ring",
+   "base": 13798,
+   "base_name": "IconItemRing1",
+   "variant": 2,
+   "items": [
+    3082
+   ]
+  },
+  {
+   "name": "Item-ring-of-healing",
+   "base": 13798,
+   "base_name": "IconItemRing1",
+   "variant": 3,
+   "items": [
+    3103
+   ]
+  },
+  {
+   "name": "Item-magedrake-ring",
+   "base": 13798,
+   "base_name": "IconItemRing1",
+   "variant": 4,
+   "items": [
+    3111
+   ]
+  },
+  {
+   "name": "Item-amulet-of-pork",
+   "base": 13757,
+   "base_name": "IconItemAmulet1",
+   "variant": 0,
+   "items": [
+    4871
+   ]
+  },
+  {
+   "name": "Item-st-gem",
+   "base": 13757,
+   "base_name": "IconItemAmulet1",
+   "variant": 1,
+   "items": [
+    4867
+   ]
+  },
+  {
+   "name": "Item-haste-amulet",
+   "base": 13757,
+   "base_name": "IconItemAmulet1",
+   "variant": 2,
+   "items": [
+    4868
+   ]
+  },
+  {
+   "name": "Item-shield-amulet",
+   "base": 13757,
+   "base_name": "IconItemAmulet1",
+   "variant": 3,
+   "items": [
+    4869
+   ]
+  },
+  {
+   "name": "Item-mirror-amulet",
+   "base": 13757,
+   "base_name": "IconItemAmulet1",
+   "variant": 4,
+   "items": [
+    4870
+   ]
+  },
+  {
+   "name": "Item-marquis-amulet",
+   "base": 13757,
+   "base_name": "IconItemAmulet1",
+   "variant": 5,
+   "items": [
+    4873
+   ]
+  },
+  {
+   "name": "Item-belt-of-life",
+   "base": 13767,
+   "base_name": "IconItemBelt",
+   "variant": 0,
+   "items": [
+    3584
+   ]
+  },
+  {
+   "name": "Item-belt-of-teleport",
+   "base": 13767,
+   "base_name": "IconItemBelt",
+   "variant": 1,
+   "items": [
+    3585
+   ]
+  },
+  {
+   "name": "Item-reflection-belt",
+   "base": 13767,
+   "base_name": "IconItemBelt",
+   "variant": 2,
+   "items": [
+    3586
+   ]
+  },
+  {
+   "name": "Item-mercenary-belt",
+   "base": 13767,
+   "base_name": "IconItemBelt",
+   "variant": 3,
+   "items": [
+    3591
+   ]
+  },
+  {
+   "name": "Item-woodsman-s-boots",
+   "base": 13769,
+   "base_name": "IconItemBoot",
+   "variant": 0,
+   "items": [
+    3840
+   ]
+  },
+  {
+   "name": "Item-boots-of-adamant",
+   "base": 13769,
+   "base_name": "IconItemBoot",
+   "variant": 1,
+   "items": [
+    3841
+   ]
+  },
+  {
+   "name": "Item-leather-boots",
+   "base": 13769,
+   "base_name": "IconItemBoot",
+   "variant": 2,
+   "items": [
+    3844
+   ]
+  },
+  {
+   "name": "Item-boots-of-striding",
+   "base": 13769,
+   "base_name": "IconItemBoot",
+   "variant": 3,
+   "items": [
+    3845
+   ]
+  },
+  {
+   "name": "Item-boots-of-speed",
+   "base": 13769,
+   "base_name": "IconItemBoot",
+   "variant": 4,
+   "items": [
+    3882
+   ]
+  },
+  {
+   "name": "Item-gem-of-sensing",
+   "base": 13780,
+   "base_name": "IconItemGem3",
+   "variant": 0,
+   "items": [
+    3355
+   ]
+  },
+  {
+   "name": "Item-gem-of-aspect",
+   "base": 13780,
+   "base_name": "IconItemGem3",
+   "variant": 1,
+   "items": [
+    3356
+   ]
+  },
+  {
+   "name": "Item-sapphire-gem",
+   "base": 13778,
+   "base_name": "IconItemGem",
+   "variant": 0,
+   "items": [
+    270
+   ]
+  },
+  {
+   "name": "Item-gemstone",
+   "base": 13778,
+   "base_name": "IconItemGem",
+   "variant": 1,
+   "items": [
+    275
+   ]
+  },
+  {
+   "name": "Item-bowdens-key",
+   "base": 13789,
+   "base_name": "IconItemKey1",
+   "variant": 0,
+   "items": [
+    4608
+   ]
+  },
+  {
+   "name": "Item-lighthouse-key",
+   "base": 13789,
+   "base_name": "IconItemKey1",
+   "variant": 1,
+   "items": [
+    4613
+   ]
+  },
+  {
+   "name": "Item-black-key",
+   "base": 13791,
+   "base_name": "IconItemKey3",
+   "variant": 0,
+   "items": [
+    4609
+   ]
+  },
+  {
+   "name": "Item-skull-key",
+   "base": 13791,
+   "base_name": "IconItemKey3",
+   "variant": 1,
+   "items": [
+    4610
+   ]
+  },
+  {
+   "name": "Item-blood-key",
+   "base": 13791,
+   "base_name": "IconItemKey3",
+   "variant": 2,
+   "items": [
+    4611
+   ]
+  },
+  {
+   "name": "Item-bone-key",
+   "base": 13791,
+   "base_name": "IconItemKey3",
+   "variant": 3,
+   "items": [
+    4612
+   ]
+  },
+  {
+   "name": "Item-lodin-s-key",
+   "base": 13790,
+   "base_name": "IconItemKey2",
+   "variant": 0,
+   "items": [
+    4614
+   ]
+  },
+  {
+   "name": "Item-dragon-key",
+   "base": 13790,
+   "base_name": "IconItemKey2",
+   "variant": 1,
+   "items": [
+    4615
+   ]
+  },
+  {
+   "name": "Item-hellhound-hide",
+   "base": 13787,
+   "base_name": "IconItemHide",
+   "variant": 0,
+   "items": [
+    289
+   ]
+  },
+  {
+   "name": "Item-darkenbat-hide",
+   "base": 13787,
+   "base_name": "IconItemHide",
+   "variant": 1,
+   "items": [
+    290
+   ]
+  },
+  {
+   "name": "Item-beast-hide",
+   "base": 13787,
+   "base_name": "IconItemHide",
+   "variant": 2,
+   "items": [
+    291
+   ]
+  },
+  {
+   "name": "Item-chitin-plates",
+   "base": 13787,
+   "base_name": "IconItemHide",
+   "variant": 3,
+   "items": [
+    292
+   ]
+  },
+  {
+   "name": "Item-map",
+   "base": 13794,
+   "base_name": "IconItemParchment",
+   "variant": 0,
+   "items": [
+    261,
+    262,
+    263,
+    264,
+    265,
+    266,
+    267,
+    268,
+    269,
+    271,
+    276,
+    282,
+    283,
+    284,
+    285,
+    287,
+    288,
+    286
+   ]
+  },
+  {
+   "name": "Item-letter",
+   "base": 13794,
+   "base_name": "IconItemParchment",
+   "variant": 1,
+   "items": [
+    258,
+    259
+   ]
+  },
+  {
+   "name": "Item-letter",
+   "base": 13801,
+   "base_name": "IconItemScroll",
+   "variant": 0,
+   "items": [
+    256
+   ]
+  },
+  {
+   "name": "Item-buckler",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 0,
+   "items": [
+    1553
+   ]
+  },
+  {
+   "name": "Item-small-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 1,
+   "items": [
+    1554
+   ]
+  },
+  {
+   "name": "Item-large-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 2,
+   "items": [
+    1555
+   ]
+  },
+  {
+   "name": "Item-kite-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 3,
+   "items": [
+    1556
+   ]
+  },
+  {
+   "name": "Item-tower-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 4,
+   "items": [
+    1557
+   ]
+  },
+  {
+   "name": "Item-heater-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 5,
+   "items": [
+    1558
+   ]
+  },
+  {
+   "name": "Item-bronze-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 6,
+   "items": [
+    1559
+   ]
+  },
+  {
+   "name": "Item-jundar-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 7,
+   "items": [
+    1560
+   ]
+  },
+  {
+   "name": "Item-spirit-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 8,
+   "items": [
+    1561
+   ]
+  },
+  {
+   "name": "Item-hoplite-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 9,
+   "items": [
+    1562
+   ]
+  },
+  {
+   "name": "Item-chaos-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 10,
+   "items": [
+    1563
+   ]
+  },
+  {
+   "name": "Item-scorpion-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 11,
+   "items": [
+    1565
+   ]
+  },
+  {
+   "name": "Item-sun-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 12,
+   "items": [
+    1569
+   ]
+  },
+  {
+   "name": "Item-moon-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 13,
+   "items": [
+    1570
+   ]
+  },
+  {
+   "name": "Item-turtleshell-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 14,
+   "items": [
+    1571
+   ]
+  },
+  {
+   "name": "Item-dryad-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 15,
+   "items": [
+    1596
+   ]
+  },
+  {
+   "name": "Item-sheridans-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 16,
+   "items": [
+    1598
+   ]
+  },
+  {
+   "name": "Item-stardrake-aegis",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 17,
+   "items": [
+    1600
+   ]
+  },
+  {
+   "name": "Item-wight-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 18,
+   "items": [
+    1602
+   ]
+  },
+  {
+   "name": "Item-crab-shield",
+   "base": 13803,
+   "base_name": "IconItemShield1",
+   "variant": 19,
+   "items": [
+    1603
+   ]
+  },
+  {
+   "name": "Item-longsword",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 0,
+   "items": [
+    1833
+   ]
+  },
+  {
+   "name": "Item-gladius",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 1,
+   "items": [
+    1834
+   ]
+  },
+  {
+   "name": "Item-sabre",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 2,
+   "items": [
+    1835
+   ]
+  },
+  {
+   "name": "Item-short-sword",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 3,
+   "items": [
+    1836
+   ]
+  },
+  {
+   "name": "Item-tanto",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 4,
+   "items": [
+    1837
+   ]
+  },
+  {
+   "name": "Item-chaos-flameblade",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 5,
+   "items": [
+    1841
+   ]
+  },
+  {
+   "name": "Item-trahern-s-sword",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 6,
+   "items": [
+    1850
+   ]
+  },
+  {
+   "name": "Item-ice-stiletto",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 7,
+   "items": [
+    1852
+   ]
+  },
+  {
+   "name": "Item-sheridans-sword",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 8,
+   "items": [
+    1874
+   ]
+  },
+  {
+   "name": "Item-enchanted-blade",
+   "base": 13806,
+   "base_name": "IconItemSword2",
+   "variant": 9,
+   "items": [
+    1878
+   ]
+  },
+  {
+   "name": "Item-broadsword",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 0,
+   "items": [
+    1829
+   ]
+  },
+  {
+   "name": "Item-chaos-sword",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 1,
+   "items": [
+    1831
+   ]
+  },
+  {
+   "name": "Item-great-sword",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 2,
+   "items": [
+    1832
+   ]
+  },
+  {
+   "name": "Item-lodin-s-sword",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 3,
+   "items": [
+    1844
+   ]
+  },
+  {
+   "name": "Item-warfang",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 4,
+   "items": [
+    1848
+   ]
+  },
+  {
+   "name": "Item-firedrake-fang",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 5,
+   "items": [
+    1879
+   ]
+  },
+  {
+   "name": "Item-sword-of-might",
+   "base": 13807,
+   "base_name": "IconItemSword3",
+   "variant": 6,
+   "items": [
+    1881
+   ]
+  },
+  {
+   "name": "Item-dagger",
+   "base": 13775,
+   "base_name": "IconItemSword",
+   "variant": 0,
+   "items": [
+    1830
+   ]
+  },
+  {
+   "name": "Item-stealthblade",
+   "base": 13775,
+   "base_name": "IconItemSword",
+   "variant": 1,
+   "items": [
+    1872
+   ]
+  },
+  {
+   "name": "Item-throwing-knife",
+   "base": 13775,
+   "base_name": "IconItemSword",
+   "variant": 2,
+   "items": [
+    1893
+   ]
+  },
+  {
+   "name": "Item-battle-axe",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 0,
+   "items": [
+    1807
+   ]
+  },
+  {
+   "name": "Item-blood-axe",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 1,
+   "items": [
+    1808
+   ]
+  },
+  {
+   "name": "Item-great-axe",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 2,
+   "items": [
+    1811
+   ]
+  },
+  {
+   "name": "Item-hatchet",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 3,
+   "items": [
+    1839
+   ]
+  },
+  {
+   "name": "Item-giant-axe",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 4,
+   "items": [
+    1846
+   ]
+  },
+  {
+   "name": "Item-lizard-king-s-axe",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 5,
+   "items": [
+    1851
+   ]
+  },
+  {
+   "name": "Item-spellbreaker-axe",
+   "base": 13765,
+   "base_name": "IconItemAxe",
+   "variant": 6,
+   "items": [
+    1890
+   ]
+  },
+  {
+   "name": "Item-club",
+   "base": 13774,
+   "base_name": "IconItemClub",
+   "variant": 0,
+   "items": [
+    1809
+   ]
+  },
+  {
+   "name": "Item-cyclops-club",
+   "base": 13774,
+   "base_name": "IconItemClub",
+   "variant": 1,
+   "items": [
+    1870
+   ]
+  },
+  {
+   "name": "Item-scythe",
+   "base": 13802,
+   "base_name": "IconItemSicle",
+   "variant": 0,
+   "items": [
+    1810
+   ]
+  },
+  {
+   "name": "Item-elisheva-s-scythe",
+   "base": 13802,
+   "base_name": "IconItemSicle",
+   "variant": 1,
+   "items": [
+    1847
+   ]
+  },
+  {
+   "name": "Item-mace",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 0,
+   "items": [
+    1812
+   ]
+  },
+  {
+   "name": "Item-maul",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 1,
+   "items": [
+    1813
+   ]
+  },
+  {
+   "name": "Item-morningstar",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 2,
+   "items": [
+    1814
+   ]
+  },
+  {
+   "name": "Item-war-hammer",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 3,
+   "items": [
+    1815
+   ]
+  },
+  {
+   "name": "Item-jester-s-mace",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 4,
+   "items": [
+    1855
+   ]
+  },
+  {
+   "name": "Item-chaos-maul",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 5,
+   "items": [
+    1876
+   ]
+  },
+  {
+   "name": "Item-mace-of-glory",
+   "base": 13793,
+   "base_name": "IconItemMace",
+   "variant": 6,
+   "items": [
+    1889
+   ]
+  },
+  {
+   "name": "Item-staff",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 0,
+   "items": [
+    1825
+   ]
+  },
+  {
+   "name": "Item-archmage-s-staff",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 1,
+   "items": [
+    1845
+   ]
+  },
+  {
+   "name": "Item-ehud-s-staff",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 2,
+   "items": [
+    1849
+   ]
+  },
+  {
+   "name": "Item-staff-of-lugash",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 3,
+   "items": [
+    1854
+   ]
+  },
+  {
+   "name": "Item-chaos-scythe",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 4,
+   "items": [
+    1875
+   ]
+  },
+  {
+   "name": "Item-breklor-s-firestaff",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 5,
+   "items": [
+    1892
+   ]
+  },
+  {
+   "name": "Item-ironwood-staff",
+   "base": 13805,
+   "base_name": "IconItemStaff2",
+   "variant": 6,
+   "items": [
+    1894
+   ]
+  },
+  {
+   "name": "Item-great-bow",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 0,
+   "items": [
+    1816
+   ]
+  },
+  {
+   "name": "Item-hunter-s-bow",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 1,
+   "items": [
+    1817
+   ]
+  },
+  {
+   "name": "Item-long-bow",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 2,
+   "items": [
+    1818
+   ]
+  },
+  {
+   "name": "Item-short-bow",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 3,
+   "items": [
+    1820
+   ]
+  },
+  {
+   "name": "Item-heartseeker-bow",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 4,
+   "items": [
+    1877
+   ]
+  },
+  {
+   "name": "Item-bow-of-thunder",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 5,
+   "items": [
+    1886
+   ]
+  },
+  {
+   "name": "Item-bow-of-shielding",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 6,
+   "items": [
+    1887
+   ]
+  },
+  {
+   "name": "Item-bow-of-accuracy",
+   "base": 13770,
+   "base_name": "IconItemBowArrow",
+   "variant": 7,
+   "items": [
+    1888
+   ]
+  },
+  {
+   "name": "Item-pike",
+   "base": 13795,
+   "base_name": "IconItemPike",
+   "variant": 0,
+   "items": [
+    1822
+   ]
+  },
+  {
+   "name": "Item-spear",
+   "base": 13795,
+   "base_name": "IconItemPike",
+   "variant": 1,
+   "items": [
+    1824
+   ]
+  },
+  {
+   "name": "Item-javelin",
+   "base": 13795,
+   "base_name": "IconItemPike",
+   "variant": 2,
+   "items": [
+    1840
+   ]
+  },
+  {
+   "name": "Item-spikes",
+   "base": 13776,
+   "base_name": "IconItemStaff",
+   "variant": 0,
+   "items": [
+    1819
+   ]
+  },
+  {
+   "name": "Item-poison-dart",
+   "base": 13776,
+   "base_name": "IconItemStaff",
+   "variant": 1,
+   "items": [
+    1885
+   ]
+  },
+  {
+   "name": "Item-dart-of-distance",
+   "base": 13776,
+   "base_name": "IconItemStaff",
+   "variant": 2,
+   "items": [
+    1891
+   ]
+  },
+  {
+   "name": "Item-throwing-iron",
+   "base": 13808,
+   "base_name": "IconItemThrowIron",
+   "variant": 0,
+   "items": [
+    1821
+   ]
+  },
+  {
+   "name": "Item-dragon-fang",
+   "base": 13808,
+   "base_name": "IconItemThrowIron",
+   "variant": 1,
+   "items": [
+    1882
+   ]
+  },
+  {
+   "name": "Item-cloth-armor",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 0,
+   "items": [
+    1280
+   ]
+  },
+  {
+   "name": "Item-leather-armor",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 1,
+   "items": [
+    1281
+   ]
+  },
+  {
+   "name": "Item-scale-armor",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 2,
+   "items": [
+    1282
+   ]
+  },
+  {
+   "name": "Item-enchanted-hide",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 3,
+   "items": [
+    1287
+   ]
+  },
+  {
+   "name": "Item-dragon-leather",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 4,
+   "items": [
+    1288
+   ]
+  },
+  {
+   "name": "Item-jundar-leather",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 5,
+   "items": [
+    1289
+   ]
+  },
+  {
+   "name": "Item-beast-hide-body-armour",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 6,
+   "items": [
+    1310
+   ]
+  },
+  {
+   "name": "Item-hellhound-hide-body-armour",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 7,
+   "items": [
+    1311
+   ]
+  },
+  {
+   "name": "Item-darkenbat-hide-body-armour",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 8,
+   "items": [
+    1312
+   ]
+  },
+  {
+   "name": "Item-chaos-robes",
+   "base": 13763,
+   "base_name": "IconItemChestArmor3",
+   "variant": 9,
+   "items": [
+    1341
+   ]
+  },
+  {
+   "name": "Item-chainmail",
+   "base": 13762,
+   "base_name": "IconItemChestArmor2",
+   "variant": 0,
+   "items": [
+    1283
+   ]
+  },
+  {
+   "name": "Item-talewok-mail",
+   "base": 13762,
+   "base_name": "IconItemChestArmor2",
+   "variant": 1,
+   "items": [
+    1290
+   ]
+  },
+  {
+   "name": "Item-terminor-mail",
+   "base": 13762,
+   "base_name": "IconItemChestArmor2",
+   "variant": 2,
+   "items": [
+    1291
+   ]
+  },
+  {
+   "name": "Item-iden-scale",
+   "base": 13762,
+   "base_name": "IconItemChestArmor2",
+   "variant": 3,
+   "items": [
+    1292
+   ]
+  },
+  {
+   "name": "Item-pome-scale",
+   "base": 13762,
+   "base_name": "IconItemChestArmor2",
+   "variant": 4,
+   "items": [
+    1293
+   ]
+  },
+  {
+   "name": "Item-scorpion-scale",
+   "base": 13762,
+   "base_name": "IconItemChestArmor2",
+   "variant": 5,
+   "items": [
+    1308
+   ]
+  },
+  {
+   "name": "Item-partial-platemail",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 0,
+   "items": [
+    1284
+   ]
+  },
+  {
+   "name": "Item-full-platemail",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 1,
+   "items": [
+    1285
+   ]
+  },
+  {
+   "name": "Item-improved-plate",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 2,
+   "items": [
+    1286
+   ]
+  },
+  {
+   "name": "Item-enchanted-plate",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 3,
+   "items": [
+    1294
+   ]
+  },
+  {
+   "name": "Item-royal-platemail",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 4,
+   "items": [
+    1295
+   ]
+  },
+  {
+   "name": "Item-chaos-armor",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 5,
+   "items": [
+    1296
+   ]
+  },
+  {
+   "name": "Item-sheridans-armor",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 6,
+   "items": [
+    1343
+   ]
+  },
+  {
+   "name": "Item-irondrake-plate",
+   "base": 13764,
+   "base_name": "IconItemChestArmor4",
+   "variant": 7,
+   "items": [
+    1345
+   ]
+  }
+ ]
+}
