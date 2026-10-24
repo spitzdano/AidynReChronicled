@@ -3399,7 +3399,22 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             // Near the row of the page arrow (y 207), 4 texels higher, with the repainted page's DETAILS (art/pages):
             // at y 208 they hung off its torn bottom edge. A at the bottom left, under the paper doll and clear of the
             // LB prompt (x 114 on); the lists between the RB prompt (to x 185) and DETAILS (x 242 on).
-            const int a = shown != 0 && shown == inventory && heap_pointer(inventory) ? inventory_a_hint(rdram, inventory) : -1;
+            int a = shown != 0 && shown == inventory && heap_pointer(inventory) ? inventory_a_hint(rdram, inventory) : -1;
+            // The skills list: A on Alchemist, Healer or Mechanic opens its menu (potions, healing, armour), in the
+            // pause menu only (gGlobals.pauseMenuState 7; a trainer's A trains). Those rows' value (WidgetSkillInfo
+            // skillVal +0x84) has the A function (get_crafting_menu).
+            const gpr skills = MEM_W(0x9C, lists);
+            if (a < 0 && shown != 0 && shown == skills && MEM_BU(0, (gpr)(int32_t)0x800D9550) == 7) {
+                const gpr scroll = MEM_W(0x80, skills);
+                const gpr sub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
+                const gpr rows = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
+                const uint32_t hl = heap_pointer(sub) ? MEM_HU(0x1E, sub) : 0, n = heap_pointer(sub) ? MEM_HU(0x20, sub) : 0;
+                const gpr row = heap_pointer(rows) && hl < n ? MEM_W(4 * hl, rows) : 0;
+                const gpr value = heap_pointer(row) ? MEM_W(0x84, row) : 0;
+                if (heap_pointer(value) && MEM_W(0x18, value) != 0) {
+                    a = branding_index("hint_use");
+                }
+            }
             g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false);
             g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 204.0f, false);
         }
