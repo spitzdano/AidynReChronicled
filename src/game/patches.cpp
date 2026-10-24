@@ -3168,27 +3168,33 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     if (treasure_title.seen && treasure_title.alpha != 0) {
         // Under "Found: ... gold" (y 169): the row centred on the treasure panel (x 80; its title sits at 48, 68),
         // 6 texels between hints.
-        // A shop: A buys from its list and sells from the party's; Y appraises (the shop's list only). Its row leaves
-        // B out (four don't fit the panel, and how a shop is left isn't in the barter widget).
+        // A shop: A buys from its list and sells from the party's; Y appraises (the shop's list only); B leaves. Four
+        // don't fit the panel's width, so a shop has two rows: what A (and Y) do, then Switch and Leave.
         const bool loot_list = barter_widget == 0 || MEM_W(0x88, barter_widget) == MEM_W(0x80, barter_widget);
         const bool shop = treasure_title.shop;
-        const int row[] = { branding_index(shop ? (loot_list ? "hint_buy" : "hint_sell")
-                                                : (loot_list ? "hint_take" : "hint_putback")),
-                            shop && loot_list ? branding_index("hint_appraise") : -1,
-                            shop ? -1 : branding_index("hint_leave"), branding_index("hint_switch") };
-        float width = 0.0f;
-        for (int i : row) {
-            width += i < 0 ? 0.0f : ink_width(i) + 6.0f;
-        }
         const TitleSeen& t = treasure_title;
-        float x = t.x + (80.0f - 48.0f - (width - 6.0f) / 2.0f) * t.sx;
-        const float y = t.y + (192.0f - 68.0f) * t.sy;
-        g = prompt_state(rdram, g, t.alpha);
-        for (int i : row) {
-            if (i >= 0) {
-                g = draw_rgba16(rdram, g, i, x, y, t.sx, t.sy);
-                x += (ink_width(i) + 6.0f) * t.sx;
+        auto draw_row = [&](std::initializer_list<int> row, float row_y) {
+            float width = 0.0f;
+            for (int i : row) {
+                width += i < 0 ? 0.0f : ink_width(i) + 6.0f;
             }
+            float x = t.x + (80.0f - 48.0f - (width - 6.0f) / 2.0f) * t.sx;
+            const float y = t.y + (row_y - 68.0f) * t.sy;
+            for (int i : row) {
+                if (i >= 0) {
+                    g = draw_rgba16(rdram, g, i, x, y, t.sx, t.sy);
+                    x += (ink_width(i) + 6.0f) * t.sx;
+                }
+            }
+        };
+        g = prompt_state(rdram, g, t.alpha);
+        if (shop) {
+            draw_row({ branding_index(loot_list ? "hint_buy" : "hint_sell"),
+                       loot_list ? branding_index("hint_appraise") : -1 }, 184.0f);
+            draw_row({ branding_index("hint_switch"), branding_index("hint_leave") }, 197.0f);
+        } else {
+            draw_row({ branding_index(loot_list ? "hint_take" : "hint_putback"), branding_index("hint_leave"),
+                       branding_index("hint_switch") }, 192.0f);
         }
     }
     if (inventory_page.seen && inventory_page.alpha != 0 && !treasure_title.seen && heap_pointer(doll_lists)) {
