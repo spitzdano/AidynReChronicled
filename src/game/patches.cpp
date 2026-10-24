@@ -33,7 +33,7 @@ namespace {
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
-gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top);  // "Combat log", below
+gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open);  // "Combat log"
 gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Spell descriptions in combat", below
 gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Quick and auto saves", below
@@ -43,6 +43,7 @@ void free_spill_frame(uint8_t* rdram, recomp_context* ctx);  // "Free queue over
 void combat_log_new_battle();
 bool combat_log_frame = false;     // aidyn_prompts: in combat this frame, the log to be drawn
 float combat_card_top = 240.0f;    // the combat controls card's top this frame (240: not shown)
+bool combat_menu_open = false;     // a held X / Y menu was drawn this frame (aidyn_combat_menu_drawn)
 
 namespace aidyn {
     void set_gap_fill_horizon(int row);  // src/main/rt64_context.cpp
@@ -59,8 +60,9 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     free_spill_frame(rdram, ctx);
     g = aidyn_prompts(rdram, g);
     if (combat_log_frame) {
-        g = draw_combat_log(rdram, ctx, g, combat_card_top);
+        g = draw_combat_log(rdram, ctx, g, combat_card_top, combat_menu_open);
     }
+    combat_menu_open = false;
     g = draw_spell_info(rdram, ctx, g);
     g = aidyn_rc_page(rdram, ctx, g);
     g = draw_fps_counter(rdram, ctx, g);
@@ -3174,6 +3176,7 @@ extern "C" void aidyn_combat_menu_drawn(uint8_t* rdram) {
         return;
     }
     combat_menu_box = { true, x0, y0, x1 - x0, y1 - y0 };
+    combat_menu_open = true;
     spell_info_box = { combat_menu_kind == 0, x0, y0, x1 - x0, y1 - y0 };
     static const bool log = std::getenv("AIDYN_HINT_LOG") != nullptr;
     static int last[4] = {};
@@ -4618,7 +4621,8 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
 // green, the rest parchment) and wrapped to the log's width, measured with the game's font (Font::GetWidthScaled);
 // the last kLogShown lines are drawn at the end of the frame with Font::printSimple (func_800AA6E8), with a soft
 // shadow and no backing, older lines dimmer: in the corner when the picture is wide enough to clear the
-// message box, else above it right of the enemies' column, and above the controls card when that is shown. The latest fight is also written to
+// message box, else above it right of the enemies' column (hidden there while a held X / Y menu covers it), and above
+// the controls card when that is shown. The latest fight is also written to
 // combat-log.txt in the data folder. settings.json graphics.combat_log (the ReChronicled page). AIDYN_COMBAT_LOG_DEBUG=1
 // prints each message.
 extern "C" void func_800AA6E8(uint8_t* rdram, recomp_context* ctx);  // Font::printSimple(font, Gfx**, txt, x, y, sx, sy)
@@ -4836,7 +4840,7 @@ extern "C" void aidyn_combat_message(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // Drawn after the controls card (aidyn_prompts), in combat; card_top: the card's top (240 if not shown).
-gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top) {
+gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open) {
     const gpr font = MEM_W(0, kFontPtr);
     if (!aidyn::settings::graphics().combat_log || combat_log.empty() || !heap_pointer(font)) {
         return g;
@@ -4845,6 +4849,9 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top) 
     // The room left of the message box's portrait (its x 25 of the middle 4:3, plus the picture's extra width).
     const float room = kMessagePortraitX + (hud_wide() ? (240.0f * view_aspect() - 320.0f) / 2.0f : 0.0f);
     const bool corner = room - kMargin - 3.0f >= 120.0f;
+    if (!corner && menu_open) {
+        return g;  // above the message box is where the held X / Y menu opens: out of its way while it's held
+    }
     log_width = corner ? std::min(150.0f, room - kMargin - 3.0f - 2 * kLogPad) : 140.0f;
     const int shown = std::min<int>(kLogShown, (int)combat_log.size());
     const float height = shown * kLogLine + 2 * kLogPad;
