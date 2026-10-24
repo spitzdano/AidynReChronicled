@@ -20,6 +20,11 @@ cross-guard behind it, a ring at the tail; the double arrow has a head at each e
 The journal's arrows (LongUpArrow, LongDownArrow, 8x36, the same design stood up) are SliderArrowL / R drawn 36x8 and
 turned clockwise.
 
+The lists' scroll arrows (ScrollBarArrowUp, ScrollBarArrowDown, 5x8 colour: beside a list's title while it has more
+entries below or above; shop, inventory, spells, skills, trainer, combat menus): upscaled, a pale blob. Redrawn in the
+menus' hint ink (make_branding.py menu_hint, #945A4A): a 1.1-texel stem and a notched head 4.6 wide at the end it
+points to.
+
 HealthBar (77x8 colour, drawn stretched to 80x10, cut from the left to show the hit points left): a twisted rope.
 Its original's faint middle stretch upscaled into a smear. Redrawn in the original's reddish browns: a strand every
 4.6 texels, each round and lit from the upper left with fine fibres and a little variety from strand to strand; the
@@ -31,7 +36,8 @@ import numpy as np
 
 NAMES = ({"SundailCross", "SundailSunSmall", "SundailSunBig"} | {f"SundailMoon{i}" for i in range(6)}
          | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "LongUpArrow", "LongDownArrow"}
-         | {"CompassNorth", "CompassEast", "CompassSouth", "CompassWest"})
+         | {"CompassNorth", "CompassEast", "CompassSouth", "CompassWest"} | {"ScrollBarArrowUp", "ScrollBarArrowDown"})
+INK = (0x94, 0x5A, 0x4A)  # the menus' hint ink
 LETTERS = {"CompassNorth": "N", "CompassEast": "E", "CompassSouth": "S", "CompassWest": "W"}
 SCALE = 8
 SS = 4  # supersampling
@@ -142,6 +148,17 @@ def _arrow(w, h, left, right, middle):
     return m.astype(np.float32)
 
 
+def _scroll_arrow(w, h, down):
+    """A small arrow along the picture's height, pointing down (or up): a stem and a notched head."""
+    x, y = _grid(w, h)
+    if not down:
+        y = h - y
+    cx, tip = w / 2.0, h - 0.4
+    head = _polygon(x, y, [(cx, tip), (cx - 2.3, tip - 4.0), (cx, tip - 3.0), (cx + 2.3, tip - 4.0)])
+    stem = (np.abs(x - cx) <= 0.55) & (y >= 0.6) & (y <= tip - 2.6)
+    return (head | stem).astype(np.float32)
+
+
 def _rope(w, h):
     """The HitPoints bar: (colour H x W x 3 at 8x, alpha)."""
     x, y = _grid(w, h)
@@ -219,6 +236,12 @@ def redraw(name, w, h, rgba=None):
         a = _down(alpha, w, h)
         out = np.zeros(a.shape + (4,), np.uint8)
         out[..., :3] = np.clip(c + 0.5, 0, 255).astype(np.uint8)
+        out[..., 3] = np.clip(a * 255.0 + 0.5, 0, 255).astype(np.uint8)
+        return w * SCALE, h * SCALE, bytearray(out.tobytes())
+    if name.startswith("ScrollBarArrow"):
+        a = _down(_scroll_arrow(w, h, name.endswith("Down")), w, h)
+        out = np.zeros(a.shape + (4,), np.uint8)
+        out[..., :3] = INK
         out[..., 3] = np.clip(a * 255.0 + 0.5, 0, 255).astype(np.uint8)
         return w * SCALE, h * SCALE, bytearray(out.tobytes())
     if name.startswith("SliderArrow"):
