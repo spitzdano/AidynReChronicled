@@ -8,9 +8,12 @@
 #include <stdexcept>
 #include <vector>
 
+#include <cmath>
+
 #include "SDL2/SDL.h"
 
 #include "audio.h"
+#include "settings.h"
 
 static SDL_AudioCVT audio_convert;
 static SDL_AudioDeviceID audio_device = 0;
@@ -53,6 +56,74 @@ static void dump_samples(const int16_t* audio_data, size_t sample_count) {
     std::fflush(f);
 }
 
+// Sound: Enhanced (settings.json audio; the pause menu's ReChronicled page). The game's mix is very soft (-35 to -39
+// LUFS measured on the title, battle, castle and tower music, where most games sit around -16 to -23) and dull (its
+// instrument samples are low-rate: almost nothing above 4 kHz). Enhanced lifts the treble with a high shelf (RBJ
+// cookbook, 3 kHz, audio.brightness_db), raises the level by audio.loudness_db and holds the peaks at -1 dBFS with a
+// limiter that looks 1.5 ms ahead (the output is delayed that much), so the loud moments are turned down smoothly
+// instead of clipping. Original is the port's plain path, the game's samples at half scale, as before.
+namespace {
+    constexpr float kShelfHz = 3000.0f, kCeiling = 0.891f;  // -1 dBFS
+    constexpr int kLook = 64;                                  // frames of look-ahead (1.5 ms at 44.1 kHz)
+
+    struct Enhancer {
+        float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;  // the shelf
+        float z1[2] = {}, z2[2] = {};
+        uint32_t rate = 0;
+        float shelf_db = -1, gain = 1, attack = 1, release = 1;
+        float delay[kLook][2] = {}, need[kLook] = {};
+        int pos = 0;
+        float env = 1;
+
+        void setup(uint32_t r, const aidyn::settings::Audio& a) {
+            if (r == rate && a.brightness_db == shelf_db && std::pow(10.0f, a.loudness_db / 20.0f) == gain) {
+                return;
+            }
+            rate = r;
+            shelf_db = a.brightness_db;
+            gain = std::pow(10.0f, a.loudness_db / 20.0f);
+            // RBJ high shelf, slope 1.
+            const float A = std::pow(10.0f, shelf_db / 40.0f), w = 2.0f * 3.14159265f * kShelfHz / (float)rate;
+            const float cw = std::cos(w), alpha = std::sin(w) / 2.0f * std::sqrt(2.0f), sa = 2.0f * std::sqrt(A) * alpha;
+            const float a0 = (A + 1) - (A - 1) * cw + sa;
+            b0 = A * ((A + 1) + (A - 1) * cw + sa) / a0;
+            b1 = -2 * A * ((A - 1) + (A + 1) * cw) / a0;
+            b2 = A * ((A + 1) + (A - 1) * cw - sa) / a0;
+            a1 = 2 * ((A - 1) - (A + 1) * cw) / a0;
+            a2 = ((A + 1) - (A - 1) * cw - sa) / a0;
+            attack = 1.0f - std::exp(-4.0f / kLook);           // most of the way down within the look-ahead
+            release = 1.0f - std::exp(-1.0f / (0.15f * rate));  // back up over about 150 ms
+        }
+
+        void reset() {
+            *this = Enhancer{};
+        }
+
+        // One frame in (the game's sample at half scale, as the plain path has it), one frame out, 1.5 ms later.
+        void process(float& l, float& r) {
+            float in[2] = { l, r };
+            for (int c = 0; c < 2; c++) {
+                const float y = b0 * in[c] + z1[c];  // transposed direct form II
+                z1[c] = b1 * in[c] - a1 * y + z2[c];
+                z2[c] = b2 * in[c] - a2 * y;
+                in[c] = y * gain;
+            }
+            const float peak = std::max(std::fabs(in[0]), std::fabs(in[1]));
+            need[pos] = peak > kCeiling ? kCeiling / peak : 1.0f;
+            float lowest = 1.0f;
+            for (float n : need) lowest = std::min(lowest, n);
+            env += (lowest - env) * (lowest < env ? attack : release);
+            const float out_l = delay[pos][0], out_r = delay[pos][1];
+            delay[pos][0] = in[0];
+            delay[pos][1] = in[1];
+            pos = (pos + 1) % kLook;
+            l = std::clamp(out_l * env, -kCeiling, kCeiling);  // the limiter's last few hundredths, if any
+            r = std::clamp(out_r * env, -kCeiling, kCeiling);
+        }
+    };
+    Enhancer enhancer;
+}
+
 void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
     dump_samples(audio_data, sample_count);
     // Buffer for holding the output of swapping the audio channels. This is reused across
@@ -75,9 +146,30 @@ void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
     // Convert the audio from 16-bit values to floats and swap the audio channels into the
     // swap buffer to correct for the address xor caused by endianness handling.
     float cur_main_volume = 1.0f; // Get the current main volume, normalized to 0.0-1.0.
+    const aidyn::settings::Audio& sound = aidyn::settings::audio();
+    if (sound.enhanced) {
+        enhancer.setup(sample_rate, sound);
+    } else {
+        enhancer.reset();
+    }
     for (size_t i = 0; i < sample_count; i += input_channels) {
-        swap_buffer[i + 0 + duplicated_input_frames * input_channels] = audio_data[i + 1] * (0.5f / 32768.0f) * cur_main_volume;
-        swap_buffer[i + 1 + duplicated_input_frames * input_channels] = audio_data[i + 0] * (0.5f / 32768.0f) * cur_main_volume;
+        float l = audio_data[i + 1] * (0.5f / 32768.0f) * cur_main_volume;
+        float r = audio_data[i + 0] * (0.5f / 32768.0f) * cur_main_volume;
+        if (sound.enhanced) {
+            enhancer.process(l, r);
+        }
+        swap_buffer[i + 0 + duplicated_input_frames * input_channels] = l;
+        swap_buffer[i + 1 + duplicated_input_frames * input_channels] = r;
+    }
+    // AIDYN_AUDIO_DUMP_OUTPUT=<file>: what goes to the device, after Sound: Enhanced (raw 32-bit float stereo at the
+    // game's rate), to measure it. Off unless set.
+    static FILE* out_dump = [] {
+        const char* path = std::getenv("AIDYN_AUDIO_DUMP_OUTPUT");
+        return (path != nullptr && *path != '\0') ? std::fopen(path, "wb") : nullptr;
+    }();
+    if (out_dump != nullptr) {
+        std::fwrite(swap_buffer.data() + duplicated_input_frames * input_channels, sizeof(float), sample_count, out_dump);
+        std::fflush(out_dump);
     }
     
     // TODO handle cases where a chunk is smaller than the duplicated frame count.

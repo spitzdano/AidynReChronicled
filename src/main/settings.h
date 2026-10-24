@@ -26,6 +26,15 @@ namespace aidyn::settings {
         int save_backups = 20;       // copies of the Controller Pak kept in <data>/backups (before saving, and at start); 0 = none
     };
 
+    // The sound as the player hears it (src/main/audio.cpp). The game's own mix is very soft (-35 to -39 LUFS; most
+    // games sit around -16 to -23) and dull (its instrument samples are low-rate): "enhanced" plays it louder through a
+    // limiter, with a gentle lift of the treble. Nothing in the music or sounds themselves changes.
+    struct Audio {
+        bool enhanced = true;        // the pause menu's ReChronicled page: Sound, Enhanced / Original
+        float loudness_db = 18.0f;   // enhanced: the gain, 0..24 dB (peaks held at -1 dBFS by the limiter)
+        float brightness_db = 6.0f;  // enhanced: the treble lift above about 3 kHz, 0..12 dB
+    };
+
     struct Graphics {
         int render_height = 1080;    // internal resolution in lines (240 = N64); 0 = largest integer scale that fits the window
         Aspect aspect = Aspect::Ratio;   // in effect: Original while widescreen is off
@@ -61,6 +70,7 @@ namespace aidyn::settings {
     const std::filesystem::path& folder();
     const Graphics& graphics();
     const Game& game();
+    const Audio& audio();
     void use_rom_patch(RomPatch patch);   // for this run only (--patch / --original)
     void save_rom_patch(RomPatch patch);  // into settings.json (the title screen's version switch), keeping the rest
     void save_controls_card(bool shown);  // View in the field or combat: remembered in settings.json
@@ -68,6 +78,7 @@ namespace aidyn::settings {
     // through these, then save it (written into settings.json at once, keeping the rest of the file).
     Graphics& graphics_rw();
     Game& game_rw();
+    Audio& audio_rw();
     void save_bool(const char* section, const char* key, bool value);
     void save_number(const char* section, const char* key, double value);
     // The Display page's Widescreen switch: graphics().aspect again from "aspect" and widescreen (turning it on with

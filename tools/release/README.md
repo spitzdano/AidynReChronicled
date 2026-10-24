@@ -25,6 +25,8 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 - **Newly painted art**: 2,113 of the game's 2,115 world textures, every portrait, an icon of its own for every item
   (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
   plus HD lettering and Xbox button prompts. F2 shows what was there before.
+- **Fuller sound**: the game's music and sounds as loud as other games' (they played very softly) and a little
+  clearer, through a limiter; the same music and sounds, switchable back to the original.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
 - **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.

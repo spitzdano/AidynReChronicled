@@ -582,7 +582,9 @@ int main(int argc, char** argv) {
     printf("Game: %s\n", version == aidyn::settings::RomPatch::None ? "Aidyn Chronicles (NTSC-U 1.0)" : version_name(version));
     fflush(stdout);
 
-    aidyn::audio::init(48000);
+    // The device at the game's own rate (Aidyn's audio thread runs at 44.1 kHz): SDL then has nothing to resample, and
+    // the system's mixer (PipeWire, WASAPI) converts to the hardware's rate with its own, better resampler.
+    aidyn::audio::init(44100);
 
     ultramodern::renderer::GraphicsConfig graphics{};
     graphics.developer_mode = false;

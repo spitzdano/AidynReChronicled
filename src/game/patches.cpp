@@ -4139,7 +4139,7 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // pause menu's parchment: the list stays the menu's page but fades out under it (Utilities::SetAlpha) and back in when
 // it closes, and the game gets no input meanwhile (aidyn::input::set_capture), so nothing it does with a button can
 // reach a list that isn't there. Up / down choose a row, A or left / right change it, B (or Start) goes back. Each
-// change is applied at once and written into settings.json: textures (every pack, HD save pictures, redrawn page
+// change is applied at once and written into settings.json: the sound (audio.enhanced), textures (every pack, HD save pictures, redrawn page
 // words, the HD letters' widths; off: as the N64), vsync, the turn order, the controls card, the other button prompts
 // (menu hints, LB / RB at the page arrows, the party switch), the HUD at the screen
 // edges, the draw distance, smooth walk cycles and the camera's right stick and its directions. The words are
@@ -4183,13 +4183,14 @@ namespace {
     struct RcRow {
         const char* label;
         bool* flag;           // a switch; nullptr: steps
-        const char* key;      // in settings.json's "graphics"
+        const char* key;      // in settings.json's section (graphics unless the row says)
         void (*applied)(uint8_t* rdram);
         bool (*shown)() = nullptr;  // what the row shows when not just *flag (Widescreen: the picture really wide)
         const RcSteps* steps = nullptr;
         void (*action)(uint8_t* rdram, recomp_context* ctx) = nullptr;  // a row that does something (A), no value
         const char* on_word = "rc_on";    // a switch's values
         const char* off_word = "rc_off";
+        const char* section = "graphics";
     };
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
@@ -4214,7 +4215,9 @@ namespace {
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
             };
         }
+        auto& sound = aidyn::settings::audio_rw();
         return {
+            { "rc_sound", &sound.enhanced, "enhanced", nullptr, nullptr, nullptr, nullptr, "rc_enhanced", "rc_dd_1", "audio" },
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
             { "rc_walk_speed", nullptr, "walk_speed", nullptr, nullptr, &walk },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
@@ -4275,7 +4278,7 @@ namespace {
             } else if (r.flag == &gfx.fullscreen) {
                 aidyn::set_borderless(*r.flag);  // through RT64, and saved (src/main/main.cpp)
             } else {
-                aidyn::settings::save_bool("graphics", r.key, *r.flag);
+                aidyn::settings::save_bool(r.section, r.key, *r.flag);
             }
         } else {
             const RcSteps& s = *r.steps;
@@ -4437,7 +4440,8 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             word("rc_title_r", x + w, kRowsTop - 31.0f, false);
         }
     }
-    const float row_step = rows.size() > 9 ? 14.5f : kRowStep;  // ten rows: closer, to stay on the parchment
+    // Ten rows or more: closer, so the last stays where ten at 14.5 put it, on the parchment.
+    const float row_step = rows.size() > 9 ? 14.5f * 9.0f / (float)(rows.size() - 1) : kRowStep;
     for (int k = 0; k < (int)rows.size(); k++) {
         const RcRow& r = rows[k];
         const float y = kRowsTop + row_step * k;

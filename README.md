@@ -26,6 +26,8 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 - **Newly painted art**: 2,113 of the game's 2,115 world textures, every portrait, an icon of its own for every item
   (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
   plus HD lettering and Xbox button prompts. F2 shows what was there before.
+- **Fuller sound**: the game's music and sounds as loud as other games' (they played very softly) and a little
+  clearer, through a limiter; the same music and sounds, switchable back to the original.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
 - **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
@@ -281,6 +283,11 @@ these defaults on the first run:
         "combat_enemy_speed": 2,
         "save_backups": 20
     },
+    "audio": {
+        "enhanced": true,
+        "loudness_db": 18.0,
+        "brightness_db": 6.0
+    },
     "graphics": {
         "render_height": 1080,
         "aspect": "16:9",
@@ -310,6 +317,9 @@ these defaults on the first run:
 | `skip_intro` | `false` puts back the start-up screens: Expansion Pak notice, copyright, Nintendo, THQ and H2O logos |
 | `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on |
 | `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own |
+| `enhanced` (audio) | `false`: the sound exactly as the game makes it. `true` (the ReChronicled page's Sound, Enhanced): louder, with a little more treble, through a limiter that holds the peaks at -1 dBFS (`src/main/audio.cpp`) |
+| `loudness_db` (audio) | 0 to 24: how much louder Enhanced plays (the game's own mix measures -35 to -39 LUFS; +18 brings it to about -17 to -19, like other games) |
+| `brightness_db` (audio) | 0 to 12: Enhanced's treble lift above about 3 kHz (the game's instrument samples have almost nothing above 4 kHz) |
 | `save_backups` | how many copies of the Controller Pak to keep in `~/.local/share/AidynReChronicled/backups` (made at start and before each save; 0 = none) |
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |

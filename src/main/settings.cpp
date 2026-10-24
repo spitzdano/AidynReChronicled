@@ -11,6 +11,7 @@
 namespace {
     aidyn::settings::Graphics g_graphics;
     aidyn::settings::Game g_game;
+    aidyn::settings::Audio g_audio;
 
     const char* rom_patch_name(aidyn::settings::RomPatch p) {
         return p == aidyn::settings::RomPatch::AidynPatch ? "aidyn-patch"
@@ -88,6 +89,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["game"]["fast_forward_speed"] = g_game.fast_forward_speed;
         j["game"]["combat_enemy_speed"] = g_game.combat_enemy_speed;
         j["game"]["save_backups"] = g_game.save_backups;
+        j["audio"]["enhanced"] = g_audio.enhanced;
+        j["audio"]["loudness_db"] = g_audio.loudness_db;
+        j["audio"]["brightness_db"] = g_audio.brightness_db;
         j["graphics"]["render_height"] = g_graphics.render_height;
         j["graphics"]["aspect"] = g_graphics.aspect_text;
         j["graphics"]["widescreen"] = g_graphics.widescreen;
@@ -134,6 +138,10 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_game.fast_forward_speed = game.value("fast_forward_speed", g_game.fast_forward_speed);
         g_game.combat_enemy_speed = game.value("combat_enemy_speed", g_game.combat_enemy_speed);
         g_game.save_backups = game.value("save_backups", g_game.save_backups);
+        const auto& audio = j.value("audio", nlohmann::json::object());
+        g_audio.enhanced = audio.value("enhanced", g_audio.enhanced);
+        g_audio.loudness_db = audio.value("loudness_db", g_audio.loudness_db);
+        g_audio.brightness_db = audio.value("brightness_db", g_audio.brightness_db);
         const auto& gfx = j.value("graphics", nlohmann::json::object());
         g_graphics.render_height = gfx.value("render_height", g_graphics.render_height);
         g_graphics.msaa = gfx.value("msaa", g_graphics.msaa);
@@ -216,6 +224,12 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     if (g_game.save_backups < 0 || g_game.save_backups > 1000) {
         bad(path, "game.save_backups must be 0 (none) to 1000");
     }
+    if (!(g_audio.loudness_db >= 0.0f && g_audio.loudness_db <= 24.0f)) {
+        bad(path, "audio.loudness_db must be 0..24");
+    }
+    if (!(g_audio.brightness_db >= 0.0f && g_audio.brightness_db <= 12.0f)) {
+        bad(path, "audio.brightness_db must be 0..12");
+    }
     if (g_graphics.render_height != 0 && (g_graphics.render_height < 240 || g_graphics.render_height > 4320)) {
         bad(path, "graphics.render_height must be 0 (fit the window) or 240..4320");
     }
@@ -246,6 +260,14 @@ const aidyn::settings::Graphics& aidyn::settings::graphics() {
 
 const aidyn::settings::Game& aidyn::settings::game() {
     return g_game;
+}
+
+const aidyn::settings::Audio& aidyn::settings::audio() {
+    return g_audio;
+}
+
+aidyn::settings::Audio& aidyn::settings::audio_rw() {
+    return g_audio;
 }
 
 void aidyn::settings::use_rom_patch(RomPatch patch) {
