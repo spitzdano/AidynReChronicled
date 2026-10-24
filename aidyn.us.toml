@@ -798,3 +798,8 @@ text = "extern void aidyn_display_list_size(uint8_t* rdram, recomp_context* ctx)
 func = "appProc"
 before_vram = 0x8001AA4C
 text = "extern void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx); aidyn_display_list_limit(rdram, ctx);"
+
+[[patches.hook]]
+func = "WidgetMenuWorldMap__Tick"
+before_vram = 0x80049428
+text = "extern void aidyn_world_map_tick(uint8_t* rdram, recomp_context* ctx); aidyn_world_map_tick(rdram, ctx);"

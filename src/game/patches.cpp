@@ -3048,6 +3048,36 @@ namespace {
 // it: told by its own background (JournalBG, 320x240 CI8, the FNV hash of its rows 100..103), so that arrow gets no LB.
 static bool journal_frame = false;
 // The map page's and the journal's texel (0, 0) on screen, scale and fade, this frame (their button hints, #11).
+// ---- World map pieces ----
+// The map page's land (#26): 18 grey drawings, one per region whose map the party has found, that the game tints brown
+// (WidgetMenuWorldMap::ShowMap: SetColor(130, 80, 80)). The redrawn art pack paints them in colour, in place on the
+// painted page (tools/hdui/map_pieces.py; it lists MapPieces in the pack's aidyn-pages.txt): while that pack is on,
+// they're drawn untinted. Hooked at WidgetMenuWorldMap::Tick's entry (a0 the page: its pieces +0x8C, 8 bytes each,
+// the WidgetBorg8 first; their count +0x90; a widget's colour at +0x58), every frame the page shows, so F2 brings the
+// game's own tint back at once.
+extern "C" void aidyn_world_map_tick(uint8_t* rdram, recomp_context* ctx) {
+    static const bool painted = [] {
+        std::vector<uint8_t> bytes;
+        return aidyn::packs::read("rechronicled-art", "aidyn-pages.txt", bytes) &&
+               std::string(bytes.begin(), bytes.end()).find("MapPieces") != std::string::npos;
+    }();
+    const gpr map = ctx->r4;
+    const gpr pieces = heap_pointer(map) ? MEM_W(0x8C, map) : 0;
+    if (!heap_pointer(pieces)) {
+        return;
+    }
+    const bool on = painted && redesigned_card();
+    const uint32_t count = std::min<uint32_t>(MEM_HU(0x90, map), 32);
+    for (uint32_t i = 0; i < count; i++) {
+        const gpr img = MEM_W(8 * i, pieces);
+        if (heap_pointer(img)) {
+            MEM_B(0x58, img) = (int8_t)(on ? 255 : 130);
+            MEM_B(0x59, img) = (int8_t)(on ? 255 : 80);
+            MEM_B(0x5A, img) = (int8_t)(on ? 255 : 80);
+        }
+    }
+}
+
 static TitleSeen map_page, journal_page;
 
 // A 320x240 page's texel (0, 0) on screen, scale and fade, from N64BorgImageDraw's arguments.
