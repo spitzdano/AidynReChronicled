@@ -88,6 +88,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["game"]["skip_intro"] = g_game.skip_intro;
         j["game"]["fast_forward_speed"] = g_game.fast_forward_speed;
         j["game"]["combat_enemy_speed"] = g_game.combat_enemy_speed;
+        j["game"]["combat_party_speed"] = g_game.combat_party_speed;
         j["game"]["save_backups"] = g_game.save_backups;
         j["audio"]["enhanced"] = g_audio.enhanced;
         j["audio"]["loudness_db"] = g_audio.loudness_db;
@@ -138,6 +139,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_game.skip_intro = game.value("skip_intro", g_game.skip_intro);
         g_game.fast_forward_speed = game.value("fast_forward_speed", g_game.fast_forward_speed);
         g_game.combat_enemy_speed = game.value("combat_enemy_speed", g_game.combat_enemy_speed);
+        g_game.combat_party_speed = game.value("combat_party_speed", g_game.combat_party_speed);
         g_game.save_backups = game.value("save_backups", g_game.save_backups);
         const auto& audio = j.value("audio", nlohmann::json::object());
         g_audio.enhanced = audio.value("enhanced", g_audio.enhanced);
@@ -219,6 +221,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     }
     if (g_game.fast_forward_speed < 2 || g_game.fast_forward_speed > 6) {
         bad(path, "game.fast_forward_speed must be 2..6");
+    }
+    if (g_game.combat_party_speed < 1 || g_game.combat_party_speed > 6) {
+        bad(path, "game.combat_party_speed must be 1 (as the game) to 6");
     }
     if (g_game.combat_enemy_speed < 1 || g_game.combat_enemy_speed > 6) {
         bad(path, "game.combat_enemy_speed must be 1 (off) to 6");

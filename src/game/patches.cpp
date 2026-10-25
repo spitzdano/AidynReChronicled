@@ -2349,9 +2349,12 @@ extern "C" void aidyn_minimap_end(uint8_t* rdram, recomp_context* ctx) {
 // second). aidyn.us.toml hooks GetInput's entry (the port) and its return: while fast-forward is on, every real sample
 // is followed by (speed - 1) quiet ones, copies of it without its new presses (same stick, held buttons and hold
 // times), so the game runs that many ticks a frame and no press is handled twice. Fast-forward is L3 or a held Tab
-// (src/main/input.cpp), at game.fast_forward_speed; enemy turns in combat get game.combat_enemy_speed on their own:
-// combat_controls (the combat frame's sample loop) is hooked on entry and looks at gCombatP->current_Ent->aiP (set for
-// enemies and the AI-led Sholeh). While the player's fast-forward is on, a marker shows at the top right.
+// (src/main/input.cpp), at game.fast_forward_speed; turns in combat get their own: combat_controls (the combat frame's
+// sample loop) is hooked on entry and looks at gCombatP->current_Ent->aiP (set for enemies and the AI-led Sholeh):
+// enemies' turns at game.combat_enemy_speed, the party's at game.combat_party_speed while they move and act (not while
+// the player chooses: aiming (9, 10, 11, 18), the X / Y menus (22, 23), Perform's (25) and the pause menu (14, 27),
+// where the cursors would race). A fraction (1.5) alternates ticks between frames. While the player's fast-forward is
+// on, a marker shows at the top right.
 namespace {
     constexpr gpr kQuietSample = (gpr)(int32_t)0x80F81000;  // one ControllerFull (0x34 bytes), above the game's 15 MB
     constexpr int kControllerFull = 0x34;
@@ -2361,6 +2364,7 @@ namespace {
     int ff_port = 0;
     int ff_pending = 0;   // quiet samples still to hand out this frame
     int ff_combat = 1;    // speed for the combat_controls call under way (an enemy's turn)
+    float ff_combat_carry = 0.0f;  // a fractional speed's ticks carried to the next frame
 }
 
 std::atomic_uint32_t aidyn_game_ticks{ 0 };  // samples handed out on port 1: game ticks (AIDYN_FPS prints the rate)
@@ -2398,15 +2402,22 @@ extern "C" uint32_t aidyn_ff_input_end(uint8_t* rdram, gpr input_ptr, uint32_t p
 }
 
 extern "C" void aidyn_ff_combat(uint8_t* rdram) {
-    int speed = 1;
+    float speed = 1.0f;
     const gpr combat = (gpr)(int32_t)MEM_W(0, kCombatP);
     if (combat != 0) {
         const gpr ent = (gpr)(int32_t)MEM_W(kCurrentEnt, combat);
         if (ent != 0 && MEM_W(kAiP, ent) != 0) {
             speed = aidyn::settings::game().combat_enemy_speed;
+        } else if (ent != 0) {
+            switch (MEM_BU(0, (gpr)(int32_t)0x800D9454)) {  // gGlobals.combatBytes[0]
+                case 9: case 10: case 11: case 14: case 18: case 22: case 23: case 25: case 27: break;  // choosing
+                default: speed = aidyn::settings::game().combat_party_speed; break;
+            }
         }
     }
-    ff_combat = speed;
+    speed = std::clamp(speed, 1.0f, 6.0f) + ff_combat_carry;
+    ff_combat = (int)speed;
+    ff_combat_carry = speed - (float)ff_combat;
 }
 
 // Graphics__EndList (the end of every frame's display list) draws this: the chevrons (branding image 4), 8 texels in
@@ -4271,12 +4282,19 @@ namespace {
     constexpr int kAaMsaa[] = { 0, 2, 4, 8 }, kAaSupersampling[] = { 1, 1, 2, 2 };
     float aa_step = 2.0f;  // the row's value, from settings.json's msaa and supersampling when the page lists its rows
     constexpr float kWalkSpeeds[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+    constexpr float kPartySpeeds[] = { 1.0f, 1.5f, 2.0f, 3.0f };
+    constexpr const char* kPartySpeedWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_3" };
+    constexpr float kEnemySpeeds[] = { 1.0f, 2.0f, 3.0f, 4.0f };
+    constexpr const char* kEnemySpeedWords[] = { "rc_dd_1", "rc_dd_2", "rc_dd_3", "rc_x4" };
     constexpr const char* kWalkWords[] = { "rc_dd_1", "rc_ws_125", "rc_dd_15", "rc_ws_175", "rc_dd_2" };
 
     std::vector<RcRow> rc_rows(int kind) {
         auto& gfx = aidyn::settings::graphics_rw();
         static const RcSteps distance = { &gfx.draw_distance, kDistances, kDistanceWords, (int)std::size(kDistances) };
         static const RcSteps walk = { &gfx.walk_speed, kWalkSpeeds, kWalkWords, (int)std::size(kWalkSpeeds) };
+        auto& game = aidyn::settings::game_rw();
+        static const RcSteps party = { &game.combat_party_speed, kPartySpeeds, kPartySpeedWords, (int)std::size(kPartySpeeds) };
+        static const RcSteps enemy = { &game.combat_enemy_speed, kEnemySpeeds, kEnemySpeedWords, (int)std::size(kEnemySpeeds) };
         if (kind == kRcDisplay) {
             static const RcSteps aa = { &aa_step, kAaSteps, kAaWords, (int)std::size(kAaSteps) };
             int best = 0;  // the step nearest what settings.json has (it may hold any mix)
@@ -4306,6 +4324,8 @@ namespace {
             { "rc_sound", &sound.enhanced, "enhanced", nullptr, nullptr, nullptr, nullptr, "rc_enhanced", "rc_dd_1", "audio" },
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
             { "rc_walk_speed", nullptr, "walk_speed", nullptr, nullptr, &walk },
+            { "rc_combat_speed", nullptr, "combat_party_speed", nullptr, nullptr, &party, nullptr, "rc_on", "rc_off", "game" },
+            { "rc_enemy_turns", nullptr, "combat_enemy_speed", nullptr, nullptr, &enemy, nullptr, "rc_on", "rc_off", "game" },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
             { "rc_combat_log", &gfx.combat_log, "combat_log", nullptr },
@@ -4375,7 +4395,7 @@ namespace {
             const RcSteps& s = *r.steps;
             *s.value = s.steps[(step_index(s) + step + s.n) % s.n];
             if (*r.key != '\0') {  // (Anti-aliasing saves its own two settings)
-                aidyn::settings::save_number("graphics", r.key, *s.value);
+                aidyn::settings::save_number(r.section, r.key, *s.value);
             }
         }
         if (r.applied != nullptr) {
@@ -4828,6 +4848,7 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
 // prints each message.
 extern "C" void func_800AA6E8(uint8_t* rdram, recomp_context* ctx);  // Font::printSimple(font, Gfx**, txt, x, y, sx, sy)
 extern "C" void Font__GetWidthScaled(uint8_t* rdram, recomp_context* ctx);
+extern "C" void N64BorgImageDraw(uint8_t* rdram, recomp_context* ctx);  // (g, img, x, y, xOff, yOff, h, v, sx, sy, r, g, b, a)
 extern "C" void Font__SetFace(uint8_t* rdram, recomp_context* ctx);
 
 #include <deque>
@@ -4879,7 +4900,38 @@ namespace {
     // scaled widths (each letter's width at scale 1, Font::GetWidthScaled of it alone), as they sit at full size, and
     // kTracking more between letters (the small text reads easier a touch looser).
     constexpr float kTracking = 0.3f;  // units of the 320x240 screen
+    // With the HD letters, a letter's own advance (font_widths.h kAdvances, plus the letter-spacing its cell width
+    // has): the cell widths are whole texels, each letter centred in its own, so spacing by them left thin letters
+    // ("i", "n") with gaps beside them. -1 for a character without one (and the original letters).
+    float hd_advance(uint8_t* rdram, char c) {
+        if (!hd_text() || !aidyn::settings::graphics().textures || (uint8_t)c < ' ' || (uint8_t)c > '~') return -1.0f;
+        const uint32_t index = MEM_BU((uint8_t)c - ' ', (gpr)(int32_t)0x800E4AC0);
+        for (const auto& a : aidyn::font::kAdvances) {
+            if (a.cell == index) return a.hundredths / 100.0f + aidyn::font::kTrack;
+        }
+        return -1.0f;
+    }
+
+    // With the HD letters, where a letter's ink starts and ends in its cell (font_widths.h kInks): text is placed by
+    // its ink, the same gap between every two letters (kInkGap), as the font's side bearings left a small capital I
+    // with more room than its neighbours ("acti on").
+    bool hd_ink(uint8_t* rdram, char c, float* left, float* right) {
+        if (!hd_text() || !aidyn::settings::graphics().textures || (uint8_t)c <= ' ' || (uint8_t)c > '~') return false;
+        const uint32_t index = MEM_BU((uint8_t)c - ' ', (gpr)(int32_t)0x800E4AC0);
+        for (const auto& k : aidyn::font::kInks) {
+            if (k.cell == index) {
+                *left = k.left / 100.0f, *right = k.right / 100.0f;
+                return true;
+            }
+        }
+        return false;
+    }
+
     float letter_width(uint8_t* rdram, recomp_context* ctx, gpr font, char c) {
+        float il = 0.0f, ir = 0.0f;
+        if (hd_ink(rdram, c, &il, &ir)) return ir - il + aidyn::font::kInkGap;
+        const float hd = hd_advance(rdram, c);
+        if (hd >= 0.0f) return hd;
         put_text(rdram, std::string(1, c));
         return (float)(int32_t)call_game(rdram, ctx, Font__GetWidthScaled, (uint32_t)font, (uint32_t)kLogText,
                                          f32_bits(1.0f));
@@ -4891,16 +4943,39 @@ namespace {
         return w;
     }
 
-    // Draws text at (x, y) at this scale in the font's colour; returns where the next text goes.
+    // Draws text at (x, y) at this scale in the font's colour; returns where the next text goes. Each letter is drawn
+    // as Font::printSimple draws it (N64BorgImageDraw of its cell in the font sheet: the letter's index from the
+    // game's table at 0x800E4AC0, its cell (index / the face's rows) x charW, (index % rows) x charH, its width the
+    // font's kerning[index]) but at its exact x: printSimple takes whole units, which at these scales moved letters up
+    // to half a unit (a couple of pixels) off their place, and two neighbours apart showed as a gap ("Ab recan").
+    // The button pictures (characters above '~', their own colours) still go through printSimple.
     float print_text(uint8_t* rdram, recomp_context* ctx, gpr font, gpr& g, const std::string& text, float x, float y,
                      float scale) {
+        const gpr sheet = MEM_W(4, font), faces = MEM_W(0, font), kerning = MEM_W(0x18, font);
+        const uint32_t rows = heap_pointer(faces) ? MEM_BU(0x18 * MEM_BU(8, font) + 0x14, faces) : 0;
+        const uint32_t cw = MEM_HU(0xC, font), ch = MEM_HU(0xE, font), col = (uint32_t)MEM_W(0x1C, font);
         for (char c : text) {
             const float w = letter_width(rdram, ctx, font, c);
-            put_text(rdram, std::string(1, c));
-            MEM_W(0, kLogGfx) = (int32_t)g;
-            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
-                            (uint32_t)(int)std::lround(x), { (uint32_t)(int)std::lround(y), f32_bits(scale), f32_bits(scale) });
-            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            const uint8_t u = (uint8_t)c;
+            if (u > '~' || !heap_pointer(sheet) || !heap_pointer(kerning) || rows == 0) {
+                put_text(rdram, std::string(1, c));
+                MEM_W(0, kLogGfx) = (int32_t)g;
+                call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                                (uint32_t)(int)std::lround(x), { (uint32_t)(int)std::lround(y), f32_bits(scale), f32_bits(scale) });
+                g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            } else if (u >= ' ') {
+                const uint32_t index = MEM_BU(u - ' ', (gpr)(int32_t)0x800E4AC0);
+                if (index != 0x2B && c != ' ') {
+                    const uint32_t sx = index / rows * cw, sy = index % rows * ch, kw = MEM_HU(2 * index, kerning);
+                    // An HD letter is placed by its ink: the cell moved so the ink starts at x.
+                    float il = 0.0f, ir = 0.0f;
+                    const float shift = hd_ink(rdram, c, &il, &ir) ? -il * scale : 0.0f;
+                    g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)sheet,
+                                                      f32_bits(x + shift), f32_bits((float)std::lround(y)),
+                                                      { sx, sy, sx + kw, sy + ch, f32_bits(scale), f32_bits(scale),
+                                                        col >> 24, (col >> 16) & 0xFF, (col >> 8) & 0xFF, col & 0xFF });
+                }
+            }
             x += w * scale + kTracking;
         }
         return x;
