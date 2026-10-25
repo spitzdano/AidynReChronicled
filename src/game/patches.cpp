@@ -5076,8 +5076,8 @@ namespace {
         return out;
     }
 
-    // The highlighted entry of the held X or Y menu: 0x10000 | a spell's ID (a spell, or the spell an item holds:
-    // a wand, a ring...), 0x20000 | a potion (PotionEnum), else 0. The menu's rows: A function +0x18, varU8 +0x5C,
+    // The highlighted entry of the held X or Y menu: 0x10000 | a spell's ID, 0x30000 | the spell an item holds (a wand,
+    // a ring...: cast from its charges), 0x20000 | a potion (PotionEnum), else 0. The menu's rows: A function +0x18, varU8 +0x5C,
     // varU16 +0x5E. A spell row (func_80088958): its spellbook index in varU8. A potion row (WidgetCombatItems,
     // func_80089114): its item ID in varU16. An item's spell (func_80089178): varU16 where (2 armour, 3 shield,
     // 4 weapon, 5 gear) and varU8 the gear slot; the item (CharSheet +0x20 armour[2], +0x24 weapon, +0x28 gear list
@@ -5121,14 +5121,15 @@ namespace {
                 item = heap_pointer(items) && var8 < 12 ? MEM_W(4 * var8, items) : 0;
             }
             const gpr charge = heap_pointer(item) ? MEM_W(0x10, item) : 0;
-            return heap_pointer(charge) ? spell_key(MEM_W(0, charge)) : 0;
+            const uint32_t k = heap_pointer(charge) ? spell_key(MEM_W(0, charge)) : 0;
+            return k != 0 ? (k | 0x20000u) : 0;  // 0x30000 | the spell: cast from the item's charges
         }
         return 0;
     }
 
     // That entry's description, or "".
     std::string combat_entry_text(uint8_t* rdram, recomp_context* ctx, uint32_t key) {
-        if (key >> 16 == 1) {
+        if (key >> 16 == 1 || key >> 16 == 3) {
             if (spell_texts.empty()) {
                 spell_texts = load_romstrings(rdram, ctx, kSpellStrings, kSpellStringsSize, (int)std::size(kSpellText));
             }
@@ -5145,6 +5146,51 @@ namespace {
             return recipe == std::string::npos ? text : text.substr(0, recipe);
         }
         return "";
+    }
+}
+
+// Under the description, what the entry takes from the party's pack, with its icon: a spell its ingredient (the spell
+// database's SpellRAM +0x23: none, spice, herb or gemstone; a cast uses one, combatEntity.cpp's TakeItem(..., 1)) as
+// "1 / <in the pack>", a potion how many there are. A spell cast from an item's charges takes nothing. The count is the
+// party's inventory's own (party 0x800D9684 +0x10, its vtable's GetItemIndex +0x50 / +0x54 and GetItemQuantity +0x68 /
+// +0x6C, called through get_function), read each frame (it changes as spells are cast). The icon is the game's
+// (GetItemImage, then loadBorg8: the item icon hooks give it its own, which the art pack paints), loaded once per item and
+// drawn with N64BorgImageDraw (g, img, x, y, xOff, yOff, w, h, xScale, yScale, r, g, b, a).
+extern "C" void GetItemImage(uint8_t* rdram, recomp_context* ctx);
+extern "C" void borg8_free(uint8_t* rdram, recomp_context* ctx);
+extern "C" void N64BorgImageDraw(uint8_t* rdram, recomp_context* ctx);
+extern "C" recomp_func_t* get_function(int32_t addr);
+
+namespace {
+    constexpr gpr kIconIndexSlot = (gpr)(int32_t)0x80F81700;  // GetItemImage's u32* out (scratch above the game's 15 MB)
+    uint16_t footer_item = 0;
+    gpr footer_icon = 0;
+
+    // The party's inventory: how many of item there are (0 if none).
+    int pack_count(uint8_t* rdram, recomp_context* ctx, uint16_t item) {
+        const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+        const gpr inv = heap_pointer(party) ? MEM_W(0x10, party) : 0;
+        const gpr vt = heap_pointer(inv) ? MEM_W(0, inv) : 0;
+        if (vt == 0) return 0;
+        recomp_func_t* index_of = get_function(MEM_W(0x54, vt));
+        recomp_func_t* quantity = get_function(MEM_W(0x6C, vt));
+        if (index_of == nullptr || quantity == nullptr) return 0;
+        const int32_t index = (int32_t)call_game(rdram, ctx, index_of, (uint32_t)(inv + (int16_t)MEM_HU(0x50, vt)), item);
+        if (index < 0) return 0;
+        return (int32_t)call_game(rdram, ctx, quantity, (uint32_t)(inv + (int16_t)MEM_HU(0x68, vt)), (uint32_t)index);
+    }
+
+    // The item's icon, loaded once (the last one freed).
+    gpr item_icon(uint8_t* rdram, recomp_context* ctx, uint16_t item) {
+        if (item == footer_item && heap_pointer(footer_icon)) return footer_icon;
+        if (heap_pointer(footer_icon)) call_game(rdram, ctx, borg8_free, (uint32_t)footer_icon);
+        footer_icon = 0;
+        footer_item = item;
+        MEM_W(0, kIconIndexSlot) = 0;
+        call_game(rdram, ctx, GetItemImage, item, (uint32_t)kIconIndexSlot);
+        const uint32_t index = (uint32_t)MEM_W(0, kIconIndexSlot);
+        if (index != 0) footer_icon = (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, index);
+        return footer_icon;
     }
 }
 
@@ -5206,7 +5252,31 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (spell_lines.empty()) {
         return g;
     }
-    const float lines_h = spell_lines.size() * kLine;
+    // The pack line: the item, how many it uses (spells) and how many there are.
+    uint16_t item = 0;
+    std::string pack;
+    if (key >> 16 == 1) {
+        const gpr db = MEM_W(0, (gpr)(int32_t)0x800E2B30);
+        const gpr spells = heap_pointer(db) ? MEM_W(0x10, db) : 0;
+        const uint32_t total = heap_pointer(db) ? MEM_BU(0, db) : 0;
+        for (uint32_t i = 0; heap_pointer(spells) && i < total; i++) {
+            if (MEM_HU(0x26 * i, spells) != (key & 0xFFFF)) continue;
+            static constexpr uint16_t kIngredient[] = { 0, 0x111, 0x112, 0x113 };  // none, spice, herb, gemstone
+            static constexpr const char* kName[] = { "", "Spice", "Herb", "Gemstone" };
+            const uint32_t use = MEM_BU(0x26 * i + 0x23, spells);
+            if (use >= 1 && use <= 3) {
+                item = kIngredient[use];
+                pack = std::string(kName[use]) + "   1 / " + std::to_string(pack_count(rdram, ctx, item));
+            }
+            break;
+        }
+    } else if (key >> 16 == 2) {
+        item = (uint16_t)(0x1000 | (key & 0xFF));
+        pack = "In your pack: " + std::to_string(pack_count(rdram, ctx, item));
+    }
+    constexpr float kIcon = 9.0f;  // the icon's size (its 16x16 texels drawn this many units across)
+    const float footer_h = pack.empty() ? 0.0f : kIcon + 3.0f;
+    const float lines_h = spell_lines.size() * kLine + footer_h;
     const float x0 = right ? right_x
                            : std::clamp(box.x + box.w / 2.0f - width / 2.0f, 4.0f - shift, 316.0f + shift - width);
     const float y0 = right ? box.y + std::max(0.0f, (box.h - lines_h) / 2.0f)
@@ -5230,8 +5300,27 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
                             { (uint32_t)(int)std::lround(y0 + k * kLine), f32_bits(kScale), f32_bits(kScale) });
             g = (gpr)(int32_t)MEM_W(0, kLogGfx);
         }
+        if (!pack.empty()) {
+            MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xD8B070FFu);  // the combat log's gold
+            put_text(rdram, pack);
+            MEM_W(0, kLogGfx) = (int32_t)g;
+            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                            (uint32_t)(int)std::lround(x0 + shift + kIcon + 3.0f),
+                            { (uint32_t)(int)std::lround(y0 + spell_lines.size() * kLine + 3.0f + (kIcon - kLine) / 2),
+                              f32_bits(kScale), f32_bits(kScale) });
+            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+        }
     }
     font_restore(rdram, font, st);
+    const gpr icon = pack.empty() ? 0 : item_icon(rdram, ctx, item);
+    if (heap_pointer(icon)) {
+        const uint32_t iw = MEM_HU(0x0A, icon), ih = MEM_HU(0x0C, icon);
+        if (iw != 0 && ih != 0) {
+            g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon,
+                                              f32_bits(x0 + shift), f32_bits(y0 + spell_lines.size() * kLine + 2.0f),
+                                              { 0, 0, iw, ih, f32_bits(kIcon / iw), f32_bits(kIcon / ih), 255, 255, 255, 255 });
+        }
+    }
     g = hud_end(rdram, g);
     return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                    MEM_HU(kVres1, (gpr)gGfxManager));
