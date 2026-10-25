@@ -2569,7 +2569,12 @@ namespace {
                 const uint32_t r = MEM_BU(0x58, slot), gr = MEM_BU(0x59, slot), b = MEM_BU(0x5A, slot), a = MEM_BU(0x5B, slot);
                 const bool plain = r < 40 && gr < 40;                                     // the usual black
                 const bool gold = r > 150 && gr > 120 && b < 60 && std::abs((int)r - (int)gr) < 60;  // an ally's
-                if (!plain && !gold && a != 0) {
+                // The spell's red (in its range) stays on the slot after a cancelled spell (the game clears the
+                // range list only at the next spell's aim): not while moving or in the X / Y menus, as the
+                // target flash ("Target flash" above).
+                const uint8_t state = MEM_BU(0, kCombatState);
+                const bool stale_red = r > 150 && gr < 60 && (state == 1 || state == 22 || state == 23);
+                if (!plain && !gold && !stale_red && a != 0) {
                     g = tinted_image_state(rdram, g, r << 24 | gr << 16 | b << 8 | std::min(255u, a + 60));
                     g = draw_rgba16(rdram, g, glow, (x - 6.0f * fx) * hs, (y - 6.0f * fy) * vs, fx * hs, fy * vs);
                 }
