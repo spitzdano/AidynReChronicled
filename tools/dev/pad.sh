@@ -66,7 +66,7 @@ case $1 in
          ws=$(dell_ws 2>/dev/null)
          L=$D/launch.sh
          { echo '#!/usr/bin/env bash'; printf 'cd %q || exit 1\n' "$P"
-           for v in $(compgen -e | grep -E '^(AIDYN_|SDL_AUDIO)'); do printf 'export %s=%q\n' "$v" "${!v}"; done
+           for v in $(compgen -e | grep -E '^(AIDYN_|SDL_AUDIO|XDG_DATA_HOME)'); do printf 'export %s=%q\n' "$v" "${!v}"; done
            printf 'export AIDYN_PAD_FILE=%q AIDYN_WINDOWED=1\n' "$F"
            printf 'exec stdbuf -oL -eL build/cmake/AidynReChronicled >%q 2>&1\n' "$LOG"; } >"$L"
          if [[ -n $ws && $L != *[\"\\]* ]] && [[ $(hyprctl dispatch "hl.dsp.exec_cmd(\"bash $L\", { workspace = \"$ws silent\" })" 2>&1) == ok ]]; then :

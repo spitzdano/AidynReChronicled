@@ -4205,10 +4205,12 @@ namespace {
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
     constexpr const char* kDistanceWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_25", "rc_dd_3" };
-    // Anti-aliasing's steps: MSAA and supersampling together (src/main/main.cpp set_antialiasing).
-    constexpr float kAaSteps[] = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f };
-    constexpr const char* kAaWords[] = { "rc_off", "rc_aa_low", "rc_aa_medium", "rc_aa_high", "rc_aa_ultra" };
-    constexpr int kAaMsaa[] = { 0, 2, 4, 8, 8 }, kAaSupersampling[] = { 1, 1, 2, 2, 3 };
+    // Anti-aliasing's steps: MSAA and supersampling together (src/main/main.cpp set_antialiasing). No step above 8x
+    // and 2x: 3x supersampling (an "Ultra" 8x / 3) took an RTX 3090 at 3440x1440 to 16-20 frames a second in the pause
+    // menu (the game's picture behind the scroll is copied at the full supersampled size), High holds 100.
+    constexpr float kAaSteps[] = { 0.0f, 1.0f, 2.0f, 3.0f };
+    constexpr const char* kAaWords[] = { "rc_off", "rc_aa_low", "rc_aa_medium", "rc_aa_high" };
+    constexpr int kAaMsaa[] = { 0, 2, 4, 8 }, kAaSupersampling[] = { 1, 1, 2, 2 };
     float aa_step = 2.0f;  // the row's value, from settings.json's msaa and supersampling when the page lists its rows
     constexpr float kWalkSpeeds[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
     constexpr const char* kWalkWords[] = { "rc_dd_1", "rc_ws_125", "rc_dd_15", "rc_ws_175", "rc_dd_2" };
