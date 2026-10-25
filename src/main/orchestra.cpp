@@ -30,7 +30,7 @@
 namespace {
     // The game's music plays at half scale before Sound: Enhanced (about -36 LUFS); the SoundFont's level is set to
     // sit there too, so Enhanced and Original treat it as they treat the game's own.
-    constexpr float kGainDb = -22.0f;
+    constexpr float kGainDb = -26.0f;  // measured on ten tracks: -22 sat 3-11 dB above the game's own
     constexpr int kVoices = 64;
 
     struct Instrument {
