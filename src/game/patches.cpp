@@ -5446,6 +5446,36 @@ gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
+// ---- Stuck checks per tick ----
+// Two of the game's checks that a character is stuck measure progress per frame, and the N64 ran a frame every 3 or
+// so game ticks (15-20 a second); at 60 frames a second a frame is 1 or 2 ticks, the same walk covers a third as much
+// ground in one, and the checks fire on characters that are walking normally: in crowded fights enemies stop short
+// and give up (spitzdano: "they get stuck and run into each other"). Both thresholds are scaled by the frame's ticks
+// over 3, so a frame of 3 or more ticks is judged exactly as on the N64:
+//   Actor::MoveTo (func_800159C8): it re-aims at its waypoint only once it has come 0.01 closer since it last did
+//   (else aiTravelTime grows by the frame's ticks, and in combat the move is given up at 30), the double in f0 at
+//   0x80015A34 (from 0x800CDCC8), against f2;
+//   CombatStateFunc_5: the move's waitTimer (240) counts down every frame the mover went under 0.03 (its distance x
+//   100 as a byte in v0, compared with 3 at 0x800220B0; the frame's ticks are the delta in s7); at 0 the move ends
+//   where it is. The measured distance is scaled up instead (so the byte's own wrap above 2.55 stays as it was).
+namespace {
+    float frame_ticks(uint8_t* rdram) {
+        return read_f32(rdram, (gpr)(int32_t)0x800D8094);  // gGlobals' frame delta (MoveTo's own aiTravelTime step)
+    }
+}
+
+extern "C" void aidyn_moveto_progress(uint8_t* rdram, recomp_context* ctx) {
+    const float ticks = std::clamp(frame_ticks(rdram), 1.0f, 3.0f);
+    ctx->f0.d *= ticks / 3.0;
+}
+
+extern "C" void aidyn_combat_move_watch(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t moved = (uint32_t)ctx->r2 & 0xFF, ticks = std::clamp<uint32_t>((uint32_t)ctx->r23 & 0xFFFF, 1, 3);
+    if (moved < 3 && ticks < 3) {
+        ctx->r2 = (gpr)(moved * 3 / ticks);
+    }
+}
+
 // ---- Restored instrument samples (#12) ----
 // The game's instrument samples (Borg11 records: flag +0, BORG11_8bit 0x4 or BORG11_16BE 0x8; len in bytes +4;
 // samples +8; wav +0xC) were filtered when they were made: half of the notes the music plays have nothing above

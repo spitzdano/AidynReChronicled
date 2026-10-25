@@ -834,3 +834,15 @@ text = "extern void aidyn_music_set(uint8_t* rdram, recomp_context* ctx, const c
 func = "func_8008FAB0"
 before_vram = 0x8008FAB0
 text = "extern void aidyn_music_stop(uint8_t* rdram, recomp_context* ctx); aidyn_music_stop(rdram, ctx);"
+
+# Movement checks at 60 frames a second (src/game/patches.cpp, "Stuck checks per tick"): Actor::MoveTo's progress
+# threshold (its c.lt.d against 0.01) and the combat move watchdog's distance (CombatStateFunc_5's sltiu against 3).
+[[patches.hook]]
+func = "func_800159C8"
+before_vram = 0x80015A34
+text = "extern void aidyn_moveto_progress(uint8_t* rdram, recomp_context* ctx); aidyn_moveto_progress(rdram, ctx);"
+
+[[patches.hook]]
+func = "CombatStateFunc_5"
+before_vram = 0x800220B0
+text = "extern void aidyn_combat_move_watch(uint8_t* rdram, recomp_context* ctx); aidyn_combat_move_watch(rdram, ctx);"
