@@ -32,13 +32,19 @@ extern "C" void aidyn_music_tick(uint8_t* rdram, recomp_context* ctx) {
     ms++;
 }
 
+extern "C" void aidyn_samples_voice(uint8_t* rdram, recomp_context* ctx);  // src/game/patches.cpp: restored samples
+void aidyn_sample_original(uint8_t* rdram, gpr sample, uint32_t* flag, uint32_t* len, uint32_t* wav);
+
 extern "C" void aidyn_music_add(uint8_t* rdram, recomp_context* ctx) {
+    aidyn_samples_voice(rdram, ctx);
     if (music_log() == nullptr) return;
     const gpr sp = ctx->r29, sample = ctx->r6;
     add_index = ctx->r4;
     add_id = ctx->r5;
+    uint32_t flag = 0, len = 0, wav = 0;
+    aidyn_sample_original(rdram, sample, &flag, &len, &wav);  // as the game made it, restored or not
     std::snprintf(add_line, sizeof add_line, "%08X %u %u %u %u %u %u %u %u %u", (uint32_t)sample,
-                  (uint32_t)MEM_W(4, sample), (uint32_t)MEM_W(8, sample), (uint32_t)MEM_W(0, sample),
+                  len, (uint32_t)MEM_W(8, sample), flag,
                   (uint32_t)MEM_W(0x10, sp), (uint32_t)MEM_W(0x14, sp), MEM_BU(0x1B, sp), MEM_HU(0x1E, sp),
                   MEM_BU(0x23, sp), MEM_BU(0x27, sp));
 }

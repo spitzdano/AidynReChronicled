@@ -35,6 +35,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open);  // "Combat log"
 gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Spell descriptions in combat", below
+bool aidyn_restored_samples_available();  // "Restored instrument samples", below
 gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Quick and auto saves", below
 void all_props_frame_end();  // "Every prop considered", below
@@ -4254,6 +4255,10 @@ namespace {
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
             { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
+        if (aidyn_restored_samples_available()) {  // the rechronicled-samples pack ("Restored instrument samples")
+            rows.insert(rows.begin() + 1, { "rc_instruments", &sound.restored_samples, "restored_samples", nullptr,
+                                            nullptr, nullptr, nullptr, "rc_restored", "rc_dd_1", "audio" });
+        }
         return rows;
     }
 
@@ -5441,6 +5446,170 @@ gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g) {
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
+// ---- Restored instrument samples (#12) ----
+// The game's instrument samples (Borg11 records: flag +0, BORG11_8bit 0x4 or BORG11_16BE 0x8; len in bytes +4;
+// samples +8; wav +0xC) were filtered when they were made: half of the notes the music plays have nothing above
+// about 3.3 kHz. The rechronicled-samples pack (<data folder>/sample-packs/rechronicled-samples, from
+// tools/audio/sample_pack.py) has each one the music plays restored: its lost treble rebuilt (AudioSR), the original
+// kept as it was below its cutoff, at its own length, as 16-bit mono WAVs named by the key the sample's own data
+// gives, "<samples>-<flag>-<FNV-1a of its first 256 bytes>". When the music starts a note (DCM AddVoice,
+// func_8008F778's entry, through src/game/music_log.cpp) on a sample the pack has, the sample's record is pointed at
+// a block of the game's heap (operator new) holding the restored one, 16-bit big-endian, its format and length
+// changed to match: the game's own mixer plays it, with the same loop points, volumes and pans. The block goes with
+// the sample (HeapFree on the record: the "Heap trace" hook below); switched off (settings.json
+// audio.restored_samples, the ReChronicled page's Instruments row), each record gets its own data back on its next
+// note and the block is freed a few seconds later (a voice still playing reads it until then). The audio microcode
+// reaches only the first 16 MB (its DMA masks to 24 bits), hence the game's heap and not the port's.
+extern "C" void new_(uint8_t* rdram, recomp_context* ctx);
+extern "C" void delete_(uint8_t* rdram, recomp_context* ctx);
+
+namespace {
+    struct PatchedSample {
+        uint32_t flag, len, wav;  // the record's own
+        gpr block;                // ours
+    };
+    std::recursive_mutex samples_lock;  // (freeing a block goes through HeapFree, whose hook takes it again)
+    std::unordered_map<std::string, std::vector<int16_t>> restored_pcm;  // by key, loaded once
+    std::unordered_map<uint32_t, PatchedSample> patched_samples;         // by the record's address
+    std::vector<std::pair<gpr, std::chrono::steady_clock::time_point>> pending_frees;
+    std::once_flag restored_loaded;
+
+    std::filesystem::path restored_pack() {
+        return aidyn::settings::folder() / "sample-packs" / "rechronicled-samples";
+    }
+
+    // A pack WAV: 16-bit mono PCM, the "data" chunk.
+    std::vector<int16_t> read_wav16(const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        char riff[12];
+        if (!in.read(riff, 12) || std::memcmp(riff, "RIFF", 4) != 0 || std::memcmp(riff + 8, "WAVE", 4) != 0) return {};
+        uint16_t channels = 0, bits = 0;
+        for (;;) {
+            char id[4];
+            uint32_t size = 0;
+            if (!in.read(id, 4) || !in.read(reinterpret_cast<char*>(&size), 4)) return {};
+            if (std::memcmp(id, "fmt ", 4) == 0) {
+                std::vector<char> fmt(size);
+                if (!in.read(fmt.data(), size) || size < 16) return {};
+                std::memcpy(&channels, fmt.data() + 2, 2);
+                std::memcpy(&bits, fmt.data() + 14, 2);
+            } else if (std::memcmp(id, "data", 4) == 0) {
+                if (channels != 1 || bits != 16) return {};
+                std::vector<int16_t> pcm(size / 2);
+                in.read(reinterpret_cast<char*>(pcm.data()), (std::streamsize)(pcm.size() * 2));
+                return pcm;
+            } else {
+                in.seekg(size + (size & 1), std::ios::cur);
+            }
+        }
+    }
+
+    void load_restored() {
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator(restored_pack(), ec)) {
+            if (e.path().extension() != ".wav") continue;
+            std::vector<int16_t> pcm = read_wav16(e.path());
+            if (!pcm.empty()) restored_pcm.emplace(e.path().stem().string(), std::move(pcm));
+        }
+        if (!restored_pcm.empty()) {
+            fprintf(stderr, "Restored samples: %zu from %s\n", restored_pcm.size(), restored_pack().string().c_str());
+        }
+    }
+
+    std::string restored_key(uint8_t* rdram, gpr sample) {
+        const uint32_t len = (uint32_t)MEM_W(4, sample);
+        const gpr wav = MEM_W(0xC, sample);
+        uint32_t h = 0x811C9DC5u;
+        for (uint32_t i = 0; i < len && i < 256; i++) {
+            h = (h ^ MEM_BU(i, wav)) * 0x01000193u;
+        }
+        char key[48];
+        std::snprintf(key, sizeof key, "%u-%u-%08x", (uint32_t)MEM_W(8, sample), (uint32_t)MEM_W(0, sample), h);
+        return key;
+    }
+
+    void free_due(uint8_t* rdram, recomp_context* ctx, bool all) {
+        const auto now = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < pending_frees.size();) {
+            if (all || now - pending_frees[i].second > std::chrono::seconds(4)) {
+                call_game(rdram, ctx, delete_, (uint32_t)pending_frees[i].first);
+                pending_frees.erase(pending_frees.begin() + (long)i);
+            } else {
+                i++;
+            }
+        }
+    }
+}
+
+bool aidyn_restored_samples_available() {
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(restored_pack(), ec)) {
+        if (e.path().extension() == ".wav") return true;
+    }
+    return false;
+}
+
+// The sample's own format, length and data (as the game made it, restored or not), for the music log.
+void aidyn_sample_original(uint8_t* rdram, gpr sample, uint32_t* flag, uint32_t* len, uint32_t* wav) {
+    std::lock_guard g(samples_lock);
+    const auto it = patched_samples.find((uint32_t)sample);
+    if (it != patched_samples.end() && (uint32_t)MEM_W(0xC, sample) == (uint32_t)it->second.block) {
+        *flag = it->second.flag, *len = it->second.len, *wav = it->second.wav;
+    } else {
+        *flag = (uint32_t)MEM_W(0, sample), *len = (uint32_t)MEM_W(4, sample), *wav = (uint32_t)MEM_W(0xC, sample);
+    }
+}
+
+// AddVoice's entry: the note's sample (a2) restored, or its own again.
+extern "C" void aidyn_samples_voice(uint8_t* rdram, recomp_context* ctx) {
+    const gpr sample = ctx->r6;
+    if (!heap_pointer(sample)) return;
+    std::call_once(restored_loaded, load_restored);
+    std::lock_guard g(samples_lock);
+    free_due(rdram, ctx, false);
+    if (restored_pcm.empty()) return;
+    auto it = patched_samples.find((uint32_t)sample);
+    if (it != patched_samples.end() && (uint32_t)MEM_W(0xC, sample) != (uint32_t)it->second.block) {
+        patched_samples.erase(it);  // a record at a freed one's address: not ours
+        it = patched_samples.end();
+    }
+    const bool on = aidyn::settings::audio().restored_samples;
+    if (it != patched_samples.end()) {
+        if (!on) {  // switched off: its own data back, the block freed once no voice can still be reading it
+            MEM_W(0, sample) = (int32_t)it->second.flag;
+            MEM_W(4, sample) = (int32_t)it->second.len;
+            MEM_W(0xC, sample) = (int32_t)it->second.wav;
+            pending_frees.push_back({ it->second.block, std::chrono::steady_clock::now() });
+            patched_samples.erase(it);
+        }
+        return;
+    }
+    if (!on) return;
+    const uint32_t flag = (uint32_t)MEM_W(0, sample), frames = (uint32_t)MEM_W(8, sample);
+    const auto r = restored_pcm.find(restored_key(rdram, sample));
+    if (r == restored_pcm.end() || r->second.size() != frames || (flag & 0xC) == 0) return;
+    const gpr block = (gpr)(int32_t)call_game(rdram, ctx, new_, frames * 2);
+    if (!heap_pointer(block)) return;
+    for (uint32_t i = 0; i < frames; i++) MEM_H(2 * i, block) = r->second[i];
+    patched_samples[(uint32_t)sample] = { flag, (uint32_t)MEM_W(4, sample), (uint32_t)MEM_W(0xC, sample), block };
+    MEM_W(0, sample) = (int32_t)((flag & ~0x4u) | 0x8u);  // 16-bit big-endian
+    MEM_W(4, sample) = (int32_t)(frames * 2);
+    MEM_W(0xC, sample) = (int32_t)block;
+}
+
+namespace {
+    // HeapFree's entry: a restored sample's record going (its Borg11 freed): our block with it.
+    void restored_sample_freed(uint8_t* rdram, recomp_context* ctx, gpr p) {
+        std::lock_guard g(samples_lock);
+        const auto it = patched_samples.find((uint32_t)p);
+        if (it == patched_samples.end()) return;
+        const gpr block = it->second.block;
+        const bool ours = (uint32_t)MEM_W(0xC, p) == (uint32_t)block;
+        patched_samples.erase(it);
+        if (ours) call_game(rdram, ctx, delete_, (uint32_t)block);
+    }
+}
+
 // ---- Heap trace ----
 // spitzdano's game crashed at draw distance 3 near the hut by the first forest (2026-10-19): a prop's model (a SceneData
 // one of the game's own cells still pointed at, its second detail level) had been overwritten with zeros, and
@@ -5622,6 +5791,7 @@ extern "C" void aidyn_heap_alloc_end(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" void aidyn_heap_free(uint8_t* rdram, recomp_context* ctx) {
+    restored_sample_freed(rdram, ctx, ctx->r4);
     if (heap_trace_on() && heap_pointer(ctx->r4)) {
         heap_record('F', (uint32_t)ctx->r4 - 4, (uint32_t)MEM_W(-4, ctx->r4) & ~1u);
     }

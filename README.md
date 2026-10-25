@@ -286,7 +286,8 @@ these defaults on the first run:
     "audio": {
         "enhanced": true,
         "loudness_db": 18.0,
-        "brightness_db": 6.0
+        "brightness_db": 6.0,
+        "restored_samples": true
     },
     "graphics": {
         "render_height": 1080,
@@ -320,6 +321,7 @@ these defaults on the first run:
 | `enhanced` (audio) | `false`: the sound exactly as the game makes it. `true` (the ReChronicled page's Sound, Enhanced): louder, with a little more treble, through a limiter that holds the peaks at -1 dBFS (`src/main/audio.cpp`) |
 | `loudness_db` (audio) | 0 to 24: how much louder Enhanced plays (the game's own mix measures -35 to -39 LUFS; +18 brings it to about -17 to -19, like other games) |
 | `brightness_db` (audio) | 0 to 12: Enhanced's treble lift above about 3 kHz (the game's instrument samples have almost nothing above 4 kHz) |
+| `restored_samples` (audio) | `true` (the ReChronicled page's Instruments, Restored; shown when the pack is there): the music's instrument samples from the `rechronicled-samples` pack in the data folder's `sample-packs`, each one's lost treble restored and the original kept as it was below its cutoff (`tools/audio/sample_pack.py`); the game's own mixer plays them, so notes, loops, volumes and pans are unchanged. `false`: the game's own samples |
 | `save_backups` | how many copies of the Controller Pak to keep in `~/.local/share/AidynReChronicled/backups` (made at start and before each save; 0 = none) |
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |

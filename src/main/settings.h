@@ -33,6 +33,8 @@ namespace aidyn::settings {
         bool enhanced = true;        // the pause menu's ReChronicled page: Sound, Enhanced / Original
         float loudness_db = 18.0f;   // enhanced: the gain, 0..24 dB (peaks held at -1 dBFS by the limiter)
         float brightness_db = 6.0f;  // enhanced: the treble lift above about 3 kHz, 0..12 dB
+        bool restored_samples = true; // the music's instrument samples restored (the rechronicled-samples pack, when
+                                      // there): the ReChronicled page's Instruments, Restored / Original
     };
 
     struct Graphics {

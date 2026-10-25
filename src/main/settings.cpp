@@ -92,6 +92,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["audio"]["enhanced"] = g_audio.enhanced;
         j["audio"]["loudness_db"] = g_audio.loudness_db;
         j["audio"]["brightness_db"] = g_audio.brightness_db;
+        j["audio"]["restored_samples"] = g_audio.restored_samples;
         j["graphics"]["render_height"] = g_graphics.render_height;
         j["graphics"]["aspect"] = g_graphics.aspect_text;
         j["graphics"]["widescreen"] = g_graphics.widescreen;
@@ -142,6 +143,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_audio.enhanced = audio.value("enhanced", g_audio.enhanced);
         g_audio.loudness_db = audio.value("loudness_db", g_audio.loudness_db);
         g_audio.brightness_db = audio.value("brightness_db", g_audio.brightness_db);
+        g_audio.restored_samples = audio.value("restored_samples", g_audio.restored_samples);
         const auto& gfx = j.value("graphics", nlohmann::json::object());
         g_graphics.render_height = gfx.value("render_height", g_graphics.render_height);
         g_graphics.msaa = gfx.value("msaa", g_graphics.msaa);
