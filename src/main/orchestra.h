@@ -18,6 +18,7 @@ namespace aidyn::orchestra {
     void note_on(int voice, uint32_t id, const std::string& sample_key, uint32_t pitch, uint32_t volume, uint32_t pan);
     bool playing(int voice, uint32_t id);  // a voice the orchestra plays
     void voice_volume(int voice, uint32_t id, uint32_t volume);
+    void voice_pitch(int voice, uint32_t id, uint32_t pitch);  // a playback rate, as note_on's
     void voice_stop(int voice, uint32_t id);
     void tick();  // a step of the game's music player (1 ms)
     // Adds the orchestra's sound for this many frames (stereo, at the game's rate) into out.

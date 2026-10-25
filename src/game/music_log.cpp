@@ -70,6 +70,12 @@ extern "C" void aidyn_music_add(uint8_t* rdram, recomp_context* ctx) {
     add_index = ctx->r4;
     add_id = ctx->r5;
     add_orchestral = false;
+    if (music_log() != nullptr) {  // (before the orchestra mutes the voice: the log has the game's own values)
+        std::snprintf(add_line, sizeof add_line, "%08X %u %u %u %u %u %u %u %u %u", (uint32_t)sample,
+                      (uint32_t)MEM_W(4, sample), (uint32_t)MEM_W(8, sample), (uint32_t)MEM_W(0, sample),
+                      (uint32_t)MEM_W(0x10, sp), (uint32_t)MEM_W(0x14, sp), MEM_BU(0x1B, sp), MEM_HU(0x1E, sp),
+                      MEM_BU(0x23, sp), MEM_BU(0x27, sp));
+    }
     if (aidyn::orchestra::active() && music_track(rdram, ctx->r16)) {
         add_key = sample_key(rdram, sample);
         if (aidyn::orchestra::handles(add_key)) {
@@ -80,11 +86,6 @@ extern "C" void aidyn_music_add(uint8_t* rdram, recomp_context* ctx) {
             MEM_B(0x23, sp) = 0;  // the game's own voice starts silent
         }
     }
-    if (music_log() == nullptr) return;
-    std::snprintf(add_line, sizeof add_line, "%08X %u %u %u %u %u %u %u %u %u", (uint32_t)sample,
-                  (uint32_t)MEM_W(4, sample), (uint32_t)MEM_W(8, sample), (uint32_t)MEM_W(0, sample),
-                  (uint32_t)MEM_W(0x10, sp), (uint32_t)MEM_W(0x14, sp), MEM_BU(0x1B, sp), MEM_HU(0x1E, sp),
-                  MEM_BU(0x23, sp), MEM_BU(0x27, sp));
 }
 
 extern "C" void aidyn_music_added(uint8_t* rdram, recomp_context* ctx) {
@@ -101,13 +102,16 @@ extern "C" void aidyn_music_added(uint8_t* rdram, recomp_context* ctx) {
 extern "C" void aidyn_music_set(uint8_t* rdram, recomp_context* ctx, const char* what) {
     const int voice = (int)(ctx->r4 & 0xFF);
     const uint32_t id = (uint32_t)ctx->r5;
+    if (music_log() != nullptr) {
+        std::fprintf(music_log(), "%llu %s %u %u %u\n", (unsigned long long)ms, what, (uint32_t)(ctx->r4 & 0xFF),
+                     (uint32_t)ctx->r5, (uint32_t)(ctx->r6 & 0xFFFF));
+    }
     if (what[0] == 'v' && aidyn::orchestra::playing(voice, id)) {
         aidyn::orchestra::voice_volume(voice, id, (uint32_t)(ctx->r6 & 0xFF));
         ctx->r6 = 0;  // the game's own voice stays silent
+    } else if (what[0] == 'p' && what[1] == 'i' && aidyn::orchestra::playing(voice, id)) {
+        aidyn::orchestra::voice_pitch(voice, id, (uint32_t)(ctx->r6 & 0xFFFF));
     }
-    if (music_log() == nullptr) return;
-    std::fprintf(music_log(), "%llu %s %u %u %u\n", (unsigned long long)ms, what, (uint32_t)(ctx->r4 & 0xFF),
-                 (uint32_t)ctx->r5, (uint32_t)(ctx->r6 & 0xFFFF));
 }
 
 extern "C" void aidyn_music_stop(uint8_t* rdram, recomp_context* ctx) {

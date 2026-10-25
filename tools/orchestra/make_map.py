@@ -8,7 +8,9 @@ The game's music is DCM tracks (Borg12 with 4+ channels and a long command strea
 handful of its own instruments (Borg11 PCM samples, 44.1 kHz). For every sample a music track plays this measures its
 pitch (YIN), whether the track loops it, how many different notes the track plays on it and how bright it is, and
 guesses an orchestral instrument (General MIDI program; percussion as a drum note on the orchestral kit). The hand
-choices in overrides.json (by Borg11 index) win over the guesses.
+choices in overrides.json (by Borg11 index) win over the guesses: fitted against the original parts (the research
+tools: each sample's part rendered from the game's own log and compared with every orchestral candidate for tone,
+articulation and level), "gain" the level that matches the original part, "game": true a sample left to the game.
 
 The map is keyed as src/main/orchestra.cpp keys a sample it meets in the game: "<samples>:<flag>:<FNV-1a of its first
 256 bytes>", the sample's own data, so it needs no index at runtime. Entries: program (or drum), the sample's
@@ -121,6 +123,8 @@ def main():
         entry = guess(sample, pitches, looped)
         entry["borg11"] = hex(index)
         hand = overrides.get(hex(index), {})
+        if hand.get("game"):
+            continue  # left to the game: an effect in the music (wind, a whoosh), no instrument plays it
         if "program" in hand:
             entry.pop("drum", None)
         if "drum" in hand:

@@ -1,12 +1,13 @@
 // The orchestral music (#12): see orchestra.h.
 //
 // Each sample the game's music plays has an entry in the instrument map (tools/orchestra/make_map.py, keyed by the
-// sample's own data): a General MIDI program (or a drum note on the orchestral kit), the sample's fundamental f0 and an
-// octave shift. A note the game starts (its pitch is a playback rate: pitch / 44100 of the sample's own speed) becomes
-// the MIDI note nearest f0 x pitch / 44100, shifted; its velocity follows the game's volume, its pan the game's pan,
-// and later volume changes (fades between areas) the channel's volume. Each program gets a channel of its own (the
-// drums channel 9, the orchestral kit). The notes arrive in the game's music player's 1 ms steps; render() spreads a
-// chunk's steps over its frames, so they sound at their own time within it.
+// sample's own data): a General MIDI program (or a drum note on the orchestral kit), the sample's fundamental f0, an
+// octave shift and a level (gain, matched to the original part: tools/orchestra). A note the game starts (its pitch is
+// a playback rate: pitch / 44100 of the sample's own speed) becomes the MIDI note nearest f0 x pitch / 44100, shifted;
+// its velocity follows the game's volume, its pan the game's pan. Every game voice plays on channels of its own (two,
+// in turn, so a note's release keeps its own settings while the next starts), so the game's later changes to that
+// voice (volume swells and fades, pitch bends) reach only its note, as they do in the game. The notes arrive in the
+// game's music player's 1 ms steps; render() spreads a chunk's steps over its frames, so they sound at their own time.
 #define TSF_IMPLEMENTATION
 #include "tsf.h"
 
@@ -29,27 +30,36 @@
 
 namespace {
     // The game's music plays at half scale before Sound: Enhanced (about -36 LUFS); the SoundFont's level is set to
-    // sit there too, so Enhanced and Original treat it as they treat the game's own.
-    constexpr float kGainDb = -26.0f;  // measured on ten tracks: -22 sat 3-11 dB above the game's own
+    // sit there too, so Enhanced and Original treat it as they treat the game's own. Each instrument's "gain" matches
+    // its part to the original part rendered from the samples at the game's volumes; the game's mixer puts those 27 dB
+    // lower (measured on the title and a battle).
+    constexpr float kGainDb = -27.0f;
     constexpr int kVoices = 64;
 
     struct Instrument {
-        int channel = 0, note_shift = 0, drum_note = -1;
-        float f0 = 440.0f, velocity = 1.0f;
+        int program = 48, note_shift = 0, drum_note = -1;
+        float f0 = 440.0f, velocity = 1.0f, gain = 1.0f;
     };
     struct Event {
         uint64_t tick;
-        enum { On, Off, Volume, Pan } kind;
-        int channel, note;
+        enum { On, Off, Volume, Pan, Preset, Tuning } kind;
+        int channel, note;  // Preset: note the program, value 1 for the drum kit
         float value;
     };
     struct Voice {
         bool on = false;
         uint32_t id = 0;
-        int channel = 0, note = 0;
+        int channel = 0, note = 0, turn = 0;
         uint32_t volume_at_start = 1;
-        float last_ratio = 1.0f;
+        float gain = 1.0f, last_volume = 1.0f, f0 = 440.0f, exact = 0.0f;  // exact: the note before rounding
+        int note_shift = 0;
+        bool drum = false;
     };
+
+    // The MIDI note (fractional) a sample of fundamental f0 sounds at, played at this rate.
+    float exact_note(float f0, uint32_t rate, int shift) {
+        return 69.0f + 12.0f * std::log2(std::max(1.0f, f0 * (float)rate / 44100.0f) / 440.0f) + (float)shift;
+    }
 
     // A hall for the orchestra (it plays dry otherwise): Freeverb (Jezar's public-domain design), its 8 comb and 4
     // all-pass filters per channel at their 44.1 kHz lengths, right a little longer than left for width.
@@ -144,38 +154,27 @@ namespace {
             return;
         }
         tsf_set_max_voices(loaded_synth, 256);
+        tsf_channel_set_presetnumber(loaded_synth, 2 * kVoices - 1, 0, 0);  // all the voices' channels, made at once
         std::unordered_map<std::string, Instrument> map_of;
-        std::unordered_map<int, int> channel_of;  // program -> channel
-        int next = 0;
         for (const auto& [key, e] : map.items()) {
             Instrument in;
             in.velocity = e.value("vel", 1.0f);
+            in.gain = e.value("gain", 1.0f);
             if (e.contains("drum")) {
-                in.channel = 9;
                 in.drum_note = e["drum"].get<int>();
             } else {
-                const int program = e.value("program", 48);
-                auto it = channel_of.find(program);
-                if (it == channel_of.end()) {
-                    if (next == 9) next++;
-                    if (next > 15) continue;  // more programs than channels: left to the game
-                    it = channel_of.emplace(program, next++).first;
-                    tsf_channel_set_presetnumber(loaded_synth, it->second, program, 0);
-                }
-                in.channel = it->second;
+                in.program = e.value("program", 48);
                 in.f0 = e.value("f0", 440.0f);
                 in.note_shift = e.value("shift", 0);
             }
             map_of.emplace(key, in);
         }
-        tsf_channel_set_presetnumber(loaded_synth, 9, 48, 1);  // the orchestral kit
         {
             std::lock_guard g(lock);
             synth = loaded_synth;
             instruments = std::move(map_of);
         }
-        std::fprintf(stderr, "Orchestra: %s, %zu instruments on %d channels\n", sf2.string().c_str(),
-                     instruments.size(), next);
+        std::fprintf(stderr, "Orchestra: %s, %zu instruments\n", sf2.string().c_str(), instruments.size());
         state = instruments.empty() ? kFailed : kReady;
     }
 
@@ -183,7 +182,7 @@ namespace {
     void release_all() {
         std::lock_guard g(lock);
         for (Voice& v : voices) {
-            if (v.on && v.channel != 9) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+            if (v.on && !v.drum) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
             v.on = false;
         }
     }
@@ -227,17 +226,30 @@ void aidyn::orchestra::note_on(int voice, uint32_t id, const std::string& sample
     if (it == instruments.end()) return;
     const Instrument& in = it->second;
     Voice& v = voices[voice];
-    if (v.on && v.channel != 9) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
-    int note = in.drum_note;
-    if (note < 0) {
-        note = (int)std::lround(69 + 12 * std::log2(std::max(1.0f, in.f0 * (float)pitch / 44100.0f) / 440.0f)) + in.note_shift;
-        note = std::clamp(note, 0, 127);
-    }
+    if (v.on && !v.drum) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+    const bool drum = in.drum_note >= 0;
+    const float exact = drum ? (float)in.drum_note : exact_note(in.f0, pitch, in.note_shift);
+    const int note = std::clamp((int)std::lround(exact), 0, 127);
+    const int turn = v.turn ^ 1, channel = 2 * voice + turn;
     const float velocity = std::clamp((float)volume / 200.0f * in.velocity, 0.01f, 1.0f);
-    pending.push_back({ now, Event::Pan, in.channel, 0, std::clamp((float)pan / 255.0f, 0.0f, 1.0f) });
-    pending.push_back({ now, Event::Volume, in.channel, 0, 1.0f });
-    pending.push_back({ now, Event::On, in.channel, note, velocity });
-    v = { true, id, in.channel, note, std::max<uint32_t>(volume, 1), 1.0f };
+    pending.push_back({ now, Event::Preset, channel, drum ? 0 : in.program, drum ? 1.0f : 0.0f });
+    pending.push_back({ now, Event::Tuning, channel, 0, 0.0f });  // in tune: the nearest note (the samples' own
+                                                                   // tunings differ by up to a third of a semitone)
+    pending.push_back({ now, Event::Pan, channel, 0, std::clamp((float)pan / 255.0f, 0.0f, 1.0f) });
+    pending.push_back({ now, Event::Volume, channel, 0, in.gain });
+    pending.push_back({ now, Event::On, channel, note, velocity });
+    v = Voice{};
+    v.on = true;
+    v.id = id;
+    v.channel = channel;
+    v.note = note;
+    v.turn = turn;
+    v.volume_at_start = std::max<uint32_t>(volume, 1);
+    v.gain = v.last_volume = in.gain;
+    v.f0 = in.f0;
+    v.note_shift = in.note_shift;
+    v.exact = exact;
+    v.drum = drum;
 }
 
 bool aidyn::orchestra::playing(int voice, uint32_t id) {
@@ -249,18 +261,26 @@ void aidyn::orchestra::voice_volume(int voice, uint32_t id, uint32_t volume) {
     std::lock_guard g(lock);
     if (voice < 0 || voice >= kVoices || !voices[voice].on || voices[voice].id != id) return;
     Voice& v = voices[voice];
-    const float ratio = std::clamp((float)volume / (float)v.volume_at_start, 0.0f, 2.0f);
-    if (std::fabs(ratio - v.last_ratio) > 0.01f) {
-        v.last_ratio = ratio;
-        pending.push_back({ now, Event::Volume, v.channel, 0, ratio });
+    const float level = v.gain * std::clamp((float)volume / (float)v.volume_at_start, 0.0f, 2.0f);
+    if (std::fabs(level - v.last_volume) > 0.005f * v.gain) {
+        v.last_volume = level;
+        pending.push_back({ now, Event::Volume, v.channel, 0, level });
     }
+}
+
+void aidyn::orchestra::voice_pitch(int voice, uint32_t id, uint32_t pitch) {
+    std::lock_guard g(lock);
+    if (voice < 0 || voice >= kVoices || !voices[voice].on || voices[voice].id != id || voices[voice].drum) return;
+    Voice& v = voices[voice];
+    // A bend from where the note started (it was rounded into tune: the bend keeps that).
+    pending.push_back({ now, Event::Tuning, v.channel, 0, exact_note(v.f0, pitch, v.note_shift) - v.exact });
 }
 
 void aidyn::orchestra::voice_stop(int voice, uint32_t id) {
     std::lock_guard g(lock);
     if (voice < 0 || voice >= kVoices || !voices[voice].on || voices[voice].id != id) return;
     Voice& v = voices[voice];
-    if (v.channel != 9) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+    if (!v.drum) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
     v.on = false;
 }
 
@@ -290,6 +310,8 @@ void aidyn::orchestra::render(float* out, size_t frames, uint32_t rate) {
             case Event::Off: tsf_channel_note_off(synth, e.channel, e.note); break;
             case Event::Volume: tsf_channel_set_volume(synth, e.channel, e.value); break;
             case Event::Pan: tsf_channel_set_pan(synth, e.channel, e.value); break;
+            case Event::Preset: tsf_channel_set_presetnumber(synth, e.channel, e.note, e.value != 0.0f); break;
+            case Event::Tuning: tsf_channel_set_tuning(synth, e.channel, e.value); break;
         }
     }
     if (done < frames) {
