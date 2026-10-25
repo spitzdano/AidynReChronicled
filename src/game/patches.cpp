@@ -2460,7 +2460,13 @@ namespace {
         if (index < 0 || index >= 18) {
             return false;
         }
-        const int list = (uint8_t)(MEM_BU(0, kCombatState) - 10) < 2 ? kTargetsSpell : kTargetsAttack;
+        // Not while the player moves (1) or browses the X / Y menus (22, 23): the game leaves a cancelled spell's
+        // targets marked (cancel_combat_action doesn't clear them; only the next spell's aim does).
+        const uint8_t state = MEM_BU(0, kCombatState);
+        if (state == 1 || state == 22 || state == 23) {
+            return false;
+        }
+        const int list = (uint8_t)(state - 10) < 2 ? kTargetsSpell : kTargetsAttack;
         return MEM_W(list + 4 * index, combat) != 0;
     }
 
@@ -4754,7 +4760,7 @@ namespace {
     constexpr gpr kLogText = (gpr)(int32_t)0x80F81200;  // a part's text for the font (256 bytes)
     constexpr gpr kLogGfx = (gpr)(int32_t)0x80F81300;   // printSimple's Gfx**
     constexpr uint32_t kMainFont = 28;
-    constexpr float kLogScale = 0.62f, kLogLine = 6.6f, kLogPad = 2.5f;
+    constexpr float kLogScale = 0.62f, kLogLine = 7.0f, kLogPad = 2.5f;
     constexpr int kLogShown = 7;
     constexpr uint32_t kLogInk = 0xEADFC8, kLogParty = 0x8CBCFF, kLogEnemy = 0xFF8A78, kLogHurt = 0xFFA040,
                        kLogHeal = 0x86DC86, kLogRound = 0xD8B070;
@@ -4791,10 +4797,36 @@ namespace {
         MEM_B(n, kLogText) = 0;
     }
 
-    float text_width(uint8_t* rdram, recomp_context* ctx, gpr font, const std::string& text) {
-        put_text(rdram, text);
+    // Font::printSimple advances by each letter's width scaled and cut to whole units: at these small scales every
+    // letter loses up to a unit and the words come out crammed. print_text places the letters one by one at their exact
+    // scaled widths (each letter's width at scale 1, Font::GetWidthScaled of it alone), as they sit at full size, and
+    // kTracking more between letters (the small text reads easier a touch looser).
+    constexpr float kTracking = 0.3f;  // units of the 320x240 screen
+    float letter_width(uint8_t* rdram, recomp_context* ctx, gpr font, char c) {
+        put_text(rdram, std::string(1, c));
         return (float)(int32_t)call_game(rdram, ctx, Font__GetWidthScaled, (uint32_t)font, (uint32_t)kLogText,
-                                         f32_bits(kLogScale));
+                                         f32_bits(1.0f));
+    }
+
+    float text_width(uint8_t* rdram, recomp_context* ctx, gpr font, const std::string& text) {
+        float w = 0.0f;
+        for (char c : text) w += letter_width(rdram, ctx, font, c) * kLogScale + kTracking;
+        return w;
+    }
+
+    // Draws text at (x, y) at this scale in the font's colour; returns where the next text goes.
+    float print_text(uint8_t* rdram, recomp_context* ctx, gpr font, gpr& g, const std::string& text, float x, float y,
+                     float scale) {
+        for (char c : text) {
+            const float w = letter_width(rdram, ctx, font, c);
+            put_text(rdram, std::string(1, c));
+            MEM_W(0, kLogGfx) = (int32_t)g;
+            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                            (uint32_t)(int)std::lround(x), { (uint32_t)(int)std::lround(y), f32_bits(scale), f32_bits(scale) });
+            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            x += w * scale + kTracking;
+        }
+        return x;
     }
 
     // The fighters' names, longest first, with their side.
@@ -4995,16 +5027,11 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, 
             const LogLine& line = combat_log[first + k];
             const int age = shown - 1 - k;  // 0 the newest
             const uint32_t alpha = age < 4 ? 255 : (uint32_t)std::max(90, 255 - (age - 3) * 50);
-            int x = (int)std::lround(x0 + kLogPad);
-            const int y = (int)std::lround(y0 + kLogPad + k * kLogLine);
+            float x = x0 + kLogPad;
+            const float y = y0 + kLogPad + k * kLogLine;
             for (const LogPart& part : line.parts) {
                 MEM_W(0x1C, font) = (int32_t)(pass == 0 ? (alpha * 7 / 8) : (part.rgb << 8 | alpha));
-                put_text(rdram, part.text);
-                MEM_W(0, kLogGfx) = (int32_t)g;
-                x = (int)(int32_t)call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx,
-                                                  (uint32_t)kLogText, (uint32_t)x,
-                                                  { (uint32_t)y, f32_bits(kLogScale), f32_bits(kLogScale) });
-                g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+                x = print_text(rdram, ctx, font, g, part.text, x, y, kLogScale);
             }
         }
     }
@@ -5205,7 +5232,7 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (key == 0) {
         return g;
     }
-    constexpr float kScale = 0.72f, kLine = 7.6f, kWidth = 140.0f;
+    constexpr float kScale = 0.72f, kLine = 8.0f, kWidth = 140.0f;
     // Right of the menu's box, centred on its height; in 4:3 (no room right, and the combat log and the controls list
     // on the left) above it instead, under the turn-order bar, wider (clear of the corner portraits). The text is
     // placed from the picture's left edge (hud_begin), the box in the middle 4:3: shift by the picture's extra width.
@@ -5293,22 +5320,12 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = put_cmds(rdram, g, a, 2);
         for (size_t k = 0; k < spell_lines.size(); k++) {
             MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xF2E6C8FFu);
-            put_text(rdram, spell_lines[k]);
-            MEM_W(0, kLogGfx) = (int32_t)g;
-            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
-                            (uint32_t)(int)std::lround(x0 + shift),
-                            { (uint32_t)(int)std::lround(y0 + k * kLine), f32_bits(kScale), f32_bits(kScale) });
-            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            print_text(rdram, ctx, font, g, spell_lines[k], x0 + shift, y0 + k * kLine, kScale);
         }
         if (!pack.empty()) {
             MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xD8B070FFu);  // the combat log's gold
-            put_text(rdram, pack);
-            MEM_W(0, kLogGfx) = (int32_t)g;
-            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
-                            (uint32_t)(int)std::lround(x0 + shift + kIcon + 3.0f),
-                            { (uint32_t)(int)std::lround(y0 + spell_lines.size() * kLine + 3.0f + (kIcon - kLine) / 2),
-                              f32_bits(kScale), f32_bits(kScale) });
-            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            print_text(rdram, ctx, font, g, pack, x0 + shift + kIcon + 3.0f,
+                       y0 + spell_lines.size() * kLine + 3.0f + (kIcon - kLine) / 2, kScale);
         }
     }
     font_restore(rdram, font, st);
