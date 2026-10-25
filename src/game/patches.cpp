@@ -4896,87 +4896,40 @@ namespace {
     }
 
     // Font::printSimple advances by each letter's width scaled and cut to whole units: at these small scales every
-    // letter loses up to a unit and the words come out crammed. print_text places the letters one by one at their exact
-    // scaled widths (each letter's width at scale 1, Font::GetWidthScaled of it alone), as they sit at full size, and
-    // kTracking more between letters (the small text reads easier a touch looser).
+    // letter loses up to a unit and the words come out crammed. print_text places the letters one by one, each moving
+    // on by its own width at this scale and kTracking, rounded to a whole unit (a letter's own: the same letter always
+    // leaves the same gap). Whole units: the game's text routine draws at whole units, and an HD letter drawn between
+    // them comes out cut (RT64 shifts its picture by the fraction). Letter widths: Font::GetWidthScaled of each alone.
     constexpr float kTracking = 0.3f;  // units of the 320x240 screen
-    // With the HD letters, a letter's own advance (font_widths.h kAdvances, plus the letter-spacing its cell width
-    // has): the cell widths are whole texels, each letter centred in its own, so spacing by them left thin letters
-    // ("i", "n") with gaps beside them. -1 for a character without one (and the original letters).
-    float hd_advance(uint8_t* rdram, char c) {
-        if (!hd_text() || !aidyn::settings::graphics().textures || (uint8_t)c < ' ' || (uint8_t)c > '~') return -1.0f;
-        const uint32_t index = MEM_BU((uint8_t)c - ' ', (gpr)(int32_t)0x800E4AC0);
-        for (const auto& a : aidyn::font::kAdvances) {
-            if (a.cell == index) return a.hundredths / 100.0f + aidyn::font::kTrack;
-        }
-        return -1.0f;
-    }
-
-    // With the HD letters, where a letter's ink starts and ends in its cell (font_widths.h kInks): text is placed by
-    // its ink, the same gap between every two letters (kInkGap), as the font's side bearings left a small capital I
-    // with more room than its neighbours ("acti on").
-    bool hd_ink(uint8_t* rdram, char c, float* left, float* right) {
-        if (!hd_text() || !aidyn::settings::graphics().textures || (uint8_t)c <= ' ' || (uint8_t)c > '~') return false;
-        const uint32_t index = MEM_BU((uint8_t)c - ' ', (gpr)(int32_t)0x800E4AC0);
-        for (const auto& k : aidyn::font::kInks) {
-            if (k.cell == index) {
-                *left = k.left / 100.0f, *right = k.right / 100.0f;
-                return true;
-            }
-        }
-        return false;
-    }
-
     float letter_width(uint8_t* rdram, recomp_context* ctx, gpr font, char c) {
-        float il = 0.0f, ir = 0.0f;
-        if (hd_ink(rdram, c, &il, &ir)) return ir - il + aidyn::font::kInkGap;
-        const float hd = hd_advance(rdram, c);
-        if (hd >= 0.0f) return hd;
         put_text(rdram, std::string(1, c));
         return (float)(int32_t)call_game(rdram, ctx, Font__GetWidthScaled, (uint32_t)font, (uint32_t)kLogText,
                                          f32_bits(1.0f));
     }
 
+    // A letter's advance at this scale: whole units.
+    float letter_advance(uint8_t* rdram, recomp_context* ctx, gpr font, char c, float scale) {
+        return std::max(1.0f, std::round(letter_width(rdram, ctx, font, c) * scale + kTracking));
+    }
+
     float text_width(uint8_t* rdram, recomp_context* ctx, gpr font, const std::string& text) {
         float w = 0.0f;
-        for (char c : text) w += letter_width(rdram, ctx, font, c) * kLogScale + kTracking;
+        for (char c : text) w += letter_advance(rdram, ctx, font, c, kLogScale);
         return w;
     }
 
-    // Draws text at (x, y) at this scale in the font's colour; returns where the next text goes. Each letter is drawn
-    // as Font::printSimple draws it (N64BorgImageDraw of its cell in the font sheet: the letter's index from the
-    // game's table at 0x800E4AC0, its cell (index / the face's rows) x charW, (index % rows) x charH, its width the
-    // font's kerning[index]) but at its exact x: printSimple takes whole units, which at these scales moved letters up
-    // to half a unit (a couple of pixels) off their place, and two neighbours apart showed as a gap ("Ab recan").
-    // The button pictures (characters above '~', their own colours) still go through printSimple.
+    // Draws text at (x, y) at this scale in the font's colour; returns where the next text goes.
     float print_text(uint8_t* rdram, recomp_context* ctx, gpr font, gpr& g, const std::string& text, float x, float y,
                      float scale) {
-        const gpr sheet = MEM_W(4, font), faces = MEM_W(0, font), kerning = MEM_W(0x18, font);
-        const uint32_t rows = heap_pointer(faces) ? MEM_BU(0x18 * MEM_BU(8, font) + 0x14, faces) : 0;
-        const uint32_t cw = MEM_HU(0xC, font), ch = MEM_HU(0xE, font), col = (uint32_t)MEM_W(0x1C, font);
+        x = std::round(x);
         for (char c : text) {
-            const float w = letter_width(rdram, ctx, font, c);
-            const uint8_t u = (uint8_t)c;
-            if (u > '~' || !heap_pointer(sheet) || !heap_pointer(kerning) || rows == 0) {
-                put_text(rdram, std::string(1, c));
-                MEM_W(0, kLogGfx) = (int32_t)g;
-                call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
-                                (uint32_t)(int)std::lround(x), { (uint32_t)(int)std::lround(y), f32_bits(scale), f32_bits(scale) });
-                g = (gpr)(int32_t)MEM_W(0, kLogGfx);
-            } else if (u >= ' ') {
-                const uint32_t index = MEM_BU(u - ' ', (gpr)(int32_t)0x800E4AC0);
-                if (index != 0x2B && c != ' ') {
-                    const uint32_t sx = index / rows * cw, sy = index % rows * ch, kw = MEM_HU(2 * index, kerning);
-                    // An HD letter is placed by its ink: the cell moved so the ink starts at x.
-                    float il = 0.0f, ir = 0.0f;
-                    const float shift = hd_ink(rdram, c, &il, &ir) ? -il * scale : 0.0f;
-                    g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)sheet,
-                                                      f32_bits(x + shift), f32_bits((float)std::lround(y)),
-                                                      { sx, sy, sx + kw, sy + ch, f32_bits(scale), f32_bits(scale),
-                                                        col >> 24, (col >> 16) & 0xFF, (col >> 8) & 0xFF, col & 0xFF });
-                }
-            }
-            x += w * scale + kTracking;
+            const float advance = letter_advance(rdram, ctx, font, c, scale);
+            put_text(rdram, std::string(1, c));
+            MEM_W(0, kLogGfx) = (int32_t)g;
+            call_game_stack(rdram, ctx, func_800AA6E8, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                            (uint32_t)(int)x, { (uint32_t)(int)std::lround(y), f32_bits(scale), f32_bits(scale) });
+            g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+            x += advance;
         }
         return x;
     }
