@@ -5817,8 +5817,8 @@ extern "C" void aidyn_combat_move_watch(uint8_t* rdram, recomp_context* ctx) {
 // ---- Restored instrument samples (#12) ----
 // The game's instrument samples (Borg11 records: flag +0, BORG11_8bit 0x4 or BORG11_16BE 0x8; len in bytes +4;
 // samples +8; wav +0xC) were filtered when they were made: half of the notes the music plays have nothing above
-// about 3.3 kHz. The rechronicled-samples pack (<data folder>/sample-packs/rechronicled-samples, from
-// tools/audio/sample_pack.py) has each one the music plays restored: redrawn whole by AudioSR (the lost treble back,
+// about 3.3 kHz. The rechronicled-samples pack (<data folder>/sample-packs/rechronicled-samples, or beside the
+// executable; made by tools/audio/sample_pack.py, kept in the sound/ submodule) has each one the music plays restored: redrawn whole by AudioSR (the lost treble back,
 // the 8-bit hiss gone), at its own length and loop points, as 16-bit mono WAVs named by the key the sample's own data
 // gives, "<samples>-<flag>-<FNV-1a of its first 256 bytes>". When the music starts a note (DCM AddVoice,
 // func_8008F778's entry, through src/game/music_log.cpp) on a sample the pack has, the sample's record is pointed at
@@ -5842,8 +5842,13 @@ namespace {
     std::vector<std::pair<gpr, std::chrono::steady_clock::time_point>> pending_frees;
     std::once_flag restored_loaded;
 
+    // <data folder>/sample-packs/rechronicled-samples, else sample-packs next to the executable (a release's copy, as
+    // its texture packs).
     std::filesystem::path restored_pack() {
-        return aidyn::settings::folder() / "sample-packs" / "rechronicled-samples";
+        const std::filesystem::path data = aidyn::settings::folder() / "sample-packs" / "rechronicled-samples";
+        std::error_code ec;
+        if (std::filesystem::is_directory(data, ec)) return data;
+        return aidyn::platform::exe_path().parent_path() / "sample-packs" / "rechronicled-samples";
     }
 
     // A pack WAV: 16-bit mono PCM, the "data" chunk.

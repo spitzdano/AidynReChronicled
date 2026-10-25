@@ -11,3 +11,6 @@
 [submodule "art"]
 	path = art
 	url = git@github.com:spitzdano/AidynReChronicled-Art.git
+[submodule "sound"]
+	path = sound
+	url = git@github.com:spitzdano/AidynReChronicled-Sound.git

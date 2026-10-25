@@ -26,13 +26,14 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
   (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
   plus HD lettering and Xbox button prompts. F2 shows what was there before.
 - **Fuller sound**: the game's music and sounds as loud as other games' (they played very softly) and a little
-  clearer, through a limiter; the same music and sounds, switchable back to the original.
+  clearer, through a limiter, and the music's instruments restored (their lost treble back and the 8-bit hiss
+  gone); the same music and sounds, each switchable back to the original.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
 - **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
-- **Clearer combat**: a turn-order bar, a combat log, framed portraits, easier aiming, and what a spell or potion does
-  shown while you choose it.
+- **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP and stamina, easier aiming, what a
+  spell, skill or potion does shown while you choose it, and faster turns if you like (your party's and the enemies').
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
 - **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options.
@@ -40,7 +41,8 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
   RetroArch) can be copied in, and a problem report gathers what's needed when something goes wrong.
 
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
-`47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Nothing from the game is in this download.
+`47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Apart from the restored instrument samples (redrawings of the
+music's own), nothing from the game is in this download.
 
 ## Play on Linux
 

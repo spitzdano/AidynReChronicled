@@ -5,13 +5,16 @@
 #   tools/release/make_release.sh <version> --windows   ... and AidynReChronicled-<version>-windows-x86_64.zip
 #   tools/release/make_release.sh <version> [--windows] --publish   ... then tag v<version>, push the tag, create the
 #                                                       GitHub release with them
+#   --no-sound   leave out the restored instrument samples (bundled by default: below)
 #
 # The download holds the portable build (tools/ally/build_portable.sh: glibc 2.38+, its own SDL2), the launcher, the
 # installer, the Steam shortcut script and its library art, the icon, the title branding pack, the redrawn portraits and icons
 # (rechronicled-art: tools/hdui/art_pack.py from art/) and the HD letters (rechronicled-text: tools/hdui/text_pack.py),
 # all made here from fonts and our own art,
-# README.md (tools/release/README.md) and LICENSE. Nothing from the ROM: the game asks for the player's ROM on its
-# first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
+# README.md (tools/release/README.md) and LICENSE, and the restored instrument samples (sample-packs/
+# rechronicled-samples: AudioSR redrawings of the game's own music samples, kept in the private
+# AidynReChronicled-Sound repository, the sound/ submodule; spitzdano's call to ship them). Nothing else from the
+# ROM: the game asks for the player's ROM on its first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
 # The Windows zip (tools/windows/build_windows.sh, cross-compiled here) holds the exe and its DLLs, the same packs and
 # Steam art, README.md and LICENSE, in one folder to unpack and play.
 # tools/release/notes/<version>.md goes into the GitHub release's notes (what's new), and every download carries
@@ -22,11 +25,12 @@ die() { echo "make_release.sh: $*" >&2; exit 1; }
 
 version=${1:-}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$ ]] || die "usage: make_release.sh <version, e.g. 0.1.0> [--publish]"
-publish=0 windows=0
+publish=0 windows=0 sound=1
 for a in "${@:2}"; do
     case $a in
         --publish) publish=1 ;;
         --windows) windows=1 ;;
+        --no-sound) sound=0 ;;
         *) die "unknown option $a" ;;
     esac
 done
@@ -91,11 +95,17 @@ cp -a build/ally/steam-art "$out/$name/game/steam-art"
 for p in rechronicled rechronicled-art rechronicled-text; do
     python3 -I tools/release/rtz.py "$packs/$p" "$out/$name/game/texture-packs/$p.rtz"
 done
+if (( sound )); then  # the restored instrument samples (src/game/patches.cpp looks beside the executable too)
+    [[ -d sound/sample-packs/rechronicled-samples ]] || die "no sound/sample-packs/rechronicled-samples: git submodule update --init sound"
+    mkdir -p "$out/$name/game/sample-packs"
+    cp -a sound/sample-packs/rechronicled-samples "$out/$name/game/sample-packs/"
+fi
 cp tools/ally/install.sh tools/release/README.md LICENSE "$release_notes" "$out/$name/"
 mkdir -p "$out/$name/ROMs"  # the player's ROMs go here (src/main/main.cpp, store_roms_from_folders)
 cp tools/release/ROMs-README.txt "$out/$name/ROMs/README.txt"
 chmod +x "$out/$name/install.sh" "$out/$name/game/aidyn-rechronicled.sh" "$out/$name/game/steam_shortcut.py"
-# Nothing ROM-derived may ship: the only pictures are the icon, the branding pack and the redrawn art.
+# Nothing else ROM-derived may ship: the only pictures are the icon, the branding pack and the redrawn art (the
+# restored samples, above, are the one exception).
 stray=$(find "$out/$name" -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.mpk' \) | head -1)
 [[ -z $stray ]] || die "a ROM or save got into the release: $stray"
 tar -C "$out" -czf "$out/$name.tar.gz" "$name"
@@ -118,6 +128,10 @@ if (( windows )); then
     cp -a build/windows/dist/. "$out/$wname/"
     cp -a build/ally/steam-art "$out/$wname/steam-art"
     cp "$out/$name/game/texture-packs/"*.rtz "$out/$wname/texture-packs/"
+    if (( sound )); then
+        mkdir -p "$out/$wname/sample-packs"
+        cp -a sound/sample-packs/rechronicled-samples "$out/$wname/sample-packs/"
+    fi
     cp tools/release/README.md LICENSE "$release_notes" "$out/$wname/"
     # Add to Steam.bat runs add-to-steam.ps1 (the Linux install.sh's Steam step, for Windows), both with CRLF.
     sed 's/$/\r/' tools/windows/add-to-steam.ps1 >"$out/$wname/add-to-steam.ps1"
