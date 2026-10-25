@@ -5482,8 +5482,8 @@ extern "C" void aidyn_combat_move_watch(uint8_t* rdram, recomp_context* ctx) {
 // The game's instrument samples (Borg11 records: flag +0, BORG11_8bit 0x4 or BORG11_16BE 0x8; len in bytes +4;
 // samples +8; wav +0xC) were filtered when they were made: half of the notes the music plays have nothing above
 // about 3.3 kHz. The rechronicled-samples pack (<data folder>/sample-packs/rechronicled-samples, from
-// tools/audio/sample_pack.py) has each one the music plays restored: its lost treble rebuilt (AudioSR), the original
-// kept as it was below its cutoff, at its own length, as 16-bit mono WAVs named by the key the sample's own data
+// tools/audio/sample_pack.py) has each one the music plays restored: redrawn whole by AudioSR (the lost treble back,
+// the 8-bit hiss gone), at its own length and loop points, as 16-bit mono WAVs named by the key the sample's own data
 // gives, "<samples>-<flag>-<FNV-1a of its first 256 bytes>". When the music starts a note (DCM AddVoice,
 // func_8008F778's entry, through src/game/music_log.cpp) on a sample the pack has, the sample's record is pointed at
 // a block of the game's heap (operator new) holding the restored one, 16-bit big-endian, its format and length

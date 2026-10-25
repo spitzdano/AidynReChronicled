@@ -5,9 +5,10 @@
 
 <export dir> is tools/audio's export (each sample the music plays as a WAV at its median playback rate, and
 meta.json); <restored dir> AudioSR's 48 kHz versions of them. Each restored sample is brought back to its original's
-exact length (the game's loop points and timing are in its frames); below the original's cutoff the original stays
-as it is, above it the restored treble is added (matched to the original's level over its band: AudioSR normalises
-its output), peaks over full scale soft-limited (82 of the 99 originals already peak there), as 16-bit mono:
+exact length (the game's loop points and timing are in its frames), whole: AudioSR redraws the full sound, so the
+8-bit samples' hiss goes as well as the lost treble coming back (picked by ear over keeping the original under its
+cutoff and adding only the treble, which was too faint to hear). Matched to the original's level over the band the
+original has (AudioSR normalises its output), peaks over full scale soft-limited, as 16-bit mono:
 <samples>-<flag>-<FNV-1a of the original's first 256 bytes>.wav, the key the game computes from the sample it plays.
 Made from the player's own ROM like the manual: nothing of the game's goes into the repository.
 """
@@ -47,6 +48,23 @@ def fft_resample(y, n):
     return np.fft.irfft(Y, n) * n / len(y)
 
 
+def mend_loop(r, start, end):
+    """A loop the game plays from end back to start (end exclusive) made seamless again: the restoration redraws the
+    sound, and the sample at the loop's end no longer runs on into the one at its start. The loop's last stretch is
+    crossfaded into what comes just before its start (what the end has to turn into); with no room before the start,
+    the jump is eased out over that stretch instead."""
+    n = min(2048, (end - start) // 4)
+    if n < 8:
+        return r
+    w = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, n))
+    if start >= n:
+        r[end - n:end] = r[end - n:end] * (1 - w) + r[start - n:start] * w
+    else:
+        jump = (2 * r[end - 1] - r[end - 2]) - r[start]  # where the end heads, against where the loop goes
+        r[end - n:end] -= jump * w
+    return r
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("export", type=Path)
@@ -70,14 +88,12 @@ def main():
         X = np.abs(np.fft.rfft(x)) ** 2
         smooth = np.convolve(X, np.ones(64) / 64, "same")
         top = int(np.nonzero(10 * np.log10(smooth / smooth.max() + 1e-15) > -50)[0].max())
-        # The original as it is below its cutoff, the restored sample above it (level-matched over the original's
-        # band, a short crossfade between): the part the original had can't change, only the lost treble comes back.
-        Rc = np.fft.rfft(r)
-        Rc *= np.sqrt(X[:top].sum() / max((np.abs(Rc[:top]) ** 2).sum(), 1e-20))
-        Xc = np.fft.rfft(x)
-        fade = max(8, top // 20)
-        w = np.clip((np.arange(len(Xc)) - (top - fade)) / fade, 0, 1)
-        r = np.fft.irfft(Xc * (1 - w) + Rc * w, len(x))
+        # The whole restored sample (spitzdano's pick of the A/B: the 8-bit hiss goes as well as the treble coming
+        # back), at the original's level over the band the original has.
+        R = np.abs(np.fft.rfft(r)) ** 2
+        r *= np.sqrt(X[:top].sum() / max(R[:top].sum(), 1e-20))
+        if m.get("loop") and 0 <= m["loop"][0] < m["loop"][1] <= len(r):
+            r = mend_loop(r, *m["loop"])
         peak = float(np.abs(r).max())
         if peak > 0.999:  # restored transients above full scale: soft-limit those few samples, keep the level
             over = np.abs(r) > 0.9
