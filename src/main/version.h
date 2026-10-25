@@ -13,4 +13,6 @@ namespace aidyn {
     // MSAA (0, 2, 4, 8) and supersampling (1 to 4), applied on the next frame and remembered in settings.json (the
     // Display page's Anti-aliasing row).
     void set_antialiasing(int msaa, int supersampling);
+    // Closes the game as the window's close button does (the title screen's Quit Game).
+    void request_quit();
 }

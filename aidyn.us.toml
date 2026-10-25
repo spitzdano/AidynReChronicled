@@ -526,13 +526,13 @@ text = "extern int aidyn_title_back(uint8_t* rdram, recomp_context* ctx); if (ai
 # list; s1 the substruct), and PauseMenuSelectCallback
 # (func_800403AC) where it reads the chosen entry's id (v1), which returns through its exit L_8004054C for ours.
 # The list is made with room for six entries (new WidgetScrollMenu(6)) and Append doesn't check: a seventh would be
-# written past its array, into the heap (the game hung freeing the pause menu). Ours are two (Display, ReChronicled):
-# room for ten. And the eight entries sit 3 pixels apart instead of 5 (Utilities::SetArrayVSpace), clear of the page
+# written past its array, into the heap (the game hung freeing the pause menu). Ours are up to four (Quick Load,
+# Display, ReChronicled, Quit to Title; in a fight Load Game too): room for twelve. And the eight entries sit 3 pixels apart instead of 5 (Utilities::SetArrayVSpace), clear of the page
 # arrow.
 [[patches.instruction]]
 func = "func_8003F8C4"
 vram = 0x8003F92C
-value = 0x2405000A   # addiu $a1, $zero, 10 (was 6)
+value = 0x2405000C   # addiu $a1, $zero, 12 (was 6)
 
 [[patches.instruction]]
 func = "func_8003F8C4"
@@ -552,7 +552,7 @@ text = "extern void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx); aid
 [[patches.hook]]
 func = "func_800403AC"
 before_vram = 0x80040438
-text = "extern int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx); if (aidyn_rc_select(rdram, ctx)) { ctx->r2 = 0; goto L_8004054C; }"
+text = "extern int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx); { int ours = aidyn_rc_select(rdram, ctx); if (ours) { ctx->r2 = ours == 2 ? ctx->r18 : 0; goto L_8004054C; } }"
 
 # Turn order (src/game/patches.cpp, "Turn order"): the two calls of CombatTurn::Init (func_8006A16C), the battle's
 # first round (Combat_InitEncounter) and each next (func_8006A62C, CombatTurn::FUN_8007381c; and right after it, the
@@ -654,7 +654,7 @@ text = "extern void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx); aidyn_
 [[patches.hook]]
 func = "func_8001A20C"
 before_vram = 0x8001A20C
-text = "extern void aidyn_save_loading(uint8_t* rdram, recomp_context* ctx); aidyn_save_loading(rdram, ctx);"
+text = "extern int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx); if (aidyn_save_loading(rdram, ctx)) { ctx->r2 = 1; return; }"
 
 [[patches.hook]]
 func = "func_8007EE34"
@@ -670,6 +670,33 @@ text = "extern void aidyn_quick_load_entry(uint8_t* rdram, recomp_context* ctx);
 func = "func_80043AE8"
 before_vram = 0x80043B9C
 text = "extern void aidyn_continue_entry(uint8_t* rdram, recomp_context* ctx); aidyn_continue_entry(rdram, ctx);"
+
+# Quit Game last on the title screen's menu (IntroMenu::StartGameMenu after Options is appended, s1 the list), and
+# Load Game and Quick Load in a fight's Menu page (MakeScrollList where Options is made: the game skips Load and Save
+# there; s1 the substruct). src/game/patches.cpp, "Quit to Title".
+[[patches.hook]]
+func = "func_80043AE8"
+before_vram = 0x80043C14
+text = "extern void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx); aidyn_quit_game_entry(rdram, ctx);"
+
+# The two lists placed for their length: the Menu page's (MakeScrollList once its title, s2, and list, s1 + 0, are
+# placed) moved up clear of the page arrow when it has ten entries; the title screen's backing box
+# (IntroMenu::ShowStartGameMenu's IntroMenu_ShadowBG call, a3 its bottom shifted left 16, v1 the list) a row taller
+# for each entry past three.
+[[patches.hook]]
+func = "func_8003F8C4"
+before_vram = 0x8003FCE8
+text = "extern void aidyn_menu_list_fit(uint8_t* rdram, recomp_context* ctx); aidyn_menu_list_fit(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80043598"
+before_vram = 0x80043654
+text = "extern void aidyn_title_box_fit(uint8_t* rdram, recomp_context* ctx); aidyn_title_box_fit(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8003F8C4"
+before_vram = 0x8003FA98
+text = "extern void aidyn_fight_load_entries(uint8_t* rdram, recomp_context* ctx); aidyn_fight_load_entries(rdram, ctx);"
 
 [[patches.hook]]
 func = "processIntroMenu"

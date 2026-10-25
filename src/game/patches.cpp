@@ -4446,20 +4446,30 @@ extern "C" void aidyn_rc_entry(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+void quit_entry(uint8_t* rdram, recomp_context* ctx, gpr list);  // "Quit to Title", below
+
 extern "C" void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx) {
     if (!rc_entry_added) {
         aidyn_rc_entry(rdram, ctx);  // a battle's list: Theater isn't in it
     }
     rc_entry_added = false;
+    quit_entry(rdram, ctx, MEM_W(0, ctx->r17));
 }
 
 // PauseMenuSelectCallback, the Menu page's entry chosen: v1 its id, s0 the substruct, s2 the WidgetOptionsMenu.
+// 1: ours, the menu stays; 2: ours, the menu closes (the hook returns s2, as Help and Flee do).
 bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id);  // "Quick and auto saves", below
+int quit_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id);         // "Quit to Title", below
 
 extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t id = ctx->r3 & 0xFFFF;
     if (!rc.open && quick_load_chosen(rdram, ctx, id)) {
         return 1;
+    }
+    if (!rc.open) {
+        if (const int quit = quit_chosen(rdram, ctx, id)) {
+            return quit;
+        }
     }
     if ((id != kRcId && id != kDisplayId) || rc.open) {
         return 0;
@@ -6490,6 +6500,7 @@ extern "C" void func_80019ED4(uint8_t* rdram, recomp_context* ctx);  // QuestDat
 extern "C" void func_8001A20C(uint8_t* rdram, recomp_context* ctx);  // QuestData::LoadFromMemPak(SaveDatStruct*)
 extern "C" void func_80048E18(uint8_t* rdram, recomp_context* ctx);  // the pause menu's Load callback
 extern "C" void func_80043958(uint8_t* rdram, recomp_context* ctx);  // the title's Load callback
+extern "C" void func_8001FF04(uint8_t* rdram, recomp_context* ctx);  // the walk: fade out, then gameStateB a0
 extern "C" void WidgetText__WidgetText(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_800CBC94(uint8_t* rdram, recomp_context* ctx);  // CRC table: made (if not there)
 extern "C" void func_800CBD28(uint8_t* rdram, recomp_context* ctx);  // CRC table: freed
@@ -6683,6 +6694,11 @@ namespace {
     }
 }
 
+namespace {
+    bool fight_load_pending = false;  // a save chosen in a fight's pause, in kSaveBuffer: loaded once the fight is gone
+    bool quit_pending = false;        // Quit to Title chosen in the field's pause: the walk fades out to the title
+}
+
 void aidyn_quick_saves_set_pak(const std::filesystem::path& pak) {
     save_dir = pak.parent_path();
     save_stem = pak.stem().string();
@@ -6694,6 +6710,10 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
     const double dt = std::clamp(std::chrono::duration<double>(now - saves.last).count(), 0.0, 0.25);
     saves.last = now;
     saves.continuing = false;
+    if (fight_load_pending) {  // the fight is cleared away: its save now, as the field's Load makes it (Quit to Title)
+        fight_load_pending = false;
+        call_game(rdram, ctx, func_8001A20C, (uint32_t)kSaveBuffer);
+    }
     const bool asked = aidyn::input::quicksave_asked();
     if (save_log()) {  // each change of the walk's states, for finding what a door or a fight looks like
         static uint32_t last = 0xFFFFFFFF;
@@ -6728,6 +6748,13 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
                 fflush(stdout);
             }
         }
+        return;
+    }
+    if (quit_pending) {  // Quit to Title: the walk fades out and ends (gameStateB 0), the game's way to the title
+        quit_pending = false;
+        saves.pending = 0;
+        drop_snapshot(rdram, ctx);
+        call_game(rdram, ctx, func_8001FF04, 0);
         return;
     }
     saves.safe_for += dt;
@@ -6778,11 +6805,26 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // QuestData::LoadFromMemPak's entry: a save is being loaded (the Load screens', Quick Load, Continue).
-extern "C" void aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
+extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
+    if (MEM_BU(0, kTrekState) == 3 && (ctx->r4 == kSaveBuffer || heap_pointer(ctx->r4))) {  // a fight's pause ("Quit to Title")
+        if (ctx->r4 != kSaveBuffer) {
+            for (uint32_t i = 0; i < kSaveSize; i += 4) {
+                MEM_W(i, kSaveBuffer) = MEM_W(i, ctx->r4);
+            }
+        }
+        fight_load_pending = true;
+        if (save_log()) {
+            fprintf(stdout, "Saves: a load chosen in a fight, made once the fight is cleared away\n");
+            fflush(stdout);
+        }
+        return 1;
+    }
+    quit_pending = false;
     saves.save_loaded = true;
     saves.explored = 0.0;
     saves.pending = 0;
     drop_snapshot(rdram, ctx);
+    return 0;
 }
 
 // WidgetContPakDataSave::WriteSaveFile (func_8007EE34) once the pak took the save (s0 the widget, its buffer at +0x2C4):
@@ -6835,6 +6877,180 @@ bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
     return true;
 }
 
+// ---- Quit to Title ----
+// The pause menu's Menu page ends with Quit to Title (spitzdano, 2026-10-25), in the field and in a fight; the title
+// screen's menu ends with Quit Game, which closes the game as the window's close button does.
+//  - Quit to Title asks first: chosen once, it reads "Really quit?" and a notice says unsaved progress is lost;
+//    chosen again it quits; moving off it puts it back. In the field the pause menu closes as after Help (its
+//    WidgetOptionsMenu returned, id 0: back to walking about), then the walk fades out into gameStateB 0, the game's
+//    own way out of the walk to the title (Trek_GameState returns GameStateA 0: the game's data freed, the title
+//    splash). In a fight it closes as Flee does, with CombatState 0 next instead of 20: CombatStateFunc_0 clears the
+//    fight away and returns GameStateA 0.
+//  - A fight's Menu page also gets Load Game and Quick Load (the game offers neither there). The load screen and
+//    Quick Load end in QuestData::LoadFromMemPak and the pause menu's after-load callback, as in the field; in a fight
+//    the load itself waits (the fight's characters still point into the party it would replace): the save is kept in
+//    kSaveBuffer, the pause menu closes for a load (gameStateB 4, back to the walk), which the game turns into
+//    CombatState 16 (the fight cleared away, as after one is won), and the first frame of the walk loads it.
+namespace {
+    constexpr uint16_t kQuitId = 0x7A14;
+    constexpr uint16_t kLoadGameId = 0xA0;                     // the game's Load Game (OptionN_LoadGame)
+    constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0;
+    constexpr gpr kCombatNext = (gpr)(int32_t)0x800D9455;      // gGlobals.combatBytes[1]: the fight's state after the pause
+    constexpr gpr kCommonStrings = (gpr)(int32_t)0x800DA0D8;   // gGlobals.CommonStrings
+    constexpr const char* kQuitLabel = "Quit to Title";
+    constexpr const char* kQuitAsk = "Really Quit?";           // no longer than kQuitLabel: written over its copy
+
+    struct QuitEntry {
+        gpr list = 0;     // the Menu page's list, while the pause menu is up
+        int index = -1;   // Quit to Title's place in it
+        bool armed = false;
+    } quit;
+
+    gpr quit_widget(uint8_t* rdram) {
+        const gpr sub = heap_pointer(quit.list) ? MEM_W(0x40, quit.list) : 0;
+        const gpr items = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
+        return heap_pointer(items) && quit.index >= 0 ? MEM_W(4 * quit.index, items) : 0;
+    }
+
+    void quit_label(uint8_t* rdram, const char* text) {
+        const gpr w = quit_widget(rdram);
+        const gpr sub = heap_pointer(w) ? MEM_W(0x40, w) : 0;
+        const gpr str = heap_pointer(sub) ? MEM_W(0, sub) : 0;  // WidgetClipText's own copy of its text
+        if (heap_pointer(str)) {
+            put_menu_text(rdram, str, text);
+        }
+    }
+}
+
+void quit_entry(uint8_t* rdram, recomp_context* ctx, gpr list) {
+    quit = QuitEntry{};
+    const gpr sub = heap_pointer(list) ? MEM_W(0x40, list) : 0;
+    if (!heap_pointer(sub)) {
+        return;
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory,
+                                              (uint32_t)put_menu_text(rdram, kQuitText, kQuitLabel), 400);
+    MEM_H(0x5E, entry) = (int16_t)kQuitId;
+    quit.list = list;
+    quit.index = MEM_HU(0x20, sub);  // numChoices: its place once appended
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+}
+
+int quit_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
+    if (id != kQuitId) {
+        return 0;
+    }
+    if (!quit.armed) {
+        quit.armed = true;
+        quit_label(rdram, kQuitAsk);
+        notice("Unsaved progress will be lost");
+        rc_sound(rdram, ctx, 0x741, 60);
+        return 1;
+    }
+    quit.armed = false;
+    rc_sound(rdram, ctx, 0x740, 60);
+    if (MEM_BU(0, kTrekState) == 3) {
+        MEM_B(0, kCombatNext) = 0;  // CombatState 0 once the pause menu is gone
+    }
+    else {
+        MEM_H(0x5E, ctx->r18) = 0;  // back to walking about (Help leaves 3 here)
+        quit_pending = true;
+    }
+    return 2;
+}
+
+// Each frame (Graphics::EndList): Quit to Title asks again once the cursor leaves it; the list is forgotten with the
+// pause menu.
+void quit_tick(uint8_t* rdram) {
+    if (quit.list == 0) {
+        return;
+    }
+    if (!heap_pointer(MEM_W(0, kBigAssMenu))) {
+        quit = QuitEntry{};
+        return;
+    }
+    const gpr sub = MEM_W(0x40, quit.list);
+    if (quit.armed && heap_pointer(sub) && MEM_HU(0x1E, sub) != quit.index) {
+        quit.armed = false;
+        quit_label(rdram, kQuitLabel);
+    }
+}
+
+// MakeScrollList where Options is made (s1 the substruct, its list at +0): in a fight, Load Game and Quick Load first.
+extern "C" void aidyn_fight_load_entries(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = MEM_W(0, ctx->r17);
+    const gpr strings = MEM_W(0, kCommonStrings);
+    if (MEM_BU(0, kTrekState) != 3 || !heap_pointer(list) || !heap_pointer(strings)) {
+        return;
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory,
+                                              (uint32_t)MEM_W(0x280, strings), 400);  // the game's "Load Game"
+    MEM_H(0x5E, entry) = (int16_t)kLoadGameId;
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+    aidyn_quick_load_entry(rdram, ctx);
+}
+
+namespace {
+    constexpr int kTitleRow = 19;  // the title screen's entries: one every 19 units (the font, vSpace 8)
+
+    int list_entries(uint8_t* rdram, gpr list) {
+        const gpr sub = heap_pointer(list) ? MEM_W(0x40, list) : 0;
+        return heap_pointer(sub) ? MEM_HU(0x20, sub) : 0;  // WSMSub numChoices
+    }
+}
+
+// The title screen's menu (StartGameMenu) after Options is appended (s1 the list): Quit Game. The game's menu had three
+// entries; with Continue and Quit Game the list and its title (the list's first child) move up half a row for each
+// entry past three, so the menu stays centred.
+extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = ctx->r17;
+    if (!heap_pointer(list)) {
+        return;
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory,
+                                              (uint32_t)put_menu_text(rdram, kQuitGameText, "Quit Game"), 400);
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+    const int up = std::max(0, list_entries(rdram, list) - 3) * kTitleRow / 2;
+    MEM_H(0x62, list) = (int16_t)(MEM_H(0x62, list) - up);
+    gpr child = MEM_W(0x50, list);
+    for (int i = 0; i < 8 && heap_pointer(child); i++, child = MEM_W(0x4C, child)) {
+        MEM_H(0x62, child) = (int16_t)(MEM_H(0x62, child) - up);
+    }
+}
+
+// IntroMenu::ShowStartGameMenu's backing box (IntroMenu_ShadowBG: a3 its bottom, shifted left 16; v1 the list): made
+// for three entries (and lower under them than over its title), a row taller for each one more, less 8 units.
+extern "C" void aidyn_title_box_fit(uint8_t* rdram, recomp_context* ctx) {
+    const int more = list_entries(rdram, ctx->r3) - 3;
+    if (more > 0) {
+        const int32_t bottom = ((int32_t)ctx->r7 >> 16) + more * kTitleRow - 8;  // as far below as above
+        ctx->r7 = (gpr)(int32_t)((uint32_t)bottom << 16);
+    }
+}
+
+// The Menu page's list once placed (s2 its title, s1 the substruct with the list at +0): ten entries (the field's,
+// with Quick Load and Quit to Title) reach the page arrow under them; the title and list move up 8 units.
+extern "C" void aidyn_menu_list_fit(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = MEM_W(0, ctx->r17);
+    if (list_entries(rdram, list) < 10 || !heap_pointer(ctx->r18)) {
+        return;
+    }
+    MEM_H(0x62, list) = (int16_t)(MEM_H(0x62, list) - 8);
+    MEM_H(0x62, ctx->r18) = (int16_t)(MEM_H(0x62, ctx->r18) - 8);
+}
+
 // The title screen's menu (IntroMenu::StartGameMenu, func_80043AE8) before its first entry is made (s1 the list; v0
 // the first entry's memory, kept by call_game): Continue.
 extern "C" void aidyn_continue_entry(uint8_t* rdram, recomp_context* ctx) {
@@ -6867,6 +7083,11 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
     for (int i = 0; i < 16 && MEM_B(i, str) != 0; i++) {
         text += (char)MEM_B(i, str);
     }
+    if (text == "Quit Game") {
+        rc_sound(rdram, ctx, 0x740, 60);
+        aidyn::request_quit();
+        return 1;
+    }
     if (text != "Continue") {
         return 0;
     }
@@ -6885,6 +7106,7 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
 // Graphics::EndList: the notice, centred at the top, fading out over its last half second (not while Menu is held:
 // the pause menu keeps a picture of the screen).
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    quit_tick(rdram);
     const gpr font = MEM_W(0, kFontPtr);
     const auto now = std::chrono::steady_clock::now();
     if (notice_text.empty() || now >= notice_until || !heap_pointer(font) || aidyn::input::start_held()) {

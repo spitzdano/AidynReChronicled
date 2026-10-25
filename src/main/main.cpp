@@ -287,6 +287,13 @@ void aidyn::set_antialiasing(int msaa, int supersampling) {
     aidyn::refresh_aspect();
 }
 
+// The title screen's Quit Game (game thread): an SDL_QUIT for update_gfx, the way the window's close button ends it.
+void aidyn::request_quit() {
+    SDL_Event event{};
+    event.type = SDL_QUIT;
+    SDL_PushEvent(&event);
+}
+
 // The window's width / height (the picture's shape with aspect "window"), for the game thread's layout (the combat
 // turn order, src/game/patches.cpp); 0 before the window exists.
 float aidyn::window_aspect() {
