@@ -42,6 +42,7 @@ void all_props_frame_end();  // "Every prop considered", below
 void heap_trace_frame(uint8_t* rdram);  // "Heap trace", below
 void free_spill_frame(uint8_t* rdram, recomp_context* ctx);  // "Free queue overflow", below
 void combat_log_new_battle();
+void combat_move_log(uint8_t* rdram);  // "Stuck checks per tick", below: AIDYN_COMBAT_MOVE_LOG
 bool combat_log_frame = false;     // aidyn_prompts: in combat this frame, the log to be drawn
 float combat_card_top = 240.0f;    // the combat controls card's top this frame (240: not shown)
 bool combat_menu_open = false;     // a held X / Y menu was drawn this frame (aidyn_combat_menu_drawn)
@@ -78,6 +79,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     free_spill_frame(rdram, ctx);
     g = aidyn_prompts(rdram, g);
     if (combat_log_frame) {
+        combat_move_log(rdram);
         g = draw_combat_log(rdram, ctx, g, combat_card_top, combat_menu_open);
     }
     combat_menu_open = false;
@@ -5471,9 +5473,176 @@ namespace {
     }
 }
 
+// AIDYN_COMBAT_MOVE_LOG=<file>: every frame of a fight, the combat state, whose turn it is and the move's waitTimer,
+// and per fighter its position, collision radius, flags, aiTravelTime and destination: to see why characters stop.
+void combat_move_log(uint8_t* rdram) {
+    static FILE* f = [] {
+        const char* path = std::getenv("AIDYN_COMBAT_MOVE_LOG");
+        return (path != nullptr && *path != '\0') ? std::fopen(path, "w") : nullptr;
+    }();
+    static uint32_t frame = 0;
+    if (f == nullptr) return;
+    frame++;
+    const gpr combat = MEM_W(0, (gpr)(int32_t)0x800E0BF0);
+    if (!heap_pointer(combat)) return;
+    const gpr current = MEM_W(0x2C, combat);
+    std::fprintf(f, "%u state %u turn %d wait %d", frame, MEM_BU(0, (gpr)(int32_t)0x800D9454),
+                 heap_pointer(current) ? (int)MEM_BU(0x20, current) : -1, (int)MEM_W(0x4FBC, combat));
+    const int ents = std::min<int>(MEM_BU(0x01, combat), 18);
+    for (int i = 0; i < ents; i++) {
+        const gpr ent = MEM_W(0x52D0 + 4 * i, combat);
+        if (!heap_pointer(ent)) continue;
+        const int index = MEM_BU(0x20, ent);
+        const gpr actor = index < 14 ? MEM_W(4 * index, (gpr)(int32_t)0x800D9488) : 0;
+        if (!heap_pointer(actor)) continue;
+        std::fprintf(f, " | %d %.3f %.3f r%.3f s%.2f c%.3f f%04x t%d d%.3f,%.3f", index, read_f32(rdram, actor + 0x68),
+                     read_f32(rdram, actor + 0x70), read_f32(rdram, actor + 0x64), read_f32(rdram, actor + 0x30),
+                     read_f32(rdram, actor + 0x38), MEM_HU(0x1E, actor), (int)(int16_t)MEM_HU(0x25C, actor), read_f32(rdram, actor + 0x260),
+                     read_f32(rdram, actor + 0x264));
+    }
+    std::fprintf(f, "\n");
+    if (frame % 60 == 0) std::fflush(f);
+}
+
+// ---- Crowded fights: moving around each other ----
+// In a crowd the original AI walks every attacker straight at its waypoint and pushes into whoever is in the way
+// (characters are spheres pushed apart, and a mover touching two is put back where it was): it stalls until MoveTo's
+// 30 ticks without progress run out (its aiTravelTime, which the game never resets within a move) and gives up where
+// it stands; and a move planned onto a cell the grid thinks free often ends against a body there (a character's grid
+// cell is its position rounded down, up to a cell from where it stands). spitzdano's wolves fight (four wolves on
+// Rheda) logged every wolf move ending that way. In a fight's move (state 5, the fighter whose turn it is), at
+// MoveTo's progress check:
+//   - a fighter pressed against the mover and ahead of it (within their radii and 0.15, in front): the mover is
+//     turned to slide along its side (keeping the same side, so it doesn't swing between them), for up to 2 seconds;
+//   - one standing on the mover's waypoint (it can't be reached): the mover takes the nearest free spot touching its
+//     target instead (16 round it; up to twice a move), and if there's none, or the one in the way is its target
+//     (it has arrived), the move gives up at once (aiTravelTime past its limit), as the game's own give-up would
+//     after its 30 ticks, the AI acting from where it stands (attacking, in reach);
+//   - progress again resets aiTravelTime, so a few stalled frames early in a long move no longer end it later.
+namespace {
+    constexpr gpr kCombatActors = (gpr)(int32_t)0x800D9488;  // gGlobals.combatActors[14]
+    struct Slide { uint32_t actor = 0; int side = 0; int frames = 0, retargets = 0; };
+    Slide slide;  // the move under way (a new one: another mover, or half a second since the last step)
+    std::chrono::steady_clock::time_point slide_seen;
+
+    bool combat_mover(uint8_t* rdram, gpr actor) {
+        if (MEM_BU(0, (gpr)(int32_t)0x800D9454) != 5) return false;  // combatBytes[0]: a move
+        const gpr combat = MEM_W(0, (gpr)(int32_t)0x800E0BF0);
+        if (!heap_pointer(combat)) return false;
+        const gpr current = MEM_W(0x2C, combat);
+        if (!heap_pointer(current)) return false;
+        const int index = MEM_BU(0x20, current);
+        return index < 14 && MEM_W(4 * index, kCombatActors) == (int32_t)actor;
+    }
+
+    // The fighter whose turn it is: its target's actor, or 0. An AI's is its CombatAIInfo's entIndex (aiP +0x44,
+    // the s8 at +5), a party member's CombatEntity.TargetIndex (+0x10).
+    gpr mover_target(uint8_t* rdram) {
+        const gpr combat = MEM_W(0, (gpr)(int32_t)0x800E0BF0);
+        const gpr current = heap_pointer(combat) ? MEM_W(0x2C, combat) : 0;
+        if (!heap_pointer(current)) return 0;
+        const gpr ai = MEM_W(0x44, current);
+        const int32_t t = heap_pointer(ai) ? (int32_t)MEM_B(5, ai) : MEM_W(0x10, current);
+        if (t < 0 || t >= std::min<int>(MEM_BU(0x01, combat), 18)) return 0;
+        const gpr ent = MEM_W(0x52D0 + 4 * t, combat);
+        if (!heap_pointer(ent)) return 0;
+        const int index = MEM_BU(0x20, ent);
+        return index < 14 ? MEM_W(4 * index, kCombatActors) : 0;
+    }
+
+    float actor_radius(uint8_t* rdram, gpr a) {
+        return read_f32(rdram, a + 0x64) * read_f32(rdram, a + 0x30);
+    }
+
+    // A free spot touching the target (nobody else within their radii and 0.05 of it), nearest the mover.
+    bool free_spot_by(uint8_t* rdram, gpr actor, gpr target, float* sx, float* sz) {
+        const float px = read_f32(rdram, actor + 0x68), pz = read_f32(rdram, actor + 0x70), rm = actor_radius(rdram, actor);
+        const float tx = read_f32(rdram, target + 0x68), tz = read_f32(rdram, target + 0x70);
+        const float ring = rm + actor_radius(rdram, target) + 0.15f;
+        float best = 1e9f;
+        for (int k = 0; k < 16; k++) {
+            const float a = (float)k * 3.14159265f / 8.0f, cx = tx + ring * std::cos(a), cz = tz + ring * std::sin(a);
+            bool free = true;
+            for (int i = 0; i < 14 && free; i++) {
+                const gpr o = MEM_W(4 * i, kCombatActors);
+                if (!heap_pointer(o) || o == actor || o == target || MEM_H(2, o) == 0 || (MEM_HU(0x1E, o) & 0x400) != 0) continue;
+                free = std::hypot(read_f32(rdram, o + 0x68) - cx, read_f32(rdram, o + 0x70) - cz) >= rm + actor_radius(rdram, o) + 0.05f;
+            }
+            const float d = std::hypot(cx - px, cz - pz);
+            if (free && d < best) best = d, *sx = cx, *sz = cz;
+        }
+        return best < 1e9f;
+    }
+}
+
 extern "C" void aidyn_moveto_progress(uint8_t* rdram, recomp_context* ctx) {
     const float ticks = std::clamp(frame_ticks(rdram), 1.0f, 3.0f);
     ctx->f0.d *= ticks / 3.0;
+    const gpr actor = ctx->r16, sp = ctx->r29;
+    if (!heap_pointer(actor) || !combat_mover(rdram, actor)) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (slide.actor != (uint32_t)actor || now - slide_seen > std::chrono::milliseconds(500)) {
+        slide = { (uint32_t)actor, 0, 0, 0 };
+    }
+    slide_seen = now;
+    const bool progress = ctx->f0.d < ctx->f2.d;
+    if (progress) {
+        MEM_H(0x25C, actor) = 0;  // aiTravelTime: counts stalls since the last progress
+    }
+    // The way to the waypoint, as MoveTo has it at sp+0x10: (x, -z).
+    const float px = read_f32(rdram, actor + 0x68), pz = read_f32(rdram, actor + 0x70);
+    const float wx = read_f32(rdram, actor + 0x260), wz = read_f32(rdram, actor + 0x264);
+    float dx = read_f32(rdram, sp + 0x10), dy = read_f32(rdram, sp + 0x14);
+    const float dl = std::sqrt(dx * dx + dy * dy);
+    if (dl < 1e-4f) return;
+    dx /= dl, dy /= dl;
+    const float rm = read_f32(rdram, actor + 0x64) * read_f32(rdram, actor + 0x30);
+    gpr blocker = 0;
+    float bx = 0, by = 0, best = 1e9f;
+    for (int i = 0; i < 14; i++) {
+        const gpr other = MEM_W(4 * i, kCombatActors);
+        if (!heap_pointer(other) || other == actor || MEM_H(2, other) == 0 || (MEM_HU(0x1E, other) & 0x400) != 0) continue;
+        const float ox = read_f32(rdram, other + 0x68), oz = read_f32(rdram, other + 0x70);
+        const float ro = read_f32(rdram, other + 0x64) * read_f32(rdram, other + 0x30);
+        const float vx = ox - px, vy = -(oz - pz), d = std::sqrt(vx * vx + vy * vy);
+        if (d > rm + ro + 0.15f || d < 1e-4f || (vx * dx + vy * dy) / d < 0.3f) continue;
+        if (std::hypot(ox - wx, oz - wz) < rm + ro) {  // on the waypoint: a free spot by the target, or give up
+            const gpr target = mover_target(rdram);
+            float sx = 0, sz = 0;
+            if (heap_pointer(target) && other != target && slide.retargets < 2 && free_spot_by(rdram, actor, target, &sx, &sz)) {
+                slide.retargets++;
+                slide.side = 0, slide.frames = 0;
+                write_f32(rdram, actor + 0x260, sx);
+                write_f32(rdram, actor + 0x264, sz);
+                const float nx = sx - px, ny = -(sz - pz), nl = std::max(1e-4f, std::sqrt(nx * nx + ny * ny));
+                write_f32(rdram, sp + 0x10, nx / nl);
+                write_f32(rdram, sp + 0x14, ny / nl);
+                MEM_H(0x25C, actor) = 0;
+                ctx->f0.d = -1e30;  // re-aim at the new spot this frame
+                return;
+            }
+            MEM_H(0x25C, actor) = 0x7000;  // past its limit (30, or 300), with room for the frame's ticks
+            ctx->f0.d = 1e30;  // the no-progress branch, which gives the move up
+            return;
+        }
+        if (d < best) best = d, blocker = other, bx = vx / d, by = vy / d;
+    }
+    if (blocker == 0) {
+        slide.side = 0, slide.frames = 0;  // (the retargets count for the whole move)
+        return;
+    }
+    if (++slide.frames > 120) return;  // 2 seconds: the game's own stall and give-up take over
+    if (slide.side == 0) {  // the side nearer the waypoint, kept from then on
+        slide.side = (-by * dx + bx * dy) >= 0.0f ? 1 : -1;
+    }
+    float tx = -by * (float)slide.side, ty = bx * (float)slide.side;  // along the blocker's side
+    tx = tx * 0.85f + dx * 0.15f, ty = ty * 0.85f + dy * 0.15f;
+    const float tl = std::sqrt(tx * tx + ty * ty);
+    write_f32(rdram, sp + 0x10, tx / tl);
+    write_f32(rdram, sp + 0x14, ty / tl);
+    ctx->f0.d = -1e30;  // re-aim this frame (MoveTo turns toward sp+0x10)
 }
 
 extern "C" void aidyn_combat_move_watch(uint8_t* rdram, recomp_context* ctx) {
