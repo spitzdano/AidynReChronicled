@@ -309,7 +309,7 @@ table.changes s { opacity: .65; margin-right: 2px; }
   <div class="title">Aidyn Chronicles</div>
   <div class="sub">The First Mage · ReChronicled</div>
   <div class="sub">Instruction Manual · PC Edition</div>
-  <p class="small">For the native Linux port of the Nintendo 64 game. Pictures in this manual come from your own copy of the game.<br>{{BUILT}}</p>
+  <p class="small">For the native PC port (Linux and Windows) of the Nintendo 64 game. Pictures in this manual come from your own copy of the game.<br>{{BUILT}}</p>
 </header>
 
 <section class="chapter toc-chapter">
@@ -327,26 +327,30 @@ resolution, in widescreen and at high frame rates, with redrawn menus and textur
 
 <h3>What you need</h3>
 <ul>
-  <li>Your own dump of the North American 1.0 cartridge (<code>.z64</code>). The port contains no game data, and it checks
-  the dump before it will run it.</li>
+  <li>Your own dump of the North American 1.0 cartridge (<code>.z64</code>). The game itself isn't in the download, and
+  the port checks the dump before it will run it.</li>
   <li>Optionally, the same dump with the community <a href="#aidyn-patch">Aidyn Patch</a> or Aidyn Plus applied (each
   player applies them to their own dump; the port checks the result).</li>
   <li>A graphics card with Vulkan, and an Xbox-style controller (the keyboard works too).</li>
 </ul>
 
 <h3>The first start</h3>
-<p>Start the game once with your dump:</p>
-<pre>AidynReChronicled --rom /path/to/aidyn-chronicles.z64</pre>
-<p>The dump is checked, copied into the game's data folder and remembered, so after that the game starts without it. It
-goes straight to the title screen. Press <kbd class="pad">≡</kbd> (Menu) or <kbd>Enter</kbd> to begin.</p>
+<p>Put your dump in the <code>ROMs</code> folder of the download (any file name; the patched versions too, if you
+have them) and start the game: on Linux from the app menu after <code>install.sh</code>, or
+<code>game/aidyn-rechronicled.sh</code>; on Windows, <code>AidynReChronicled.exe</code>. The game recognises each dump
+by its contents, copies it into its data folder and remembers it. With no dump there, the first start asks for one in
+a file dialog (or start the game with <code>--rom /path/to/aidyn-chronicles.z64</code>). It goes straight to the title
+screen. Press <kbd class="pad">≡</kbd> (Menu) or <kbd>Enter</kbd> to begin.</p>
 
 <div class="port">
   <p><kbd>F1</kbd> opens this manual in your browser at any time (the game leaves fullscreen so you can see it).
   <kbd>F2</kbd> turns the newly painted portraits, icons and textures off and on again, to compare.
-  <kbd>F11</kbd> or <kbd>Alt</kbd>+<kbd>Enter</kbd> switches fullscreen on and off, and <kbd>Shift</kbd>+<kbd>Esc</kbd>
-  quits. The app launchers have a Manual entry too.</p>
-  <p>Everything the game keeps lives in <code>~/.local/share/AidynReChronicled</code>: your saves
-  (<code>aidyn.mpk</code>), <code>settings.json</code>, the stored dumps, the HD texture packs and this manual.</p>
+  <kbd>F11</kbd> or <kbd>Alt</kbd>+<kbd>Enter</kbd> switches between a window and borderless full screen, and
+  <kbd>Shift</kbd>+<kbd>Esc</kbd> quits, as does <strong>Quit Game</strong> on the main menu. On Linux the app launchers
+  have a Manual entry too.</p>
+  <p>Everything the game keeps lives in its data folder, <code>~/.local/share/AidynReChronicled</code> on Linux and
+  <code>%APPDATA%\AidynReChronicled</code> on Windows: your saves (<code>aidyn.mpk</code>), <code>settings.json</code>,
+  the stored dumps, logs, problem reports and this manual.</p>
 </div>
 </section>
 
@@ -394,9 +398,9 @@ have, turns the camera.</p>
 <h3>Pause Menu</h3>
 <table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
 <tr><td><kbd class="pad">RB</kbd></td><td><kbd>E</kbd></td><td>Next page (the scroll moves right)</td></tr>
-<tr><td><kbd class="pad">LT</kbd> or <kbd class="pad">LB</kbd></td><td><kbd>C</kbd> or <kbd>Q</kbd></td><td>Previous page (the scroll moves left)</td></tr>
+<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Previous page (the scroll moves left)</td></tr>
 <tr><td>Left stick</td><td>Arrows</td><td>Highlight; move between inventory, stats, spells and skills</td></tr>
-<tr><td><kbd class="pad">View</kbd> / <kbd class="pad">RT</kbd></td><td><kbd>J</kbd> / <kbd>L</kbd></td><td>Previous / next party member</td></tr>
+<tr><td><kbd class="pad">LT</kbd> / <kbd class="pad">RT</kbd></td><td><kbd>C</kbd> / <kbd>L</kbd></td><td>Previous / next party member (also in shops and with trainers)</td></tr>
 <tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Details of a skill, spell, item or stat</td></tr>
 <tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Equip or take off; use potions, items and spells</td></tr>
 <tr><td><kbd class="pad b">B</kbd></td><td><kbd>X</kbd></td><td>Leave the pause menu</td></tr>
@@ -422,7 +426,9 @@ the item there.</p>
   <dt>New Game</dt><dd>Start a new adventure.</dd>
   <dt>Load Game</dt><dd>Carry on from a save (see <a href="#saving">Saving and Loading</a>).</dd>
   <dt>Options</dt><dd>Sound and graphics settings.</dd>
+  <dt>Quit Game</dt><dd>Close the game.</dd>
 </dl>
+<p class="note"><kbd class="pad b">B</kbd> on this menu goes back to the title screen.</p>
 </section>
 
 <section class="chapter" id="options">
@@ -447,7 +453,7 @@ unchanged.</p>
 
 <h3 id="saving">Saving and Loading</h3>
 <p>Your progress is kept on a Controller Pak, the N64's memory card. Save from the pause menu whenever you like;
-load from the main menu or the pause menu.</p>
+load from the main menu or the pause menu, during a fight too.</p>
 <figure data-shot="load-game"><img alt="The Load Game page"></figure>
 <h4>Save Game</h4>
 <ul>
@@ -476,8 +482,8 @@ load from the main menu or the pause menu.</p>
 <p>Press <kbd class="pad">View</kbd> (<kbd>J</kbd>) while walking about to quicksave; "Quicksaved" shows at the top of
 the screen. During a fight, a conversation or a scene there is nothing to save, and it says so. The game also saves by
 itself when you arrive in another area (through a door, into a town) and after every ten minutes of walking about
-("Autosaved"), keeping the last two of these. <strong>Quick Load</strong> on the pause menu loads the newest quicksave
-or autosave, and <strong>Continue</strong> on the main menu your newest save of any kind.</p>
+("Autosaved"), keeping the last two of these. <strong>Quick Load</strong> on the pause menu (during a fight too) loads
+the newest quicksave or autosave, and <strong>Continue</strong> on the main menu your newest save of any kind.</p>
 <div class="port">
   <p>These saves are files of their own beside the Controller Pak, named after it
   (<code>aidyn-patch-quicksave.sav</code>, <code>-autosave-1.sav</code>, <code>-autosave-2.sav</code>), so they never
@@ -531,13 +537,20 @@ Spellcasters can cast with <kbd class="pad x">X</kbd> instead. A character who c
   <dt>The character in play</dt><dd>Your party is lined up along one side of the screen; the character whose turn it
   is stands in the middle.</dd>
   <dt>Enemies</dt><dd>Each enemy in the fight is shown along the other side.</dd>
-  <dt>Health bars</dt><dd>Next to each portrait, a bar shows hit points. It shrinks and changes colour as the character
-  is hurt; when it is gone the character falls. Enemies have bars too.</dd>
-  <dt>Messages</dt><dd>The bottom of the screen says whose turn it is and whether an attack hit or missed.</dd>
-  <dt>Spells and items</dt><dd>Hold <kbd class="pad x">X</kbd> (spells) or <kbd class="pad y">Y</kbd> (items) and move
-  the stick up and down to choose; let go and press <kbd class="pad a">A</kbd> to use it. While a spell or potion is
-  highlighted, what it does shows beside the list.</dd>
+  <dt>Health bars</dt><dd>Inside each portrait's frame, a bar shows hit points. It shrinks and changes colour as the
+  character is hurt; when it is gone the character falls. A thin blue bar under it shows stamina, which spells and
+  skills use up. Enemies have both bars too.</dd>
+  <dt>Turn order</dt><dd>Across the top: who acts in this round, in order, then the next round.</dd>
+  <dt>Messages</dt><dd>The bottom of the screen says whose turn it is and whether an attack hit or missed. The combat log
+  at the bottom left keeps the last few.</dd>
+  <dt>Spells and items</dt><dd>Hold <kbd class="pad x">X</kbd> (spells and skills such as Lay On Hands) or
+  <kbd class="pad y">Y</kbd> (items) and move the stick up and down to choose; let go and press
+  <kbd class="pad a">A</kbd> to use it. While one is highlighted, what it does shows beside the list, with what it
+  takes from the pack (an ingredient, a herb).</dd>
 </dl>
+<div class="port"><p>Fights can run faster: <strong>Combat speed</strong> on the ReChronicled page speeds up your party's
+moves and attacks (1.5x, 2x or 3x; never while you choose), and <strong>Enemy turns</strong> the enemies' (2x by
+default, up to 4x).</p></div>
 
 <h3 id="after-combat">After Combat</h3>
 <h4>Level Up</h4>
@@ -581,28 +594,33 @@ in the <a href="#spells">Spell List</a>.</p>
 <h2>Pausing the Game</h2>
 <p>Press <kbd class="pad">≡</kbd> at any time to pause. <kbd class="pad b">B</kbd> or <kbd class="pad">≡</kbd> returns
 to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the inventory, then the calendar.
-<kbd class="pad">LB</kbd> or <kbd class="pad">LT</kbd> turns it back.</p>
+<kbd class="pad">LB</kbd> turns it back.</p>
 
 <h3>Pause Menu</h3>
 <figure data-shot="pause"><img alt="The pause menu"></figure>
 <dl>
-  <dt>Load Game</dt><dd>Load a save from the Controller Pak.</dd>
+  <dt>Load Game</dt><dd>Load a save from the Controller Pak (during a fight too).</dd>
   <dt>Quick Load</dt><dd>Load the newest quicksave or autosave. Shown once there is one.</dd>
   <dt>Save Game</dt><dd>Save your progress at any time.</dd>
   <dt>Options</dt><dd>Sound, graphics and renaming Alaron (see <a href="#options">Options</a>).</dd>
   <dt>Theater</dt><dd>Watch the story scenes you have already seen.</dd>
   <dt>Display</dt><dd>How the picture is drawn, changed while you play (see <a href="#settings">PC Settings</a>):
-  widescreen or the N64's 4:3, all the new textures on or off (off: as the N64 drew it), vsync, an FPS counter, the HUD
-  at the screen edges and the draw distance.</dd>
+  widescreen or the N64's 4:3, all the new textures on or off (off: as the N64 drew it), vsync, a window or borderless
+  full screen, an FPS counter, the HUD at the screen edges, the draw distance and the anti-aliasing (Off, Low, Medium,
+  High).</dd>
   <dt>ReChronicled</dt><dd>This edition's own features, changed while you play: the sound (Enhanced: louder and a
-  little clearer; or Original, as the game made it), the turn order, the walk speed, the combat log, the controls card,
-  the other button prompts, the smooth walk cycles and the right-stick camera; and <strong>Report a problem</strong>
-  (see <a href="#reporting">Reporting a Problem</a>). On both pages
-  <kbd class="pad">A</kbd> or left / right changes the highlighted one, <kbd class="pad b">B</kbd> goes back. In a
-  battle they are at the end of the list. Turning the textures back on takes a few seconds.</dd>
+  little clearer; or Original, as the game made it), the music's instruments (Restored or Original), the turn order,
+  the walk speed, the combat speed and enemy turns, the controls card, the other button prompts, the combat log, the
+  smooth walk cycles and the right-stick camera; and <strong>Report a problem</strong> (see
+  <a href="#reporting">Reporting a Problem</a>). On both pages <kbd class="pad">A</kbd> or left / right changes the
+  highlighted one, <kbd class="pad b">B</kbd> goes back. Turning the textures back on takes a few seconds.</dd>
   <dt>Credits</dt><dd>The people who made the game.</dd>
   <dt>Help</dt><dd>Hints and tips, with a ReChronicled topic for what this edition adds.</dd>
+  <dt>Quit to Title</dt><dd>End the game and go back to the title screen. It asks first (choose it again to quit):
+  anything not saved is lost.</dd>
 </dl>
+<p class="note">In a fight the list is Load Game, Quick Load, Options, Flee (when the party can run), Display,
+ReChronicled and Quit to Title.</p>
 <div class="half">
   <figure data-shot="display"><img alt="The Display page"><figcaption>The Display page</figcaption></figure>
   <figure data-shot="rechronicled"><img alt="The ReChronicled page"><figcaption>The ReChronicled page</figcaption></figure>
@@ -612,8 +630,11 @@ to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the in
 <figure data-shot="inventory"><img alt="The inventory page"></figure>
 <dl>
   <dt>The party</dt><dd>Everyone's portraits are at the top left. The selected character's is the largest, with their
-  name above it. <kbd class="pad">View</kbd> and <kbd class="pad">RT</kbd> move through the party.</dd>
-  <dt>Hit Points</dt><dd>A healthy character has plenty. One who is low needs rest and a healing potion or two.</dd>
+  name above it. <kbd class="pad">LT</kbd> and <kbd class="pad">RT</kbd> move through the party.</dd>
+  <dt>Hit Points</dt><dd>A healthy character has plenty. One who is low needs rest and a healing potion or two. The rope
+  shows what is left, and beside Level and Gold the three parts the hit points are made of: <strong>END</strong>
+  (Endurance), <strong>STA</strong> (Stamina) and <strong>VIG</strong> (vigour, a hidden reserve tied to the character's
+  level), each as what is left of it and its full amount.</dd>
   <dt>Level</dt><dd>Experience raises a character's level; the higher it is, the stronger they are.</dd>
   <dt>Gold</dt><dd>The gold the whole party carries.</dd>
   <dt>Inventory, Stats, Skills, Spells</dt><dd>The party's items, with an icon beside anything a character is using. Move
@@ -656,6 +677,8 @@ towns and villages.</p>
   <dt>Stamina</dt><dd>Used up by casting spells, disarming traps, picking locks and making armour and potions. If it runs
   out, further strain comes off Endurance, so rest to keep it up.</dd>
 </dl>
+<p class="note">Hit points are Endurance, Stamina and vigour (VIG on the inventory page) added together. A blow takes
+vigour first, then Stamina, then Endurance; healing gives back Endurance first, then Stamina, then vigour.</p>
 <h3>Skills</h3>
 <table><tbody>
 <tr><td><img class="icon" data-art="IconSkAlchemist" alt=""> Alchemist</td><td><img class="icon" data-art="IconSkDiplomat" alt=""> Diplomat</td><td><img class="icon" data-art="IconSkHealer" alt=""> Healer</td></tr>
@@ -754,8 +777,8 @@ recipes and prices, how fast skills and weapons gain experience, and much of the
 data only, not the game's code, so the PC version runs it as it is.</p>
 <h3>Installing and switching</h3>
 <ul>
-  <li>Apply the patch to your own 1.0 dump and start the game once with <code>--rom</code> and the patched file. It is
-  checked and kept beside the original. The same goes for Aidyn Plus, halibabica's bigger rebalance (new weapon skills and items,
+  <li>Apply the patch to your own 1.0 dump and put the patched file in the <code>ROMs</code> folder (or start the game
+  once with <code>--rom</code> and the patched file). It is checked and kept beside the original. The same goes for Aidyn Plus, halibabica's bigger rebalance (new weapon skills and items,
   every spell learnable, elements reworked; its own FAQ explains it).</li>
   <li>On the title screen the bottom left lists <em>Original</em>, <em>Aidyn Patch</em> and <em>Aidyn Plus</em>, the
   one you are playing lit. <kbd class="pad">X</kbd> and <kbd class="pad">Y</kbd> (<kbd>K</kbd>, <kbd>I</kbd>) switch to
@@ -775,24 +798,33 @@ data only, not the game's code, so the PC version runs it as it is.</p>
 <h2>ReChronicled</h2>
 <p>What is new in this edition, compared with playing the cartridge:</p>
 <dl>
-  <dt>Sharp at any resolution</dt><dd>The game is drawn at 1080 lines or more (supersampled for smoother edges) with 4x
-  anti-aliasing, instead of the N64's 240.</dd>
+  <dt>Sharp at any resolution</dt><dd>The game is drawn at 1080 lines or more instead of the N64's 240, with
+  anti-aliasing (supersampling and MSAA together: Off, Low, Medium or High on the Display page).</dd>
   <dt>Widescreen</dt><dd>16:9, 21:9 or any width. The 3D view widens, and the HUD moves to the screen edges, walking
   and in combat. The pause menu and shops stay 4:3, the shape they were made for.</dd>
   <dt>Smooth motion</dt><dd>The game itself runs at 60 frames a second (the N64 managed 15 to 20). Above that, frames
   are drawn in between, up to your display's refresh rate (at most 240 by default). Walking and running no longer stop for a moment every stride.</dd>
-  <dt>HD menus and textures</dt><dd>Menus, pictures, icons and portraits are upscaled from the game's own art; the text
-  is redrawn in a clean font, and the button prompts show Xbox buttons. The world's textures are upscaled too.</dd>
+  <dt>Newly painted art</dt><dd>Every portrait, an icon of its own for every item (each potion its own colour, scrolls
+  and wands by their spell's school), 2,113 of the 2,115 world textures, the HUD, the map page's land and the pause
+  scroll are painted anew. The text is redrawn in a clean font and the button prompts show Xbox buttons. What isn't
+  repainted yet is upscaled from the game's own pictures. <kbd>F2</kbd> shows what was there before.</dd>
+  <dt>Restored sound</dt><dd>The music and sounds as loud as other games' (the game played very softly) and a little
+  clearer, and the music's instruments restored: their lost treble rebuilt and the 8-bit hiss gone. The same music,
+  each switchable back to the original on the ReChronicled page.</dd>
+  <dt>Clearer combat</dt><dd>The turn order across the top, a combat log, portraits framed with their hit points and
+  stamina, what a spell, skill or potion does shown while you choose it, and faster turns if you like (see
+  <a href="#combat">Combat</a>).</dd>
   <dt>Further draw distance</dt><dd>Outdoors, more of the land around you is loaded and drawn, and trees and other
   objects show from further away.</dd>
   <dt>A free camera</dt><dd>The right stick turns the camera around the party and tilts it, both at the same speed;
   either direction can be inverted.</dd>
   <dt>Fast-forward</dt><dd>Click the left stick (or hold <kbd>Tab</kbd>) and everything runs three times faster: long
   walks, fights, scenes. Two chevrons at the top right show it is on. Enemy turns in combat run twice as fast on
-  their own.</dd>
+  their own (Enemy turns on the ReChronicled page).</dd>
   <dt>Quicksaves and autosaves</dt><dd><kbd class="pad">View</kbd> quicksaves while you walk about, the game saves by
   itself on arriving somewhere new and every ten minutes, and Continue on the main menu picks up where you left off
-  (see <a href="#quicksaves">Quicksaves and Autosaves</a>).</dd>
+  (see <a href="#quicksaves">Quicksaves and Autosaves</a>). Load Game and Quick Load work during a fight too, and
+  Quit to Title ends a game without closing the program.</dd>
   <dt>Walk speed</dt><dd>The party walks and runs faster in the field: 1.5 times by default, from the original pace up
   to twice it, on the ReChronicled page. Only the walk is quicker: the day, the monsters and fights keep their pace.</dd>
   <dt>Save backups</dt><dd>The last 20 states of your Controller Pak are kept (see
@@ -812,8 +844,9 @@ logs, your settings and your saves (nothing from the game's ROM).</p>
   and choose <strong>Report a problem</strong> at the bottom of the <strong>ReChronicled</strong> page. "Report saved in
   the reports folder" shows at the top; this one also keeps a picture of the screen and a save of that moment.</li>
 </ul>
-<p>Reports are in <code>reports/</code> in the data folder (<code>~/.local/share/AidynReChronicled/reports</code>; on a
-Steam Deck or an Ally, switch to Desktop Mode to reach it), the newest ten kept. Send the newest with a few words on
+<p>Reports are in <code>reports/</code> in the data folder (<code>~/.local/share/AidynReChronicled/reports</code>, or
+<code>%APPDATA%\AidynReChronicled\reports</code> on Windows; on a Steam Deck or an Ally, switch to Desktop Mode to
+reach it), the newest ten kept. Send the newest with a few words on
 what you were doing and what went wrong. Only your home folder's name is left out of them.</p>
 
 <h3 id="settings">PC Settings</h3>
@@ -823,17 +856,17 @@ pause menu's <em>Display</em> and <em>ReChronicled</em> pages, which save them h
 <div class="scroll"><table><thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead><tbody>
 <tr><td><code>aspect</code></td><td><code>"16:9"</code></td><td><code>"4:3"</code> as on a TV; any width such as <code>"16:9"</code> or <code>"21:9"</code>; <code>"window"</code> to fill the window</td></tr>
 <tr><td><code>render_height</code></td><td>1080</td><td>Drawing resolution in lines; 0 picks the largest that fits the window</td></tr>
-<tr><td><code>supersampling</code></td><td>2</td><td>1 to 4: draw that many times larger and scale down, for smoother edges</td></tr>
-<tr><td><code>msaa</code></td><td>4</td><td>Anti-aliasing: 0, 2, 4 or 8</td></tr>
+<tr><td><code>supersampling</code> *</td><td>2</td><td>1 to 4: draw that many times larger and scale down, for smoother edges</td></tr>
+<tr><td><code>msaa</code> *</td><td>4</td><td>Anti-aliasing: 0, 2, 4 or 8 (the Display page's Anti-aliasing sets both: Off 0 and 1, Low 2 and 1, Medium 4 and 2, High 8 and 2)</td></tr>
 <tr><td><code>fps_limit</code></td><td>240</td><td>Frames shown a second (30 to 1000), never more than the display shows; 0 follows the display</td></tr>
 <tr><td><code>draw_distance</code> *</td><td>3.0</td><td>1 (the original) to 3</td></tr>
 <tr><td><code>enhanced</code> * (audio)</td><td><code>true</code></td><td>The sound louder and a little clearer (<code>false</code>: as the game made it)</td></tr>
-<tr><td><code>orchestral</code> * (audio)</td><td><code>false</code></td><td>The music on orchestral instruments (when a SoundFont is installed; work in progress)</td></tr>
+<tr><td><code>restored_samples</code> * (audio)</td><td><code>true</code></td><td>The music's instruments restored (<code>false</code>: the game's own samples)</td></tr>
 <tr><td><code>loudness_db</code> (audio)</td><td>18</td><td>How much louder Enhanced plays: 0 to 24</td></tr>
 <tr><td><code>brightness_db</code> (audio)</td><td>6</td><td>Enhanced's treble lift: 0 to 12</td></tr>
 <tr><td><code>walk_speed</code> *</td><td>1.5</td><td>How fast the party walks in the field: 1 (the original) to 2</td></tr>
 <tr><td><code>widescreen</code> *</td><td><code>true</code></td><td><code>false</code> shows the N64's 4:3 picture</td></tr>
-<tr><td><code>fullscreen</code></td><td><code>false</code></td><td>Start in fullscreen (<kbd>F11</kbd> switches at any time)</td></tr>
+<tr><td><code>fullscreen</code> *</td><td><code>false</code></td><td>Borderless full screen instead of a window (the Display page's Window row; <kbd>F11</kbd> switches at any time)</td></tr>
 <tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">LB</kbd> sets it)</td></tr>
 <tr><td><code>hud_at_edges</code> *</td><td><code>true</code></td><td>Widescreen: sun dial, compass and the combat columns at the screen edges</td></tr>
 <tr><td><code>button_prompts</code> *</td><td><code>true</code></td><td>The menus' button hints, LB / RB at the page arrows and the party switch</td></tr>
@@ -847,11 +880,12 @@ lists</td></tr>
 <tr><td><code>right_stick_camera</code> *</td><td><code>true</code></td><td>The right-stick camera</td></tr>
 <tr><td><code>camera_invert_x</code>, <code>camera_invert_y</code> *</td><td><code>false</code>, <code>true</code></td><td>Turn or tilt the camera the other way (tilt is inverted by default: up looks down)</td></tr>
 <tr><td><code>fast_forward_speed</code></td><td>3</td><td>How much faster fast-forward runs, 2 to 6</td></tr>
-<tr><td><code>combat_enemy_speed</code></td><td>2</td><td>Enemy turns run this much faster, 1 (off) to 6</td></tr>
+<tr><td><code>combat_party_speed</code> *</td><td>1</td><td>Your party's moves and attacks in combat run this much faster (not while you choose): 1 (off) to 3</td></tr>
+<tr><td><code>combat_enemy_speed</code> *</td><td>2</td><td>Enemy turns run this much faster: 1 (off) to 4 on the page, up to 6 here</td></tr>
 <tr><td><code>save_backups</code></td><td>20</td><td>Copies of your saves to keep; 0 for none</td></tr>
 <tr><td><code>smooth_animation_loops</code> *</td><td><code>true</code></td><td>No pause in the walk and run cycles</td></tr>
 <tr><td><code>overscan_borders</code></td><td><code>false</code></td><td>The black frame the N64 drew for old TVs</td></tr>
-<tr><td><code>texture_packs</code></td><td>HD packs</td><td>The HD menus, world textures and title art; remove one to see the original (<code>textures</code> turns them all off)</td></tr>
+<tr><td><code>texture_packs</code></td><td>all five</td><td>The texture packs, later ones winning: <code>hd-ui</code> and <code>hd-world</code> (upscales of the game's own pictures), <code>rechronicled-text</code> (the letters), <code>rechronicled-art</code> (the newly painted art) and <code>rechronicled</code> (the title art); remove one to leave it out (<code>textures</code> turns them all off)</td></tr>
 <tr><td><code>skip_intro</code></td><td><code>true</code></td><td><code>false</code> brings back the start-up logos</td></tr>
 <tr><td><code>rom_patch</code></td><td><code>"none"</code></td><td><code>"aidyn-patch"</code> plays Aidyn Patch, <code>"aidyn-plus"</code> Aidyn Plus (the title screen sets it)</td></tr>
 </tbody></table></div>
@@ -861,7 +895,8 @@ lists</td></tr>
 <h2>About This Manual</h2>
 <p><em>Aidyn Chronicles: The First Mage</em> &copy; 2001 THQ Inc., developed by H2O Entertainment Corporation. THQ, H2O
 and Nintendo 64 are trademarks of their owners. Aidyn ReChronicled is an unofficial fan project, not connected with or
-endorsed by them, and it contains none of the game's data: you supply your own copy.</p>
+endorsed by them. The game itself isn't part of it: you supply your own copy. Only the HD upscale packs and the
+restored instrument samples are made from the game's own pictures and sounds.</p>
 <p>This manual was written for the PC edition. Its chapters follow the game's original instruction booklet, in new
 words. The spell list, portraits, icons and screenshots are taken from your own copy of the game each time the manual
 is built.</p>

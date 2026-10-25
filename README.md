@@ -25,13 +25,14 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
   display's rate, and walk cycles without their stutter.
 - **Newly painted art**: 2,113 of the game's 2,115 world textures, every portrait, an icon of its own for every item
   (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
-  plus HD lettering and Xbox button prompts. F2 shows what was there before.
+  plus HD lettering and Xbox button prompts; what isn't repainted yet is upscaled. F2 shows what was there before.
 - **Fuller sound**: the game's music and sounds as loud as other games' (they played very softly) and a little
   clearer, through a limiter, and the music's instruments restored (their lost treble back and the 8-bit hiss
   gone); the same music and sounds, each switchable back to the original.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
-- **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
+- **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak; Load Game and
+  Quick Load during fights too, and Quit to Title.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
 - **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP and stamina, easier aiming, what a
   spell, skill or potion does shown while you choose it, and faster turns if you like (your party's and the enemies').
@@ -69,7 +70,7 @@ checks it against this SHA-1:
 
 | | |
 |---|---|
-| ![The title screen](docs/screenshots/title.jpg) | ![The title menu with Continue](docs/screenshots/title-menu.jpg) |
+| ![The title screen](docs/screenshots/title.jpg) | ![The title menu](docs/screenshots/title-menu.jpg) |
 | The redesigned title card, and the version switch | Continue picks up from your newest save |
 | ![Walking about in the first forest](docs/screenshots/field.jpg) | ![Alaron in the newly painted forest](docs/screenshots/painted-world.jpg) |
 | The new HUD, the controls card, widescreen | Newly painted world textures and portraits |
@@ -96,8 +97,11 @@ screen; on Linux, `install.sh` copies them to the installed game's `ROMs` folder
 If the version you played last has no ROM, the game plays one that has. Without any ROM there, the first start asks for
 one in a file dialog. The README in the download covers controls, Aidyn Patch, Aidyn Plus and settings, and
 RELEASE-NOTES.md what each release changed (`tools/release/notes`). Releases carry
-no game data (nor either patch), and not the HD menu and world texture packs; the newly painted art, the HD letters and
-the title branding ship as three `.rtz` texture packs.
+no ROM (nor either patch). The newly painted art, the HD letters and the title branding ship as three `.rtz` texture
+packs, and two things made from the game's own data, kept in private repositories (spitzdano's call to ship them): the
+HD menu and world packs (`hd-ui`, `hd-world`: the `hd/` submodule, Real-ESRGAN upscales; only the pictures the painted
+art doesn't replace yet go in, `tools/release/rtz.py --without`, about 45 MB of their 1.3 GB) and the restored
+instrument samples (the `sound/` submodule).
 
 The data folder (settings, saves, logs, problem reports, the stored ROMs) is `~/.local/share/AidynReChronicled` on Linux
 and `%APPDATA%\AidynReChronicled` on Windows.
@@ -246,9 +250,9 @@ ROM is there instead, for that run, and lights that one. The list is on the titl
 | B | B | X | back, cancel; walking: show the party's portraits; title menu: back to the title card |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
 | C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one); title screen: switch to the version marked Y |
-| C-left | View | J | walking: quicksave; in combat: nothing (not passed to the game in either); pause menu: previous party member |
-| C-right | RT | L | pause menu: next party member |
-| Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu: previous page |
+| C-left | View | J | walking: quicksave; in combat and the menus: nothing (not passed to the game) |
+| C-right | RT | L | pause menu, shops, trainers: next party member |
+| Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu, shops, trainers: previous party member (passed to the game as C-left; the game's Z turned the page back, as LB does) |
 | L | LB | Q | walking and in combat: show / hide the controls card (not passed to the game there; in combat it was a second End turn); pause menu: previous page |
 | R | RB | E | pause menu: next page; hold + stick: the game's own camera control |
 | Start | Menu | Enter | pause menu; back to the game |
@@ -282,6 +286,7 @@ these defaults on the first run:
         "skip_intro": true,
         "fast_forward_speed": 3,
         "combat_enemy_speed": 2,
+        "combat_party_speed": 1,
         "save_backups": 20
     },
     "audio": {
@@ -318,7 +323,8 @@ these defaults on the first run:
 | `rom_patch` | `"none"` (the 1.0 ROM), `"aidyn-patch"` or `"aidyn-plus"` (see Aidyn Patch and Aidyn Plus above); the title screen's version list writes it |
 | `skip_intro` | `false` puts back the start-up screens: Expansion Pak notice, copyright, Nintendo, THQ and H2O logos |
 | `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on |
-| `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own |
+| `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own (the ReChronicled page's Enemy turns: Original, 2x, 3x, 4x) |
+| `combat_party_speed` | 1 (off) to 3: the party's turns in combat run this much faster while they move and act, never while you choose (the ReChronicled page's Combat speed: Original, 1.5x, 2x, 3x) |
 | `enhanced` (audio) | `false`: the sound exactly as the game makes it. `true` (the ReChronicled page's Sound, Enhanced): louder, with a little more treble, through a limiter that holds the peaks at -1 dBFS (`src/main/audio.cpp`) |
 | `loudness_db` (audio) | 0 to 24: how much louder Enhanced plays (the game's own mix measures -35 to -39 LUFS; +18 brings it to about -17 to -19, like other games) |
 | `brightness_db` (audio) | 0 to 12: Enhanced's treble lift above about 3 kHz (the game's instrument samples have almost nothing above 4 kHz) |
@@ -348,12 +354,13 @@ these defaults on the first run:
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
 
-**In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, last), each a page of the
-switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `hud_at_edges`,
-`draw_distance` from 1 to 3 in halves, and Anti-aliasing: `msaa` and `supersampling` together, Off 0 / 1, Low 2 / 1,
-Medium 4 / 2, High 8 / 2) and **ReChronicled** (`turn_order`, `walk_speed` from 1 to 2 in quarters,
-`controls_card`, `button_prompts`,
-`smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, `combat_log`).
+**In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, after Flee), each a page
+of the switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `fullscreen` as
+Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, and Anti-aliasing: `msaa` and
+`supersampling` together, Off 0 / 1, Low 2 / 1, Medium 4 / 2, High 8 / 2) and **ReChronicled** (`enhanced` as Sound,
+`restored_samples` as Instruments, `turn_order`, `walk_speed` from 1 to 2 in quarters, `combat_party_speed` as Combat
+speed, `combat_enemy_speed` as Enemy turns, `controls_card`, `button_prompts`, `combat_log`,
+`smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, and Report a problem).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
 packs load, as F2 does.
@@ -406,7 +413,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Fast-forward.** Every mode measures its frame's time step by counting the controller samples queued since the
   last frame (1 to 6 ticks of 1/60 s, built for the N64's 10 to 20 frames a second). While fast-forward is on, each
   real sample is followed by quiet copies of it (same stick and held buttons, no new presses), so the game takes that
-  many ticks a frame and no press is handled twice; enemy turns in combat get `combat_enemy_speed` the same way.
+  many ticks a frame and no press is handled twice; enemy turns in combat get `combat_enemy_speed` the same way, and
+  the party's moves and attacks `combat_party_speed` (not while a menu or a target is being chosen; a fraction is
+  carried to the next frame).
   `AIDYN_FPS=1` prints the game ticks a second (60, or 180 at 3x).
 - **Save backups.** The Controller Pak is copied to `backups/` when the game starts and before each save (the first
   write after 30 s without writes), unless the copy would be the same as the newest one; the newest `save_backups`
@@ -438,6 +447,16 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   autosave: QuestData::LoadFromMemPak, then the pause menu's own after-load callback), the title menu **Continue**
   first (the newest of those and `-lastsave.sav`, a copy of each save made to the pak; then the title's after-load
   callback). A damaged file (its checksum) is passed over. `AIDYN_SAVE_LOG=1` prints each step and the walk's states.
+- **Quit, and loading in a fight.** The Menu page ends with **Quit to Title** (it asks first: chosen once it reads
+  "Really Quit?" with a notice that unsaved progress is lost; moving off it puts it back), the title screen's menu
+  with **Quit Game** (an `SDL_QUIT`, as the window's close button). In the field the pause menu closes as after Help
+  and the walk fades out into gameStateB 0, the game's own way to the title; in a fight it closes as Flee does with
+  CombatState 0 next (CombatStateFunc_0 clears the fight and returns to the title). A fight's Menu page also gets
+  **Load Game** and **Quick Load** (the game offers neither there). The load itself waits: the fight's characters
+  still point into the party a load would replace, so the save is kept, the pause menu closes for a load (gameStateB
+  4), which the game turns into CombatState 16 (the fight cleared away, as after a win), and the walk's first frame
+  loads it. The lists fit their length: the title's five entries centred with their backing box a row taller for each
+  past three, the Menu page's ten moved up clear of the page arrow.
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.
@@ -604,7 +623,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   A shop (its Buy title) gets "Buy" or "Sell" on A, "Appraise" on Y on its own list, and "Switch". The inventory page
   gets what A does to the highlighted item at its bottom left (Equip, Unequip or Use, read from the inventory list: the
   lists widget is kept from its setup, `func_80030C50`), "Lists" (the D-pad: Inventory, Spells, Skills, Stats)
-  between the RB prompt and DETAILS, and View / RT beside the portraits when there is more than one in the party.
+  between the RB prompt and DETAILS, and LT / RT beside the portraits when there is more than one in the party.
   After a battle the page trains with experience: "Train" and "Lists" inside the Train panel.
   In combat, the menus held open with Y (potions and item spells) and X (spells and skills) get "Choose" (the D-pad)
   and "Release to use" with the button held, under the menu's box (the union of its frame pieces: the menu widget

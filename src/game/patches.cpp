@@ -4705,7 +4705,7 @@ namespace {
             "Click the left stick to make everything run three times faster: long walks, fights and scenes. Click it "
             "again to go back to normal speed. Two chevrons at the top right of the screen show when it is on.",
             "In combat, the enemies' turns also run twice as fast on their own, so you spend less time waiting for "
-            "your next turn." } },
+            "your next turn. Combat speed and Enemy turns on the ReChronicled page set how fast each side goes." } },
         { "Controls Card", {
             "While you walk and in combat, a card at the left edge of the screen lists what the buttons do there. "
             "Press LB to hide it or show it again; your choice is remembered.",
@@ -4713,7 +4713,7 @@ namespace {
             "turned off on the ReChronicled page of the Menu." } },
         { "Menus", {
             "In the pause menu, LB and RB turn the scroll to the previous or next page. On the equipment page, "
-            "\\x82 and \\x81 choose the previous or next member of your party.",
+            "in shops and with trainers, \\x87 and \\x81 choose the previous or next member of your party.",
             "The Menu page's Display and ReChronicled entries hold this edition's options: widescreen, the new "
             "textures, the draw distance, the turn order and more. Each change takes effect at once." } },
         { "Saving", {
@@ -4721,7 +4721,10 @@ namespace {
             "area and after every ten minutes of walking about, keeping the last two of these autosaves.",
             "Quick Load on the Menu page loads the newest quicksave or autosave; Continue on the title screen loads "
             "your newest save of any kind. They are kept apart from the Controller Pak, which still holds the saves "
-            "made with Save Game." } },
+            "made with Save Game.",
+            "Load Game and Quick Load work during a fight too. Quit to Title, last on the Menu page, ends the game "
+            "without closing it: choose it twice, as anything not saved is lost. Quit Game on the title screen "
+            "closes it." } },
         { "Combat", {
             "A strip across the top of the screen shows the order of the round's turns, from whoever acts now, then "
             "the next round, dimmed. Quick fighters act two or three times a round. Whoever you are targeting flashes "

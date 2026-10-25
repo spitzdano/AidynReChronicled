@@ -24,13 +24,14 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
   display's rate, and walk cycles without their stutter.
 - **Newly painted art**: 2,113 of the game's 2,115 world textures, every portrait, an icon of its own for every item
   (each potion its own colour, scrolls and wands by school), the HUD, the map page's land and a repainted pause scroll,
-  plus HD lettering and Xbox button prompts. F2 shows what was there before.
+  plus HD lettering and Xbox button prompts; what isn't repainted yet is upscaled. F2 shows what was there before.
 - **Fuller sound**: the game's music and sounds as loud as other games' (they played very softly) and a little
   clearer, through a limiter, and the music's instruments restored (their lost treble back and the 8-bit hiss
   gone); the same music and sounds, each switchable back to the original.
 - **Further draw distance**: more of the land drawn, trees and objects showing from much further away.
 - **A free camera** on the right stick, kept out of walls.
-- **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak.
+- **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak; Load Game and
+  Quick Load during fights too, and Quit to Title.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
 - **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP and stamina, easier aiming, what a
   spell, skill or potion does shown while you choose it, and faster turns if you like (your party's and the enemies').
@@ -41,8 +42,9 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
   RetroArch) can be copied in, and a problem report gathers what's needed when something goes wrong.
 
 **You need your own copy of the game:** a dump of the North American 1.0 cartridge (`.z64`, SHA-1
-`47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Apart from the restored instrument samples (redrawings of the
-music's own), nothing from the game is in this download.
+`47ae795a2b12783a13e2b8d03439ce9a39fc826c`). Apart from the HD upscale packs (the game's pictures that aren't
+repainted yet, upscaled) and the restored instrument samples (redrawings of the music's own), nothing from the game is
+in this download.
 
 ## Play on Linux
 
@@ -122,7 +124,7 @@ On the title screen the bottom left lists Original, Aidyn Patch and Aidyn Plus, 
 (keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*: put its
 ROM in the `ROMs` folder and start the game again. If the version you played last has no ROM (you only have Aidyn
 Plus, say), the game plays one that has. From the
-menu (New Game, Load Game, Options), B goes back to the title. Each version keeps its own saves.
+menu (Continue, New Game, Load Game, Options, Quit Game), B goes back to the title. Each version keeps its own saves.
 
 ## Controls
 
@@ -134,14 +136,13 @@ An Xbox-style controller, or the keyboard:
 | Right stick (click: recentre) | | Camera |
 | A / B | Z / X | Confirm, talk, attack / back, cancel |
 | X / Y | K / I | Details, spells / items; switch versions (title screen) |
-| View | J | Quicksave (walking about); previous party member (pause menu) |
-| RT | L | Next party member (pause menu) |
-| LB | Q | Show / hide the controls card (walking, combat); previous page (pause menu) |
-| LT / RB | C / E | Sneak, end turn, previous page / next page |
+| View | J | Quicksave (walking about) |
+| LT / RT | C / L | Sneak (walking), end turn (combat); previous / next party member (pause menu, shops, trainers) |
+| LB / RB | Q / E | Show / hide the controls card (walking, combat); previous / next page (pause menu) |
 | Menu | Enter | Pause menu |
 | Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
 | | F2 | The newly painted art off / on, to compare with what was there before |
-| | F11, Alt+Enter / Shift+Esc | Windowed or borderless full screen (also the Display page's Window row; remembered) / quit |
+| | F11, Alt+Enter / Shift+Esc | Windowed or borderless full screen (also the Display page's Window row; remembered) / quit (as Quit Game on the title's menu) |
 
 ## Settings, saves, logs
 
@@ -160,12 +161,13 @@ All in the data folder (see "Your ROM and the data folder"):
 - `reports/`: problem reports, one `.zip` each with the logs, settings and saves: written by the game when it
   crashes, or by **Report a problem** on the pause menu's ReChronicled page. Send the newest with a few words on what
   happened.
-- `texture-packs/`: HD texture packs of your own (folders, or `.rtz` files). This release includes, next to the game (in its own
-  `texture-packs`), newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot icons, the button prompts, redrawn HUD pieces, the map page's land and
-  2,113 of the 2,115 world textures), the HD letters and Xbox button
-  icons for all the game's text and the redrawn menu titles and inventory words (`rechronicled-text`, drawn from fonts;
-  they win over any HD menu pack's, so the text always matches this version's spacing and lettering) and the title-screen branding (`rechronicled`); the HD menu and world
-  packs (upscales of the game's own pictures) are not part of it.
+- `texture-packs/`: HD texture packs of your own (folders, or `.rtz` files). This release includes, next to the game
+  (in its own `texture-packs`), the newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot
+  icons, the button prompts, redrawn HUD pieces, the map page's land and 2,113 of the 2,115 world textures), the HD
+  letters and Xbox button icons for all the game's text and the redrawn menu titles and inventory words
+  (`rechronicled-text`, drawn from fonts; they win over any HD menu pack's, so the text always matches this version's
+  spacing and lettering), the title-screen branding (`rechronicled`), and the HD menu and world packs (`hd-ui`,
+  `hd-world`: Real-ESRGAN upscales of the game's own pictures, only those the painted art doesn't replace yet).
 
 ## About
 

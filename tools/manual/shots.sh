@@ -3,7 +3,7 @@
 #
 # Runs the game through tools/dev/pad.sh with a scratch copy of the test save (build/dev/test.mpk: Alaron in the first
 # forest, see tools/dev/newsave.sh), floats its window at 1920x1080 on the Dell and walks the screens the manual shows.
-# Settings: a scratch copy of the player's settings.json (their texture packs and picture) with the FPS counter off and
+# Settings: a scratch copy of the player's settings.json (their texture packs, samples and picture) with the FPS counter off and
 # the controls card on, in build/manual/settings. Only the window of the game it started is moved or closed (by its
 # pid), never the player's own. The pictures come from the ROM: they stay in build/ (gitignored) and the player's data
 # folder. The combat shot isn't made here (a fight can't be walked into reliably): put one in by hand.
@@ -18,6 +18,8 @@ DATA=${XDG_DATA_HOME:-$HOME/.local/share}/AidynReChronicled
 SET=$PWD/build/manual/settings
 rm -rf "$SET" && mkdir -p "$SET/texture-packs"
 for pack in "$DATA"/texture-packs/*/; do ln -s "$pack" "$SET/texture-packs/$(basename "$pack")"; done
+# The restored samples too, so the ReChronicled page shows its Instruments row.
+[[ -d $DATA/sample-packs ]] && ln -s "$DATA/sample-packs" "$SET/sample-packs"
 python3 - "$DATA/settings.json" "$SET/settings.json" <<'PY'
 import json, sys
 j = json.load(open(sys.argv[1]))
