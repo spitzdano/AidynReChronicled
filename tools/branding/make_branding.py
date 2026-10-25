@@ -494,8 +494,9 @@ IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", T
            ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, True))]
 IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
 IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back", 60, 11, menu_hint("Back", "B"))]
-# The inventory page's party switch: View and RT beside the party's portraits (previous / next member).
-IMAGES += [("party_prev", 11, 11, page_prompt("CL")), ("party_next", 11, 11, page_prompt("CR"))]
+# The inventory page's party switch: LT and RT beside the party's portraits (previous / next member; the port makes LT the
+# game's C-left in the pause menu, src/main/input.cpp).
+IMAGES += [("party_prev", 11, 11, page_prompt("Z")), ("party_next", 11, 11, page_prompt("CR"))]
 # The combat columns' portrait frames from spitzdano's art (hud_frames.py): gold for the party, red and silver for enemies,
 # and the soft band the game's colour for a slot (in reach, targeted) shows as.
 import hud_frames  # noqa: E402

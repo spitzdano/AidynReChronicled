@@ -853,3 +853,15 @@ text = "extern void aidyn_moveto_progress(uint8_t* rdram, recomp_context* ctx); 
 func = "CombatStateFunc_5"
 before_vram = 0x800220B0
 text = "extern void aidyn_combat_move_watch(uint8_t* rdram, recomp_context* ctx); aidyn_combat_move_watch(rdram, ctx);"
+
+# The character page's HP parts (src/game/patches.cpp, "HP parts on the character page"): WidgetHealthGold's Render
+# (func_8003C3B4: this in a0 on entry; its children drawn, g in v0 at 0x8003C3E0).
+[[patches.hook]]
+func = "func_8003C3B4"
+before_vram = 0x8003C3B4
+text = "extern void aidyn_hp_parts_begin(uint8_t* rdram, recomp_context* ctx); aidyn_hp_parts_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8003C3B4"
+before_vram = 0x8003C3E0
+text = "extern gpr aidyn_hp_parts_end(uint8_t* rdram, recomp_context* ctx, gpr g); ctx->r2 = aidyn_hp_parts_end(rdram, ctx, ctx->r2);"

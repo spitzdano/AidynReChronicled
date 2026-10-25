@@ -43,6 +43,7 @@ namespace {
     std::atomic_uint32_t captured_buttons{ 0 };
     std::atomic<float> captured_x{ 0.0f }, captured_y{ 0.0f };
     std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
+    std::atomic_bool menu_mode{ false };  // aidyn::input::set_menu_mode
     std::atomic_bool start{ false };
     std::atomic_bool quicksave_pressed{ false };  // View pressed in the field: aidyn::input::quicksave_asked
     std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
@@ -128,7 +129,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
             auto down = [&](SDL_GameControllerButton btn) { return SDL_GameControllerGetButton(pad, btn) != 0; };
             // Xbox-style pad -> N64. The right stick is the camera (src/game/patches.cpp), so the C buttons are on
             // face buttons and RT: X = C-down (Details; in combat, spells), Y = C-up (in combat, items and potions),
-            // View = C-left and RT = C-right (previous / next party member in the pause menu).
+            // View = C-left and RT = C-right (next party member in the pause menu, where LT is C-left: set_menu_mode).
             if (down(SDL_CONTROLLER_BUTTON_A)) b |= A;
             if (down(SDL_CONTROLLER_BUTTON_B)) b |= B;
             if (down(SDL_CONTROLLER_BUTTON_X)) b |= CD;
@@ -230,6 +231,13 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     }
     view_was_down = view;
     lb_was_down = lb;
+    // In the pause menu, a trainer and a shop LT (Z) is the previous party member (C-left, the game's), and View does
+    // nothing (spitzdano: LT is the easier reach; the game gave Z the page turns L already has).
+    if (menu_mode.load(std::memory_order_relaxed)) {
+        const bool lt = (b & Z) != 0;
+        b &= ~(CL | Z);
+        if (lt) b |= CL;
+    }
 
     captured_buttons.store(b, std::memory_order_relaxed);
     captured_x.store(sx, std::memory_order_relaxed);
@@ -242,6 +250,10 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     *x = sx;
     *y = sy;
     return true;
+}
+
+void aidyn::input::set_menu_mode(bool on) {
+    menu_mode.store(on, std::memory_order_relaxed);
 }
 
 void aidyn::input::set_card_mode(int mode) {

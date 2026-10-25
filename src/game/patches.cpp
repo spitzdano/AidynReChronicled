@@ -3527,6 +3527,9 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     }
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
+    const uint8_t state_a = MEM_BU(0, (gpr)(int32_t)kGameStateA);
+    const bool paused = heap_pointer(MEM_W(0, (gpr)(int32_t)0x800D9558));  // gGlobals.BigAssMenu: the pause menu is up
+    aidyn::input::set_menu_mode(paused || state_a == 5 || state_a == 7);    // the pause menu, a trainer, a shop
     combat_card_top = 240.0f;
     combat_log_frame = mode == 2 && !aidyn::input::start_held();
     const bool journal = journal_frame;
@@ -5145,6 +5148,67 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, 
     return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
+// ---- HP parts on the character page ----
+// A character's HP is three parts (Entity::getHPCurrent / getHPMax): Endurance, Stamina and a pool that grows with
+// their level, which the game shows nowhere. Damage takes the level pool first, then Stamina, then Endurance; healing
+// refills them the other way round. The character page (the pause menu's doll page) shows the total under HitPoints
+// (WidgetHealthGold); these three lines go beside its Level and Gold, in the game's red and lettering a little smaller:
+// END, STA and VIG (Vigour: the level pool; spitzdano's short names, the words crowded the page), each its current of its most (CharStats::getModded / getBase
+// of STAT_END 3, STAT_STAM 5, STAT_LV 6: the three add up to the total). The character is the one the page shows
+// (gPartyPicker, 0x800DE9F0, of gGlobals.party's Members); the lines follow the Gold text's place and fade (+0x80).
+extern "C" void CharStats__getBase(uint8_t* rdram, recomp_context* ctx);
+namespace {
+    gpr hp_parts_widget = 0;
+}
+
+// The rope (the HP bar, HPBar +0x8C) 3 units higher than the game puts it (y 27 to 37): the redrawn page keeps a faint
+// trace of its painted rope at y 25 to 32 (art/pages/PauseBGStats.png), which showed above the game's.
+extern "C" void aidyn_hp_parts_begin(uint8_t* rdram, recomp_context* ctx) {
+    const gpr widget = ctx->r4;
+    hp_parts_widget = widget;
+    const gpr bar = heap_pointer(widget) ? MEM_W(0x8C, widget) : 0, gold = heap_pointer(widget) ? MEM_W(0x80, widget) : 0;
+    if (heap_pointer(bar) && heap_pointer(gold)) {
+        const int16_t y = (int16_t)(MEM_H(0x62, gold) - 69 + 24);  // the Gold text's y (69) tells the page's own place
+        MEM_H(0x62, bar) = y;          // posY
+        MEM_H(0x68, bar) = y;          // boundY0
+        MEM_H(0x6A, bar) = y + 10;     // boundY1
+    }
+}
+
+extern "C" gpr aidyn_hp_parts_end(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    const gpr widget = hp_parts_widget;
+    hp_parts_widget = 0;
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!heap_pointer(widget) || !heap_pointer(font)) return g;
+    const gpr gold = MEM_W(0x80, widget);
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+    const uint32_t picker = MEM_BU(0, (gpr)(int32_t)0x800DE9F0);
+    if (!heap_pointer(gold) || !heap_pointer(party) || picker >= 4) return g;
+    const gpr sheet = MEM_W(4 * picker, party);
+    const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0;
+    const uint32_t alpha = MEM_BU(0x5B, gold);
+    if (!heap_pointer(stats) || alpha == 0) return g;
+    constexpr float kScale = 0.75f, kRow = 7.5f;
+    const float x = (int16_t)MEM_HU(kWidgetPosX, gold), y = (int16_t)MEM_HU(kWidgetPosX + 2, gold);
+    const float label_x = x + 32.0f, right = x + 93.0f, top = y - 15.0f;  // beside Level (gold y - 14) and Gold
+    static constexpr struct { const char* name; uint32_t stat; } kParts[] = { { "END", 3 }, { "STA", 5 }, { "VIG", 6 } };
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    MEM_W(0x1C, font) = (int32_t)(0x82505000u | alpha);  // COLOR_RED1, as the page's values
+    for (int k = 0; k < 3; k++) {
+        const int now = (int)(int32_t)call_game(rdram, ctx, CharStats__getModded, (uint32_t)stats, kParts[k].stat);
+        const int most = (int)(int32_t)call_game(rdram, ctx, CharStats__getBase, (uint32_t)stats, kParts[k].stat);
+        const float row = top + k * kRow;
+        print_text(rdram, ctx, font, g, kParts[k].name, label_x, row, kScale);
+        const std::string value = std::to_string(std::max(0, now)) + " / " + std::to_string(std::max(0, most));
+        float w = 0.0f;
+        for (char c : value) w += letter_advance(rdram, ctx, font, c, kScale);
+        print_text(rdram, ctx, font, g, value, right - w, row, kScale);
+    }
+    font_restore(rdram, font, st);
+    return g;
+}
+
 // ---- Spell and item descriptions in combat ----
 // While an entry is highlighted in combat's held menus, what it does shows beside the menu (#23): a spell (X), and in
 // the item menu (Y) a potion or the spell an item holds (a wand, a ring...). The text is the pause menu's Details
