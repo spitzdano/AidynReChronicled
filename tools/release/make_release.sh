@@ -6,6 +6,7 @@
 #   tools/release/make_release.sh <version> [--windows] --publish   ... then tag v<version>, push the tag, create the
 #                                                       GitHub release with them
 #   --no-sound   leave out the restored instrument samples (bundled by default: below)
+#   --no-hd      leave out the HD upscale packs (bundled by default: below)
 #
 # The download holds the portable build (tools/ally/build_portable.sh: glibc 2.38+, its own SDL2), the launcher, the
 # installer, the Steam shortcut script and its library art, the icon, the title branding pack, the redrawn portraits and icons
@@ -13,8 +14,11 @@
 # all made here from fonts and our own art,
 # README.md (tools/release/README.md) and LICENSE, and the restored instrument samples (sample-packs/
 # rechronicled-samples: AudioSR redrawings of the game's own music samples, kept in the private
-# AidynReChronicled-Sound repository, the sound/ submodule; spitzdano's call to ship them). Nothing else from the
-# ROM: the game asks for the player's ROM on its first start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
+# AidynReChronicled-Sound repository, the sound/ submodule; spitzdano's call to ship them), and the HD upscale packs
+# (hd-ui and hd-world: Real-ESRGAN upscales of the game's own pictures, kept in the private AidynReChronicled-hu-UI-world
+# repository, the hd/ submodule; spitzdano's call too), only the pictures the redrawn art doesn't replace (rtz.py
+# --without: about 45 MB of their 1.3 GB). Nothing else from the ROM: the game asks for the player's ROM on its first
+# start. --publish needs a clean, pushed main branch, so the tag is the commit the binaries were built from.
 # The Windows zip (tools/windows/build_windows.sh, cross-compiled here) holds the exe and its DLLs, the same packs and
 # Steam art, README.md and LICENSE, in one folder to unpack and play.
 # tools/release/notes/<version>.md goes into the GitHub release's notes (what's new), and every download carries
@@ -25,12 +29,13 @@ die() { echo "make_release.sh: $*" >&2; exit 1; }
 
 version=${1:-}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$ ]] || die "usage: make_release.sh <version, e.g. 0.1.0> [--publish]"
-publish=0 windows=0 sound=1
+publish=0 windows=0 sound=1 hd=1
 for a in "${@:2}"; do
     case $a in
         --publish) publish=1 ;;
         --windows) windows=1 ;;
         --no-sound) sound=0 ;;
+        --no-hd) hd=0 ;;
         *) die "unknown option $a" ;;
     esac
 done
@@ -94,6 +99,15 @@ cp -a build/ally/steam-art "$out/$name/game/steam-art"
 for p in rechronicled rechronicled-art rechronicled-text; do
     python3 -I tools/release/rtz.py "$packs/$p" "$out/$name/game/texture-packs/$p.rtz"
 done
+if (( hd )); then  # the HD upscale packs, without what the packs after them replace (settings.json's order)
+    for p in hd-ui hd-world; do
+        [[ -f hd/texture-packs/$p/rt64.json ]] || die "no hd/texture-packs/$p: git submodule update --init hd"
+    done
+    python3 -I tools/release/rtz.py hd/texture-packs/hd-ui "$out/$name/game/texture-packs/hd-ui.rtz" \
+        --without hd/texture-packs/hd-world "$packs/rechronicled-text" "$packs/rechronicled-art" "$packs/rechronicled"
+    python3 -I tools/release/rtz.py hd/texture-packs/hd-world "$out/$name/game/texture-packs/hd-world.rtz" \
+        --without "$packs/rechronicled-text" "$packs/rechronicled-art" "$packs/rechronicled"
+fi
 if (( sound )); then  # the restored instrument samples (src/game/patches.cpp looks beside the executable too)
     [[ -d sound/sample-packs/rechronicled-samples ]] || die "no sound/sample-packs/rechronicled-samples: git submodule update --init sound"
     mkdir -p "$out/$name/game/sample-packs"
@@ -104,7 +118,7 @@ mkdir -p "$out/$name/ROMs"  # the player's ROMs go here (src/main/main.cpp, stor
 cp tools/release/ROMs-README.txt "$out/$name/ROMs/README.txt"
 chmod +x "$out/$name/install.sh" "$out/$name/game/aidyn-rechronicled.sh" "$out/$name/game/steam_shortcut.py"
 # Nothing else ROM-derived may ship: the only pictures are the icon, the branding pack and the redrawn art (the
-# restored samples, above, are the one exception).
+# restored samples and the HD packs, above, are the exceptions).
 stray=$(find "$out/$name" -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.mpk' \) | head -1)
 [[ -z $stray ]] || die "a ROM or save got into the release: $stray"
 tar -C "$out" -czf "$out/$name.tar.gz" "$name"
