@@ -2,7 +2,8 @@
 //
 // Each sample the game's music plays has an entry in the instrument map (tools/orchestra/make_map.py, keyed by the
 // sample's own data): a General MIDI program (or a drum note on the orchestral kit), the sample's fundamental f0, an
-// octave shift and a level (gain, matched to the original part: tools/orchestra). A note the game starts (its pitch is
+// octave shift and a level (gain, matched to the original part: tools/orchestra); a sample that is a recorded chord
+// has its notes ("chord": semitones over the played note), all played. A note the game starts (its pitch is
 // a playback rate: pitch / 44100 of the sample's own speed) becomes the MIDI note nearest f0 x pitch / 44100, shifted;
 // its velocity follows the game's volume, its pan the game's pan. Every game voice plays on channels of its own (two,
 // in turn, so a note's release keeps its own settings while the next starts), so the game's later changes to that
@@ -39,6 +40,7 @@ namespace {
     struct Instrument {
         int program = 48, note_shift = 0, drum_note = -1;
         float f0 = 440.0f, velocity = 1.0f, gain = 1.0f;
+        std::vector<int> chord{ 0 };  // a sample that is a recorded chord: the notes over the played one
     };
     struct Event {
         uint64_t tick;
@@ -50,6 +52,7 @@ namespace {
         bool on = false;
         uint32_t id = 0;
         int channel = 0, note = 0, turn = 0;
+        std::vector<int> chord{ 0 };
         uint32_t volume_at_start = 1;
         float gain = 1.0f, last_volume = 1.0f, f0 = 440.0f, exact = 0.0f;  // exact: the note before rounding
         int note_shift = 0;
@@ -166,6 +169,9 @@ namespace {
                 in.program = e.value("program", 48);
                 in.f0 = e.value("f0", 440.0f);
                 in.note_shift = e.value("shift", 0);
+                if (e.contains("chord") && e["chord"].is_array() && !e["chord"].empty()) {
+                    in.chord = e["chord"].get<std::vector<int>>();
+                }
             }
             map_of.emplace(key, in);
         }
@@ -182,7 +188,9 @@ namespace {
     void release_all() {
         std::lock_guard g(lock);
         for (Voice& v : voices) {
-            if (v.on && !v.drum) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+            if (v.on && !v.drum) {
+                for (int c : v.chord) pending.push_back({ now, Event::Off, v.channel, v.note + c, 0 });
+            }
             v.on = false;
         }
     }
@@ -226,7 +234,9 @@ void aidyn::orchestra::note_on(int voice, uint32_t id, const std::string& sample
     if (it == instruments.end()) return;
     const Instrument& in = it->second;
     Voice& v = voices[voice];
-    if (v.on && !v.drum) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+    if (v.on && !v.drum) {
+        for (int c : v.chord) pending.push_back({ now, Event::Off, v.channel, v.note + c, 0 });
+    }
     const bool drum = in.drum_note >= 0;
     const float exact = drum ? (float)in.drum_note : exact_note(in.f0, pitch, in.note_shift);
     const int note = std::clamp((int)std::lround(exact), 0, 127);
@@ -237,7 +247,9 @@ void aidyn::orchestra::note_on(int voice, uint32_t id, const std::string& sample
                                                                    // tunings differ by up to a third of a semitone)
     pending.push_back({ now, Event::Pan, channel, 0, std::clamp((float)pan / 255.0f, 0.0f, 1.0f) });
     pending.push_back({ now, Event::Volume, channel, 0, in.gain });
-    pending.push_back({ now, Event::On, channel, note, velocity });
+    for (int c : drum ? std::vector<int>{ 0 } : in.chord) {
+        if (note + c >= 0 && note + c <= 127) pending.push_back({ now, Event::On, channel, note + c, velocity });
+    }
     v = Voice{};
     v.on = true;
     v.id = id;
@@ -250,6 +262,7 @@ void aidyn::orchestra::note_on(int voice, uint32_t id, const std::string& sample
     v.note_shift = in.note_shift;
     v.exact = exact;
     v.drum = drum;
+    v.chord = drum ? std::vector<int>{ 0 } : in.chord;
 }
 
 bool aidyn::orchestra::playing(int voice, uint32_t id) {
@@ -280,7 +293,9 @@ void aidyn::orchestra::voice_stop(int voice, uint32_t id) {
     std::lock_guard g(lock);
     if (voice < 0 || voice >= kVoices || !voices[voice].on || voices[voice].id != id) return;
     Voice& v = voices[voice];
-    if (!v.drum) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+    if (!v.drum) {
+        for (int c : v.chord) pending.push_back({ now, Event::Off, v.channel, v.note + c, 0 });
+    }
     v.on = false;
 }
 

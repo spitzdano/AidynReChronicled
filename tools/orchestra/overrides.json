@@ -4,7 +4,7 @@
  "0x5a2": {"drum": 36, "gain": 2.1, "what": "bass drum (battle kick: a 0.16 s 115 Hz thump): fitted"},
  "0x5a3": {"drum": 41, "gain": 2.45, "what": "low tom (title and battle hits): fitted"},
  "0x5a4": {"program": 48, "f0": 525.0, "shift": 0, "gain": 2.05, "what": "strings (battle lead): fitted"},
- "0x5a9": {"program": 56, "f0": 66.0, "shift": 24, "gain": 1.39, "what": "trumpet (title: spitzdano's pick by ear, an octave under the opening strings)"},
+ "0x5a9": {"program": 56, "f0": 66.0, "shift": 0, "chord": [12, 16, 19, 24], "gain": 0.71, "what": "trumpets, C major chord (the sample is a recorded major chord: C-E-G); spitzdano: trumpet, just under the opening strings"},
  "0x5ad": {"drum": 36, "gain": 1.61, "what": "bass drum (title thumps: a 0.09 s low sine): fitted"},
  "0x5ba": {"program": 47, "f0": 92.3, "shift": 0, "gain": 3.0, "what": "timpani (title's low boom): fitted"},
  "0x5d1": {"program": 48, "f0": 256.4, "shift": 0, "gain": 1.43, "what": "strings (title, sustained): fitted"},
