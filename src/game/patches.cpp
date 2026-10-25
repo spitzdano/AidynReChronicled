@@ -5096,6 +5096,12 @@ namespace {
     constexpr uint32_t kPotionStrings = 0xB1FD1960, kPotionStringsSize = 0xA80;
     constexpr int kPotionText[17] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1, -1, 11, 12, 13, 14 };
     constexpr uint32_t kPotionAFunc = 0x80089114, kItemSpellAFunc = 0x80089178;  // the item menu's two row kinds
+    // The X menu's skill rows (WidgetCombatSkills): Lay On Hands, Heal With Herbs, Perform. Their texts are the Details
+    // of their skills (String/SkillDetails, 0x790 bytes, between the spells' and the potions': indexed by SkillEnum,
+    // Healer 2, Troubador 9).
+    constexpr uint32_t kLayOnHandsAFunc = 0x800889E8, kHerbsAFunc = 0x80088A58, kPerformAFunc = 0x800889B0;
+    constexpr uint32_t kSkillStrings = 0xB1FD11D0, kSkillStringsSize = 0x790;
+    std::vector<std::string> skill_texts;   // by SkillEnum, read once
     std::vector<std::string> spell_texts;   // by romstring index, read once
     std::vector<std::string> potion_texts;  // likewise
     uint32_t text_shown = 0;                // the entry whose lines are below (combat_entry_key)
@@ -5130,7 +5136,8 @@ namespace {
     }
 
     // The highlighted entry of the held X or Y menu: 0x10000 | a spell's ID, 0x30000 | the spell an item holds (a wand,
-    // a ring...: cast from its charges), 0x20000 | a potion (PotionEnum), else 0. The menu's rows: A function +0x18, varU8 +0x5C,
+    // a ring...: cast from its charges), 0x20000 | a potion (PotionEnum), 0x40000 | a skill row (0 Lay On Hands,
+    // 1 Heal With Herbs, 2 Perform), else 0. Those are all the rows the two menus make. The menu's rows: A function +0x18, varU8 +0x5C,
     // varU16 +0x5E. A spell row (func_80088958): its spellbook index in varU8. A potion row (WidgetCombatItems,
     // func_80089114): its item ID in varU16. An item's spell (func_80089178): varU16 where (2 armour, 3 shield,
     // 4 weapon, 5 gear) and varU8 the gear slot; the item (CharSheet +0x20 armour[2], +0x24 weapon, +0x28 gear list
@@ -5158,6 +5165,9 @@ namespace {
             const gpr spells = MEM_W(0, book);
             return heap_pointer(spells) ? spell_key(MEM_W(4 * var8, spells)) : 0;
         }
+        if (afunc == kLayOnHandsAFunc) return 0x40000u;
+        if (afunc == kHerbsAFunc) return 0x40001u;
+        if (afunc == kPerformAFunc) return 0x40002u;
         if (afunc == kPotionAFunc) {
             return (var16 >> 8) == 16 && (var16 & 0xFF) < 17 ? 0x20000u | (var16 & 0xFF) : 0;
         }
@@ -5189,6 +5199,12 @@ namespace {
             for (const auto& [id, at] : kSpellText) {
                 if (id == (key & 0xFFFF)) return at < spell_texts.size() ? spell_texts[at] : "";
             }
+        } else if (key >> 16 == 4) {
+            if (skill_texts.empty()) {
+                skill_texts = load_romstrings(rdram, ctx, kSkillStrings, kSkillStringsSize, 18);
+            }
+            const size_t at = (key & 0xFF) == 2 ? 9 : 2;  // Troubador for Perform, Healer for the heals
+            return at < skill_texts.size() ? skill_texts[at] : "";
         } else if (key >> 16 == 2) {
             if (potion_texts.empty()) {
                 potion_texts = load_romstrings(rdram, ctx, kPotionStrings, kPotionStringsSize, 15);
@@ -5323,6 +5339,9 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
             }
             break;
         }
+    } else if (key == 0x40001u) {  // Heal With Herbs takes a herb (Party::HerbHeal)
+        item = 0x112;
+        pack = std::string("Herb   1 / ") + std::to_string(pack_count(rdram, ctx, item));
     } else if (key >> 16 == 2) {
         item = (uint16_t)(0x1000 | (key & 0xFF));
         pack = "In your pack: " + std::to_string(pack_count(rdram, ctx, item));
