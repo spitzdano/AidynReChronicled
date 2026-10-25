@@ -1,15 +1,17 @@
 // The orchestral music (#12): the game's own music, note for note, played through orchestral instruments (a
 // SoundFont, TinySoundFont) instead of its small N64 samples. src/game/music_log.cpp catches the notes the game's
-// music player plays; src/main/audio.cpp mixes what this renders in. A prototype for now: on with
-// AIDYN_ORCHESTRA=<SoundFont .sf2>, the instrument map in <data folder>/orchestra/orchestra-map.json
-// (tools/orchestra/make_map.py).
+// music player plays; src/main/audio.cpp mixes what this renders in. On with settings.json audio.orchestral (the
+// ReChronicled page's Music row) or AIDYN_ORCHESTRA=<SoundFont .sf2>: the SoundFont is the first .sf2 in
+// <data folder>/orchestra, the instrument map orchestra-map.json there (tools/orchestra/make_map.py).
 #pragma once
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
 namespace aidyn::orchestra {
-    bool active();  // loaded and on
+    bool active();  // switched on and loaded (switching it on starts the loading, on a thread of its own)
+    bool loaded();  // ready to render: render() goes on after it's switched off, while its last notes fade
+    bool available();  // a SoundFont to play with (the Music row shows only then)
     bool handles(const std::string& sample_key);  // a sample in the instrument map: the game's voice is muted
     // A music voice the game started (the voice slot and id it got, its sample's map key, its pitch as a playback rate,
     // its volume and pan as the game gave them).

@@ -156,7 +156,8 @@ void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
     // The orchestral music (orchestra.cpp), when on: rendered for this chunk and mixed in before Sound: Enhanced, so
     // both settings treat it as they treat the game's own sound.
     static std::vector<float> orchestra_buffer;
-    const bool orchestra = aidyn::orchestra::active();
+    aidyn::orchestra::active();  // switching it on starts the loading; off lets its notes go
+    const bool orchestra = aidyn::orchestra::loaded();
     if (orchestra) {
         orchestra_buffer.assign(sample_count, 0.0f);
         aidyn::orchestra::render(orchestra_buffer.data(), sample_count / input_channels, sample_rate);

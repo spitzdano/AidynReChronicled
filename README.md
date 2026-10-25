@@ -286,7 +286,8 @@ these defaults on the first run:
     "audio": {
         "enhanced": true,
         "loudness_db": 18.0,
-        "brightness_db": 6.0
+        "brightness_db": 6.0,
+        "orchestral": false
     },
     "graphics": {
         "render_height": 1080,
@@ -320,6 +321,7 @@ these defaults on the first run:
 | `enhanced` (audio) | `false`: the sound exactly as the game makes it. `true` (the ReChronicled page's Sound, Enhanced): louder, with a little more treble, through a limiter that holds the peaks at -1 dBFS (`src/main/audio.cpp`) |
 | `loudness_db` (audio) | 0 to 24: how much louder Enhanced plays (the game's own mix measures -35 to -39 LUFS; +18 brings it to about -17 to -19, like other games) |
 | `brightness_db` (audio) | 0 to 12: Enhanced's treble lift above about 3 kHz (the game's instrument samples have almost nothing above 4 kHz) |
+| `orchestral` (audio) | `true` (the ReChronicled page's Music, Orchestral): the game's music, note for note, on orchestral instruments (a SoundFont through TinySoundFont, with a hall reverb; `src/main/orchestra.cpp`). Needs a SoundFont (`.sf2`) and the instrument map (`tools/orchestra/make_map.py`) in the data folder's `orchestra`; the Music row shows only then. Work in progress (#12) |
 | `save_backups` | how many copies of the Controller Pak to keep in `~/.local/share/AidynReChronicled/backups` (made at start and before each save; 0 = none) |
 | `render_height` | internal resolution in lines: 1080 = 1440x1080 at 4:3 or 1920x1080 at 16:9; 0 = the largest multiple of 240 the window allows |
 | `aspect` | `"4:3"` (original, bars at the sides); any wider `"width:height"` such as `"16:9"`, `"21:9"` or `"43:18"` (exactly 3440x1440): a wider 3D view, HUD and menus stay 4:3 in the middle; `"window"` (as wide as the window) |

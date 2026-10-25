@@ -13,7 +13,10 @@
 #include "orchestra.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <filesystem>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -48,21 +51,81 @@ namespace {
         float last_ratio = 1.0f;
     };
 
+    // A hall for the orchestra (it plays dry otherwise): Freeverb (Jezar's public-domain design), its 8 comb and 4
+    // all-pass filters per channel at their 44.1 kHz lengths, right a little longer than left for width.
+    struct Reverb {
+        static constexpr int kCombs[8] = { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+        static constexpr int kPasses[4] = { 556, 441, 341, 225 };
+        static constexpr int kSpread = 23;
+        static constexpr float kRoom = 0.80f, kDamp = 0.40f, kWet = 0.22f, kInput = 0.015f;
+        std::vector<float> comb[2][8], pass[2][4];
+        int comb_at[2][8] = {}, pass_at[2][4] = {};
+        float low[2][8] = {};
+
+        Reverb() {
+            for (int c = 0; c < 2; c++) {
+                for (int i = 0; i < 8; i++) comb[c][i].assign(kCombs[i] + c * kSpread, 0.0f);
+                for (int i = 0; i < 4; i++) pass[c][i].assign(kPasses[i] + c * kSpread, 0.0f);
+            }
+        }
+
+        void process(float* buf, size_t frames) {
+            for (size_t f = 0; f < frames; f++) {
+                const float in = (buf[2 * f] + buf[2 * f + 1]) * kInput;
+                for (int c = 0; c < 2; c++) {
+                    float sum = 0;
+                    for (int i = 0; i < 8; i++) {
+                        std::vector<float>& d = comb[c][i];
+                        const float y = d[comb_at[c][i]];
+                        low[c][i] = y * (1 - kDamp) + low[c][i] * kDamp;
+                        d[comb_at[c][i]] = in + low[c][i] * kRoom;
+                        comb_at[c][i] = (comb_at[c][i] + 1) % (int)d.size();
+                        sum += y;
+                    }
+                    for (int i = 0; i < 4; i++) {
+                        std::vector<float>& d = pass[c][i];
+                        const float b = d[pass_at[c][i]];
+                        d[pass_at[c][i]] = sum + b * 0.5f;
+                        pass_at[c][i] = (pass_at[c][i] + 1) % (int)d.size();
+                        sum = b - sum;
+                    }
+                    buf[2 * f + c] += sum * kWet;
+                }
+            }
+        }
+    };
+
+    enum { kNotLoaded, kLoading, kReady, kFailed };
+    std::atomic_int state{ kNotLoaded };
     std::mutex lock;
+    Reverb hall;
     tsf* synth = nullptr;
-    bool tried = false, loaded = false;
     uint32_t synth_rate = 0;
     std::unordered_map<std::string, Instrument> instruments;
     std::vector<Event> pending;
     Voice voices[kVoices];
     uint64_t now = 0, rendered_until = 0;
 
-    void load() {
-        tried = true;
-        const char* sf2 = std::getenv("AIDYN_ORCHESTRA");
-        if (sf2 == nullptr || *sf2 == '\0') {
-            return;
+    // The SoundFont: AIDYN_ORCHESTRA, else the first .sf2 in <data folder>/orchestra.
+    std::filesystem::path soundfont() {
+        const char* env = std::getenv("AIDYN_ORCHESTRA");
+        if (env != nullptr && *env != '\0') return env;
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator(aidyn::settings::folder() / "orchestra", ec)) {
+            if (e.path().extension() == ".sf2") return e.path();
         }
+        return {};
+    }
+
+    bool wanted() {
+        const char* env = std::getenv("AIDYN_ORCHESTRA");
+        return (env != nullptr && *env != '\0') || aidyn::settings::audio().orchestral;
+    }
+
+    // Loads the map and the SoundFont (a couple of seconds for a big one) on a thread of its own; the game's own music
+    // plays until it's ready.
+    void load() {
+        const std::filesystem::path sf2 = soundfont();
         const auto map_path = aidyn::settings::folder() / "orchestra/orchestra-map.json";
         nlohmann::json map;
         try {
@@ -71,14 +134,17 @@ namespace {
         } catch (const std::exception& e) {
             std::fprintf(stderr, "Orchestra: no instrument map at %s (tools/orchestra/make_map.py): %s\n",
                          map_path.string().c_str(), e.what());
+            state = kFailed;
             return;
         }
-        synth = tsf_load_filename(sf2);
-        if (synth == nullptr) {
-            std::fprintf(stderr, "Orchestra: can't load the SoundFont %s\n", sf2);
+        tsf* loaded_synth = sf2.empty() ? nullptr : tsf_load_filename(sf2.string().c_str());
+        if (loaded_synth == nullptr) {
+            std::fprintf(stderr, "Orchestra: no SoundFont (%s)\n", sf2.empty() ? "none in the data folder's orchestra" : sf2.string().c_str());
+            state = kFailed;
             return;
         }
-        tsf_set_max_voices(synth, 256);
+        tsf_set_max_voices(loaded_synth, 256);
+        std::unordered_map<std::string, Instrument> map_of;
         std::unordered_map<int, int> channel_of;  // program -> channel
         int next = 0;
         for (const auto& [key, e] : map.items()) {
@@ -94,36 +160,69 @@ namespace {
                     if (next == 9) next++;
                     if (next > 15) continue;  // more programs than channels: left to the game
                     it = channel_of.emplace(program, next++).first;
-                    tsf_channel_set_presetnumber(synth, it->second, program, 0);
+                    tsf_channel_set_presetnumber(loaded_synth, it->second, program, 0);
                 }
                 in.channel = it->second;
                 in.f0 = e.value("f0", 440.0f);
                 in.note_shift = e.value("shift", 0);
             }
-            instruments.emplace(key, in);
+            map_of.emplace(key, in);
         }
-        tsf_channel_set_presetnumber(synth, 9, 48, 1);  // the orchestral kit
-        loaded = !instruments.empty();
-        std::fprintf(stderr, "Orchestra: %s, %zu instruments on %d channels\n", sf2, instruments.size(), next);
+        tsf_channel_set_presetnumber(loaded_synth, 9, 48, 1);  // the orchestral kit
+        {
+            std::lock_guard g(lock);
+            synth = loaded_synth;
+            instruments = std::move(map_of);
+        }
+        std::fprintf(stderr, "Orchestra: %s, %zu instruments on %d channels\n", sf2.string().c_str(),
+                     instruments.size(), next);
+        state = instruments.empty() ? kFailed : kReady;
+    }
+
+    // Switched off: the notes it plays are let go (render() goes on while they fade), new ones are the game's again.
+    void release_all() {
+        std::lock_guard g(lock);
+        for (Voice& v : voices) {
+            if (v.on && v.channel != 9) pending.push_back({ now, Event::Off, v.channel, v.note, 0 });
+            v.on = false;
+        }
     }
 }
 
 bool aidyn::orchestra::active() {
-    std::lock_guard g(lock);
-    if (!tried) load();
-    return loaded;
+    static bool was_on = false;
+    if (!wanted()) {
+        if (was_on) {
+            was_on = false;
+            release_all();
+        }
+        return false;
+    }
+    int expected = kNotLoaded;
+    if (state.compare_exchange_strong(expected, kLoading)) {
+        std::thread(load).detach();
+    }
+    was_on = state == kReady;
+    return was_on;
+}
+
+bool aidyn::orchestra::loaded() {
+    return state == kReady;
+}
+
+bool aidyn::orchestra::available() {
+    return !soundfont().empty();
 }
 
 bool aidyn::orchestra::handles(const std::string& sample_key) {
     std::lock_guard g(lock);
-    if (!tried) load();
-    return loaded && instruments.count(sample_key) != 0;
+    return state == kReady && instruments.count(sample_key) != 0;
 }
 
 void aidyn::orchestra::note_on(int voice, uint32_t id, const std::string& sample_key, uint32_t pitch, uint32_t volume,
                                uint32_t pan) {
     std::lock_guard g(lock);
-    if (!loaded || voice < 0 || voice >= kVoices) return;
+    if (state != kReady || voice < 0 || voice >= kVoices) return;
     const auto it = instruments.find(sample_key);
     if (it == instruments.end()) return;
     const Instrument& in = it->second;
@@ -172,7 +271,7 @@ void aidyn::orchestra::tick() {
 
 void aidyn::orchestra::render(float* out, size_t frames, uint32_t rate) {
     std::lock_guard g(lock);
-    if (!loaded || frames == 0) return;
+    if (state != kReady || frames == 0) return;
     if (rate != synth_rate) {
         tsf_set_output(synth, TSF_STEREO_INTERLEAVED, (int)rate, kGainDb);
         synth_rate = rate;
@@ -196,6 +295,7 @@ void aidyn::orchestra::render(float* out, size_t frames, uint32_t rate) {
     if (done < frames) {
         tsf_render_float(synth, out + 2 * done, (int)(frames - done), 1);
     }
+    hall.process(out, frames);  // out holds only the orchestra (audio.cpp mixes it into the game's sound after)
     pending.clear();
     rendered_until = now;
 }

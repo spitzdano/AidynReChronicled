@@ -7,6 +7,7 @@
 
 #include "platform.h"
 #include "settings.h"
+#include "orchestra.h"
 
 namespace {
     constexpr int32_t gGfxManager = (int32_t)0x800D7ED8;
@@ -4142,7 +4143,8 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // pause menu's parchment: the list stays the menu's page but fades out under it (Utilities::SetAlpha) and back in when
 // it closes, and the game gets no input meanwhile (aidyn::input::set_capture), so nothing it does with a button can
 // reach a list that isn't there. Up / down choose a row, A or left / right change it, B (or Start) goes back. Each
-// change is applied at once and written into settings.json: the sound (audio.enhanced), textures (every pack, HD save pictures, redrawn page
+// change is applied at once and written into settings.json: the sound (audio.enhanced), the orchestral music
+// (audio.orchestral), textures (every pack, HD save pictures, redrawn page
 // words, the HD letters' widths; off: as the N64), vsync, the turn order, the controls card, the other button prompts
 // (menu hints, LB / RB at the page arrows, the party switch), the HUD at the screen
 // edges, the draw distance, smooth walk cycles and the camera's right stick and its directions. The words are
@@ -4219,7 +4221,7 @@ namespace {
             };
         }
         auto& sound = aidyn::settings::audio_rw();
-        return {
+        std::vector<RcRow> rows = {
             { "rc_sound", &sound.enhanced, "enhanced", nullptr, nullptr, nullptr, nullptr, "rc_enhanced", "rc_dd_1", "audio" },
             { "rc_turn_order", &gfx.turn_order, "turn_order", nullptr },
             { "rc_walk_speed", nullptr, "walk_speed", nullptr, nullptr, &walk },
@@ -4232,6 +4234,11 @@ namespace {
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
             { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
+        if (aidyn::orchestra::available()) {  // a SoundFont in the data folder's orchestra (src/main/orchestra.cpp)
+            rows.insert(rows.begin() + 1, { "rc_music", &sound.orchestral, "orchestral", nullptr, nullptr, nullptr,
+                                            nullptr, "rc_orchestral", "rc_dd_1", "audio" });
+        }
+        return rows;
     }
 
     bool rc_on(const RcRow& r) {
