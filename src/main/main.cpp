@@ -271,6 +271,22 @@ void aidyn::set_borderless(bool on, bool save) {
     ultramodern::renderer::set_graphics_config(config);
 }
 
+// Anti-aliasing: MSAA through RT64's own settings (RT64Context::update_config rebuilds its targets with the new sample
+// count), supersampling through the resolution it draws at (set_application_user_config, on refresh_aspect's path).
+void aidyn::set_antialiasing(int msaa, int supersampling) {
+    aidyn::settings::graphics_rw().msaa = msaa;
+    aidyn::settings::graphics_rw().supersampling = supersampling;
+    aidyn::settings::save_number("graphics", "msaa", msaa);
+    aidyn::settings::save_number("graphics", "supersampling", supersampling);
+    ultramodern::renderer::GraphicsConfig config = ultramodern::renderer::get_graphics_config();
+    config.msaa_option = msaa == 8 ? ultramodern::renderer::Antialiasing::MSAA8X
+                       : msaa == 4 ? ultramodern::renderer::Antialiasing::MSAA4X
+                       : msaa == 2 ? ultramodern::renderer::Antialiasing::MSAA2X
+                                   : ultramodern::renderer::Antialiasing::None;
+    ultramodern::renderer::set_graphics_config(config);
+    aidyn::refresh_aspect();
+}
+
 // The window's width / height (the picture's shape with aspect "window"), for the game thread's layout (the combat
 // turn order, src/game/patches.cpp); 0 before the window exists.
 float aidyn::window_aspect() {

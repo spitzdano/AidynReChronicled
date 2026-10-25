@@ -474,7 +474,9 @@ RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_v
             ("rc_on", "On"), ("rc_off", "Off"), ("rc_dd_1", "Original"), ("rc_dd_15", "1.5x"), ("rc_dd_2", "2x"),
             ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_ws_125", "1.25x"),
             ("rc_ws_175", "1.75x"), ("rc_window", "Window"), ("rc_windowed", "Windowed"), ("rc_borderless", "Borderless"),
-            ("rc_sound", "Sound"), ("rc_enhanced", "Enhanced"), ("rc_music", "Music"), ("rc_orchestral", "Orchestral")]
+            ("rc_sound", "Sound"), ("rc_enhanced", "Enhanced"), ("rc_music", "Music"), ("rc_orchestral", "Orchestral"),
+            ("rc_anti_aliasing", "Anti-aliasing"), ("rc_aa_low", "Low"), ("rc_aa_medium", "Medium"), ("rc_aa_high", "High"),
+            ("rc_aa_ultra", "Ultra")]
 # The title is wider than one load of TMEM (4 KB) allows: two halves, drawn side by side.
 RC_TITLE_W = (int(ink_width("ReChronicled", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 

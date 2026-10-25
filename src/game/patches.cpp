@@ -4206,6 +4206,11 @@ namespace {
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
     constexpr const char* kDistanceWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_25", "rc_dd_3" };
+    // Anti-aliasing's steps: MSAA and supersampling together (src/main/main.cpp set_antialiasing).
+    constexpr float kAaSteps[] = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f };
+    constexpr const char* kAaWords[] = { "rc_off", "rc_aa_low", "rc_aa_medium", "rc_aa_high", "rc_aa_ultra" };
+    constexpr int kAaMsaa[] = { 0, 2, 4, 8, 8 }, kAaSupersampling[] = { 1, 1, 2, 2, 3 };
+    float aa_step = 2.0f;  // the row's value, from settings.json's msaa and supersampling when the page lists its rows
     constexpr float kWalkSpeeds[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
     constexpr const char* kWalkWords[] = { "rc_dd_1", "rc_ws_125", "rc_dd_15", "rc_ws_175", "rc_dd_2" };
 
@@ -4214,6 +4219,13 @@ namespace {
         static const RcSteps distance = { &gfx.draw_distance, kDistances, kDistanceWords, (int)std::size(kDistances) };
         static const RcSteps walk = { &gfx.walk_speed, kWalkSpeeds, kWalkWords, (int)std::size(kWalkSpeeds) };
         if (kind == kRcDisplay) {
+            static const RcSteps aa = { &aa_step, kAaSteps, kAaWords, (int)std::size(kAaSteps) };
+            int best = 0;  // the step nearest what settings.json has (it may hold any mix)
+            for (int i = 0; i < (int)std::size(kAaSteps); i++) {
+                const auto off = [&](int k) { return std::abs(kAaMsaa[k] - gfx.msaa) + 4 * std::abs(kAaSupersampling[k] - gfx.supersampling); };
+                if (off(i) < off(best)) best = i;
+            }
+            aa_step = kAaSteps[best];
             return {
                 { "rc_widescreen", &gfx.widescreen, "widescreen",
                   [](uint8_t*) { aidyn::settings::apply_widescreen(); aidyn::refresh_aspect(); },
@@ -4224,6 +4236,10 @@ namespace {
                 { "rc_fps", &gfx.fps_counter, "fps_counter", nullptr },
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
+                { "rc_anti_aliasing", nullptr, "", [](uint8_t*) {
+                      const int i = (int)aa_step;
+                      aidyn::set_antialiasing(kAaMsaa[i], kAaSupersampling[i]);
+                  }, nullptr, &aa },
             };
         }
         auto& sound = aidyn::settings::audio_rw();
@@ -4299,7 +4315,9 @@ namespace {
         } else {
             const RcSteps& s = *r.steps;
             *s.value = s.steps[(step_index(s) + step + s.n) % s.n];
-            aidyn::settings::save_number("graphics", r.key, *s.value);
+            if (*r.key != '\0') {  // (Anti-aliasing saves its own two settings)
+                aidyn::settings::save_number("graphics", r.key, *s.value);
+            }
         }
         if (r.applied != nullptr) {
             r.applied(rdram);

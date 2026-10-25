@@ -10,4 +10,7 @@ namespace aidyn {
     // Windowed or borderless, covering the screen (the Display page's Window row, F11 / Alt+Enter), remembered in
     // settings.json unless `save` is false.
     void set_borderless(bool on, bool save = true);
+    // MSAA (0, 2, 4, 8) and supersampling (1 to 4), applied on the next frame and remembered in settings.json (the
+    // Display page's Anti-aliasing row).
+    void set_antialiasing(int msaa, int supersampling);
 }

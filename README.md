@@ -349,7 +349,8 @@ these defaults on the first run:
 
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, last), each a page of the
 switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `hud_at_edges`,
-`draw_distance` from 1 to 3 in halves) and **ReChronicled** (`turn_order`, `walk_speed` from 1 to 2 in quarters,
+`draw_distance` from 1 to 3 in halves, and Anti-aliasing: `msaa` and `supersampling` together, Off 0 / 1, Low 2 / 1,
+Medium 4 / 2, High 8 / 2, Ultra 8 / 3) and **ReChronicled** (`turn_order`, `walk_speed` from 1 to 2 in quarters,
 `controls_card`, `button_prompts`,
 `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, `combat_log`).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
