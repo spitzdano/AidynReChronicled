@@ -13,7 +13,6 @@
 #include "SDL2/SDL.h"
 
 #include "audio.h"
-#include "orchestra.h"
 #include "settings.h"
 
 static SDL_AudioCVT audio_convert;
@@ -153,22 +152,9 @@ void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
     } else {
         enhancer.reset();
     }
-    // The orchestral music (orchestra.cpp), when on: rendered for this chunk and mixed in before Sound: Enhanced, so
-    // both settings treat it as they treat the game's own sound.
-    static std::vector<float> orchestra_buffer;
-    aidyn::orchestra::active();  // switching it on starts the loading; off lets its notes go
-    const bool orchestra = aidyn::orchestra::loaded();
-    if (orchestra) {
-        orchestra_buffer.assign(sample_count, 0.0f);
-        aidyn::orchestra::render(orchestra_buffer.data(), sample_count / input_channels, sample_rate);
-    }
     for (size_t i = 0; i < sample_count; i += input_channels) {
         float l = audio_data[i + 1] * (0.5f / 32768.0f) * cur_main_volume;
         float r = audio_data[i + 0] * (0.5f / 32768.0f) * cur_main_volume;
-        if (orchestra) {
-            l += orchestra_buffer[i];
-            r += orchestra_buffer[i + 1];
-        }
         if (sound.enhanced) {
             enhancer.process(l, r);
         }
