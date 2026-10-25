@@ -2587,6 +2587,56 @@ namespace {
     }
 }
 
+// HP and stamina inside the portrait frames (spitzdano's pick over the game's bars hanging off the frames' sides):
+// across the bottom of the picture, HP (the game's own colour for it, getHPColor) and a thin blue stamina bar under it,
+// on a dark backing. HP is Entity::getHPCurrent / getHPMax (Endurance, Stamina and the level stat together); stamina
+// CharStats::getModded(STAT_STAM) of its most, Base[STAT_STAM] (the stats' byte 5; checked: 25 of 30, 6 of 20). The
+// game's own bars (CombatDrawHealthbar) aren't drawn while the frames show (aidyn_combat_bars_hidden).
+extern "C" void Entity__getHPCurrent(uint8_t* rdram, recomp_context* ctx);
+extern "C" void Entity__getHPMax(uint8_t* rdram, recomp_context* ctx);
+extern "C" void getHPColor(uint8_t* rdram, recomp_context* ctx);
+extern "C" void CharStats__getModded(uint8_t* rdram, recomp_context* ctx);
+
+extern "C" int aidyn_combat_bars_hidden() {
+    return redesigned_card() ? 1 : 0;
+}
+
+namespace {
+    constexpr gpr kHpColorSlot = (gpr)(int32_t)0x80F81780;  // getHPColor's Color32 out (scratch above the game's 15 MB)
+
+    gpr column_bars(uint8_t* rdram, recomp_context* ctx, gpr g, gpr widget, gpr p) {
+        const gpr combat = MEM_W(0, kCombatP);
+        const int ent_index = MEM_BU(0x0A, p);  // cEntIndex
+        if (!heap_pointer(combat) || ent_index >= 18) return g;
+        const gpr ent = MEM_W(0x52D0 + 4 * ent_index, combat);
+        const gpr sheet = heap_pointer(ent) ? MEM_W(0x40, ent) : 0;
+        const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0;
+        if (!heap_pointer(stats)) return g;
+        const uint32_t hp = (uint32_t)call_game(rdram, ctx, Entity__getHPCurrent, (uint32_t)sheet);
+        const uint32_t hp_max = (uint32_t)call_game(rdram, ctx, Entity__getHPMax, (uint32_t)sheet) & 0xFF;
+        if (hp_max == 0) return g;
+        call_game(rdram, ctx, getHPColor, (uint32_t)kHpColorSlot, (uint32_t)sheet);
+        const uint32_t hp_rgb = (uint32_t)MEM_BU(0, kHpColorSlot) << 24 | (uint32_t)MEM_BU(1, kHpColorSlot) << 16 |
+                                (uint32_t)MEM_BU(2, kHpColorSlot) << 8;
+        const int stam = (int)(int32_t)call_game(rdram, ctx, CharStats__getModded, (uint32_t)stats, 5);  // STAT_STAM
+        const int stam_max = std::max<int>(MEM_BU(5, stats), stam);  // Base[STAT_STAM]: its most
+        const float hpf = std::clamp((float)hp / (float)hp_max, 0.0f, 1.0f);
+        const float stf = stam_max > 0 ? std::clamp((float)stam / (float)stam_max, 0.0f, 1.0f) : 0.0f;
+        const float x = (int16_t)MEM_HU(kWidgetPosX, widget), y = (int16_t)MEM_HU(kWidgetPosX + 2, widget);
+        const float w = MEM_HU(0x74, widget), h = MEM_HU(0x72, widget), fx = w / 23.0f, fy = h / 23.0f;
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        const float x0 = x + 1.5f * fx, x1 = x + w - 1.5f * fx;
+        const float hy0 = y + h - 4.7f * fy, hy1 = y + h - 2.6f * fy, sy0 = y + h - 2.2f * fy, sy1 = y + h - 1.3f * fy;
+        g = rect_state(rdram, g);
+        g = rect(rdram, g, x0 - 0.6f * fx, hy0 - 0.6f * fy, x1 + 0.6f * fx, sy1 + 0.6f * fy, 0x000000B4, hs, vs);  // backing
+        g = rect(rdram, g, x0, hy0, x1, hy1, 0x262626FF, hs, vs);
+        if (hpf > 0.0f) g = rect(rdram, g, x0, hy0, x0 + (x1 - x0) * hpf, hy1, hp_rgb | 0xFF, hs, vs);
+        g = rect(rdram, g, x0, sy0, x1, sy1, 0x262626FF, hs, vs);
+        if (stf > 0.0f) g = rect(rdram, g, x0, sy0, x0 + (x1 - x0) * stf, sy1, 0x4A9CFFFF, hs, vs);
+        return g;
+    }
+}
+
 // WidgetBorg8Combat::Render(this, g, ...): this in a0, g in a1; returns g in v0. Only the outermost of nested renders
 // (a portrait and its crossbones) sets the alignment.
 extern "C" void aidyn_combat_widget_begin(uint8_t* rdram, recomp_context* ctx) {
@@ -2611,6 +2661,7 @@ extern "C" void aidyn_combat_widget_end(uint8_t* rdram, recomp_context* ctx) {
             if (MEM_W(0, p) == widget) {
                 if (redesigned_card() && MEM_HU(0x74, widget) != 0 && heap_pointer(MEM_W(0x6C, widget))) {  // (a spare slot has no picture)
                     gpr g = column_frame(rdram, ctx->r2, widget, p);
+                    g = column_bars(rdram, ctx, g, widget, p);
                     ctx->r2 = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6,
                                                       MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
                 }

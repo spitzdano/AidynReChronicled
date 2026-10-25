@@ -480,6 +480,13 @@ func = "func_8008DF04"
 before_vram = 0x8008E3AC
 text = "extern void aidyn_combat_radar_end(uint8_t* rdram, recomp_context* ctx); aidyn_combat_radar_end(rdram, ctx);"
 
+# The bars go inside the portrait frames while the redrawn frames show (src/game/patches.cpp, "HP and stamina inside
+# the portrait frames"): CombatDrawHealthbar returns at once, g unchanged.
+[[patches.hook]]
+func = "CombatDrawHealthbar"
+before_vram = 0x80087168
+text = "extern int aidyn_combat_bars_hidden(void); if (aidyn_combat_bars_hidden()) { ctx->r2 = ctx->r4; return; }"
+
 [[patches.hook]]
 func = "CombatDrawHealthbar"
 before_vram = 0x80087340
