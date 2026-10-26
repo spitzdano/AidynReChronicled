@@ -633,8 +633,8 @@ ReChronicled and Quit to Title.</p>
   name above it. <kbd class="pad">LT</kbd> and <kbd class="pad">RT</kbd> move through the party.</dd>
   <dt>Hit Points</dt><dd>A healthy character has plenty. One who is low needs rest and a healing potion or two. The rope
   shows what is left, and beside Level and Gold the three parts the hit points are made of: <strong>END</strong>
-  (Endurance), <strong>STA</strong> (Stamina) and <strong>VIG</strong> (vigour, a hidden reserve tied to the character's
-  level), each as what is left of it and its full amount.</dd>
+  (Endurance), <strong>STA</strong> (Stamina) and <strong>VIG</strong> (vigour: bonus hit points equal to the
+  character's level), each as what is left of it and its full amount.</dd>
   <dt>Level</dt><dd>Experience raises a character's level; the higher it is, the stronger they are.</dd>
   <dt>Gold</dt><dd>The gold the whole party carries.</dd>
   <dt>Inventory, Stats, Skills, Spells</dt><dd>The party's items, with an icon beside anything a character is using. Move
@@ -674,10 +674,12 @@ towns and villages.</p>
   <dt>Endurance</dt><dd>Wounds that can kill come off Endurance: when it reaches zero, death is close. Raising it also
   adds to a character's hit points.</dd>
   <dt>Strength</dt><dd>Harder blows, and a better chance to hit.</dd>
-  <dt>Stamina</dt><dd>Used up by casting spells, disarming traps, picking locks and making armour and potions. If it runs
-  out, further strain comes off Endurance, so rest to keep it up.</dd>
+  <dt>Stamina</dt><dd>Used up by casting spells, healing, disarming traps, picking locks and making armour and potions.
+  Each needs enough stamina left: without it the character is too tired and nothing is spent (it never comes off
+  Endurance). Since stamina is part of the hit points, using it lowers them, and a character with none left takes more
+  damage and hits more weakly in a fight, so rest to keep it up.</dd>
 </dl>
-<p class="note">Hit points are Endurance, Stamina and vigour (VIG on the inventory page) added together. A blow takes
+<p class="note">Hit points are Endurance, Stamina and vigour (bonus points equal to the level: VIG on the inventory page) added together. A blow takes
 vigour first, then Stamina, then Endurance; healing gives back Endurance first, then Stamina, then vigour.</p>
 <h3>Skills</h3>
 <table><tbody>
