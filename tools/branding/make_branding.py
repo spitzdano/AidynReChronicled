@@ -500,6 +500,9 @@ IMAGES += [("party_prev", 11, 11, page_prompt("Z")), ("party_next", 11, 11, page
 # The combat columns' portrait frames from spitzdano's art (hud_frames.py): gold for the party, red and silver for enemies,
 # and the soft band the game's colour for a slot (in reach, targeted) shows as.
 import hud_frames  # noqa: E402
+# The title menu's panel and the achievement toast, in the turn order bar's style (tools/branding/title_panel.py).
+import title_panel  # noqa: E402
+IMAGES += title_panel.IMAGES
 IMAGES += [("frame_party", hud_frames.FRAME_W, hud_frames.FRAME_W, hud_frames.frame_party),
            ("frame_enemy", hud_frames.FRAME_W, hud_frames.FRAME_W, hud_frames.frame_enemy),
            ("frame_glow", hud_frames.GLOW_W, hud_frames.GLOW_W, hud_frames.frame_glow)]

@@ -7208,23 +7208,47 @@ extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // IntroMenu::ShowStartGameMenu's backing box (IntroMenu_ShadowBG: a3 its bottom, shifted left 16; v1 the list): made
-// for three entries (and lower under them than over its title), a row taller for each one more, less 8 units.
+// for three entries, a row taller for each one more.
 extern "C" void aidyn_title_box_fit(uint8_t* rdram, recomp_context* ctx) {
     const int more = list_entries(rdram, ctx->r3) - 3;
     if (more > 0) {
-        const int32_t bottom = ((int32_t)ctx->r7 >> 16) + more * kTitleRow - 8;  // as far below as above
+        const int32_t bottom = ((int32_t)ctx->r7 >> 16) + more * kTitleRow;
         ctx->r7 = (gpr)(int32_t)((uint32_t)bottom << 16);
     }
 }
 
-// The title menu's backing box (#37; spitzdano picked a dark panel with a gold frame over the game's soft shadow and a
-// parchment): IntroMenu_ShadowBG's box (a stretched pixel with gradient edges and corners as children) is drawn as a
-// near-opaque dark panel, a gold line round it, a thin darker one inside, and gold diamonds at its corners and the
-// middle of its top and bottom, fading with the game's own box. Hooked at WidgetBorg8::Render's entry: the IntroMenu
-// (gGlobals.titleScreen) keeps its box at +0x84 (and the one fading out at +0x80); for those the game's pieces aren't
-// drawn. The title's Options page gets the same panel.
+// The title menu's backing box (#37): spitzdano's pick, in the combat turn order bar's style. Codex painted the pieces
+// from the turn bar (art/hud/source/title-panel, tools/branding/title_panel.py): a bar across the top (end caps with
+// their amber gems and the bar's middle repeated) behind the title "Menu", the bar's dark slate below it with bronze
+// rails down its sides, and a slimmer bar closing it at the bottom. IntroMenu_ShadowBG's box (a stretched pixel with
+// gradient edges and corners as children) isn't drawn: the panel takes its place and its size, and fades with it.
+// Hooked at WidgetBorg8::Render's entry: the IntroMenu (gGlobals.titleScreen) keeps its box at +0x84 (and the one
+// fading out at +0x80). The title's Options page gets the same panel.
 namespace {
     constexpr gpr kTitleScreen = (gpr)(int32_t)0x800D9590;  // gGlobals.titleScreen (IntroMenu*)
+
+    // A piece of the panel drawn w x h units at (x, y) (units of the 320x240 screen).
+    gpr panel_piece(uint8_t* rdram, gpr g, const char* name, float x, float y, float w, float h, float hs, float vs) {
+        const int i = branding_index(name);
+        if (i < 0) return g;
+        const auto& img = aidyn::branding::kImages[i];
+        return draw_rgba16(rdram, g, (size_t)i, x * hs, y * vs, w / img.w * hs, h / img.h * vs);
+    }
+
+    // A bar from x0 to x1, h units tall, top at y: its end caps (the left one `left`) and its middle repeated between,
+    // each repeat stretched a little so a whole number of them fill the gap (they join seamlessly).
+    gpr panel_bar(uint8_t* rdram, gpr g, const char* left, float x0, float x1, float y, float h, float hs, float vs) {
+        const float k = h / 30.0f;  // the pieces are 30 texels tall
+        const int li = branding_index(left);
+        const float lw = (li >= 0 ? aidyn::branding::kImages[li].w : 25) * k, rw = 25.0f * k;
+        g = panel_piece(rdram, g, left, x0, y, lw, h, hs, vs);
+        g = panel_piece(rdram, g, "tp_cap_r", x1 - rw, y, rw, h, hs, vs);
+        const float mx0 = x0 + lw, mx1 = x1 - rw;
+        const int n = std::max(1, (int)std::lround((mx1 - mx0) / (64.0f * k)));
+        const float mw = (mx1 - mx0) / n;
+        for (int i = 0; i < n; i++) g = panel_piece(rdram, g, "tp_bar_mid", mx0 + i * mw, y, mw, h, hs, vs);
+        return g;
+    }
 }
 
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
@@ -7238,35 +7262,32 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
         const float x0 = (int16_t)MEM_HU(kWidgetPosX, w), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, w);
         float x1 = x0 + MEM_HU(0x74, w), y1 = y0 + MEM_HU(0x72, w);
         // The Options page's box is sized down to its Game row (Rename Character), which the title screen hides: it
-        // ran off the bottom of the screen, which the soft shadow hid. A box that would leave the screen ends just
-        // under the Music slider instead (the page's fixed layout: 116 units from the box's top, and a margin).
-        if (y1 > 232.0f) y1 = std::min(y1, y0 + 128.0f);
+        // ran off the bottom of the screen. A box that would leave the screen ends just under the Music slider
+        // instead (the page's fixed layout: 116 units from the box's top, and room for the closing bar).
+        if (y1 > 232.0f) y1 = std::min(y1, y0 + 140.0f);
         const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-        auto a = [&](uint32_t rgb, uint32_t a8) { return rgb << 8 | (a8 * alpha / 255); };
-        constexpr uint32_t kGold = 0xD6B060, kDark = 0x785C2C;
-        g = rect_state(rdram, g);
-        g = rect(rdram, g, x0, y0, x1, y1, a(0x0E0C12, 205), hs, vs);  // the panel
-        auto frame = [&](float i, float t, uint32_t rgb) {  // a line t thick, i in from the edge
-            g = rect(rdram, g, x0 + i, y0 + i, x1 - i, y0 + i + t, a(rgb, 255), hs, vs);
-            g = rect(rdram, g, x0 + i, y1 - i - t, x1 - i, y1 - i, a(rgb, 255), hs, vs);
-            g = rect(rdram, g, x0 + i, y0 + i + t, x0 + i + t, y1 - i - t, a(rgb, 255), hs, vs);
-            g = rect(rdram, g, x1 - i - t, y0 + i + t, x1 - i, y1 - i - t, a(rgb, 255), hs, vs);
-        };
-        frame(0.0f, 0.9f, kGold);
-        frame(2.1f, 0.35f, kDark);
-        auto diamond = [&](float cx, float cy, float r) {  // in thin rows, widest across the middle
-            constexpr int kRows = 14;
-            for (int k = 0; k < kRows; k++) {
-                const float t0 = -r + 2.0f * r * k / kRows, t1 = t0 + 2.0f * r / kRows, mid = (t0 + t1) / 2.0f;
-                const float half = r - std::abs(mid);
-                g = rect(rdram, g, cx - half, cy + t0, cx + half, cy + t1, a(kGold, 255), hs, vs);
+        g = tinted_image_state(rdram, g, 0xFFFFFF00u | alpha);
+        // The bars: 28 units tall at the top (behind the title), 16 at the bottom; their painted part is rows 14..226
+        // of 240, its rails at the top and bottom edges. The slate body runs from under the top bar's lower rail to
+        // under the bottom bar's upper rail.
+        constexpr float kTop = 28.0f, kFoot = 16.0f;
+        const float ty = y0 + 7.0f, fy = y1 - kFoot + 1.0f;  // the top bar centred on the title
+        const float bx0 = x0 + 3.0f, bx1 = x1 - 3.0f, by0 = ty + kTop * 207.0f / 240.0f, by1 = fy + kFoot * 30.0f / 240.0f;
+        const int nx = std::max(1, (int)std::lround((bx1 - bx0) / 32.0f)), ny = std::max(1, (int)std::lround((by1 - by0) / 32.0f));
+        for (int j = 0; j < ny; j++) {
+            for (int i = 0; i < nx; i++) {
+                g = panel_piece(rdram, g, "tp_body", bx0 + (bx1 - bx0) * i / nx, by0 + (by1 - by0) * j / ny,
+                                (bx1 - bx0) / nx, (by1 - by0) / ny, hs, vs);
             }
-        };
-        for (float cy : { y0 + 0.45f, y1 - 0.45f }) {
-            diamond(x0 + 0.45f, cy, 2.6f);
-            diamond(x1 - 0.45f, cy, 2.6f);
-            diamond((x0 + x1) / 2.0f, cy, 2.0f);
         }
+        const int nr = std::max(1, (int)std::lround((by1 - by0) / 64.0f));
+        for (int j = 0; j < nr; j++) {
+            const float ry = by0 + (by1 - by0) * j / nr, rh = (by1 - by0) / nr;
+            g = panel_piece(rdram, g, "tp_rail_l", bx0 - 2.0f, ry, 5.0f, rh, hs, vs);
+            g = panel_piece(rdram, g, "tp_rail_r", bx1 - 3.0f, ry, 5.0f, rh, hs, vs);
+        }
+        g = panel_bar(rdram, g, "tp_cap_l", x0 - 10.0f, x1 + 10.0f, ty, kTop, hs, vs);
+        g = panel_bar(rdram, g, "tp_cap_l", x0 - 2.0f, x1 + 2.0f, fy, kFoot, hs, vs);
         g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                     MEM_HU(kVres1, (gpr)gGfxManager));
     }
