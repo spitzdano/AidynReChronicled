@@ -13,6 +13,7 @@
 #include "SDL2/SDL.h"
 
 #include "audio.h"
+#include "watch.h"
 #include "settings.h"
 
 static SDL_AudioCVT audio_convert;
@@ -125,6 +126,7 @@ namespace {
 }
 
 void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
+    aidyn::watch::sound_tick();  // the freeze watchdog: the sound still going (src/main/watch.cpp)
     dump_samples(audio_data, sample_count);
     // Buffer for holding the output of swapping the audio channels. This is reused across
     // calls to reduce runtime allocations.

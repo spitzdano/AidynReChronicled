@@ -115,7 +115,8 @@ pushed `main` and creates the GitHub release with both.
 
 Please report it: a crash, a freeze, a glitch, a wrong picture, anything that looks off.
 
-1. **Make a problem report.** If the game crashed, it already made one and said where. Otherwise pause as close as you
+1. **Make a problem report.** If the game crashed, it already made one and said where; if it froze, or you had to close
+   it by force, it makes one the next time it starts (a notice at the top says so). Otherwise pause as close as you
    can to the problem and choose **Report a problem** at the bottom of the **ReChronicled** page (on the pause
    menu's Menu page): it also keeps a picture of the screen and a save of that moment.
 2. **Open an issue** with the [Problem report form](https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml) and drag in the newest `.zip` from
@@ -436,6 +437,19 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   10 seconds of walking about, to try the whole way. `make_release.sh` keeps each release's binary before strip in
   `build/release/symbols/` for reading a report's addresses (`addr2line -f -C -e <it> <offset>`). Testers send
   reports through the Problem report issue form (`.github/ISSUE_TEMPLATE/problem-report.yml`).
+- **Freezes, forced ends and Linux crashes** (`src/main/watch.cpp`). A marker file (`session-running` in the data
+  folder) is made at start and removed when the program ends properly (closed, restarted into another version, or after
+  a reported crash); found at the next start, the last session froze or was ended by force, and a report is made then
+  with a notice for the player. The freeze watchdog, a thread the game checks in with once a frame (from
+  Graphics::EndList), notes a stop of 15 s in the log and `logs/hang.txt`: what the game was doing, whether the sound
+  still runs, and where the game thread is (its stack on Linux, taken with SIGUSR2; `logs/hang.dmp`, a minidump of every
+  thread through dbghelp, on Windows, read against the release's `.pdb`). It leaves the game alone, which may go on
+  ("FREEZE over"); the next start reports that too. Each change of the game's state is a `Trail` line in the log (the
+  title screen, walking, a fight, a menu, a conversation, with the map and cell), so the last lines before a freeze or
+  crash say what led to it. Linux crash signals (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT) write `game-crash.txt` and a
+  report as Windows' handler does, then end by the same signal so the core dump is kept (the launcher skips its own
+  report when one was made). `AIDYN_FREEZE_TEST=1` stops the game thread for 25 s after 10 s of walking about (`=start`:
+  20 s after the first frame); `AIDYN_CRASH_TEST=native` tries the crash handlers.
 - **Quicksaves and autosaves.** Files of their own beside the pak, named after it (`aidyn-patch-quicksave.sav`,
   `-autosave-1.sav`, `-autosave-2.sav`), each the 7 KB `SaveDatStruct` the game writes to the pak. View while walking
   quicksaves; an autosave is made on arriving in another area (a map other than before after a screen fade: doors are

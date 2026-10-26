@@ -300,6 +300,7 @@ extern "C" void aidyn_menu_opened(uint8_t* rdram, gpr scroll) {
 // distance; pressing the right stick (R3) puts it back behind the player at its resting height, as the original. Movement is relative to
 // the camera, so an angle relative to the player's facing would make the camera chase itself round in circles.
 #include "input.h"
+#include "watch.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -6661,9 +6662,9 @@ namespace {
         return !save_dir.empty() && std::filesystem::file_size(save_path(f), ec) == kSaveSize && !ec;
     }
 
-    void notice(const char* text) {
+    void notice(const char* text, int ms = 2500) {
         notice_text = text;
-        notice_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(2500);
+        notice_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
     }
 
     bool walking_about(uint8_t* rdram) {
@@ -7334,10 +7335,80 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
     return 1;
 }
 
+// ---- The trail and the freeze watchdog ----
+// Once a frame (Graphics::EndList, here): the freeze watchdog's heartbeat with what the game is doing
+// (src/main/watch.cpp), a line in the log each time that changes (the trail: the last lines before a freeze or a crash
+// say what led to it), and the notice about the last session's report. What it is doing: the title screen or the
+// game's state (gGlobals.gameStateA, with gameStateB while walking and the fight's state in a fight), the map and its
+// cell. The fight's state changes with every move, so it is in the watchdog's notes but not the trail.
+namespace {
+    std::string state_name(uint32_t a) {
+        switch (a) {
+            case 0: return "to the title";
+            case 1: case 9: return "walking";
+            case 2: return "fight";
+            case 3: return "fight, paused";
+            case 5: return "trainer";
+            case 6: return "after a fight";
+            case 7: return "shop or treasure";
+            case 8: return "pause menu";
+            case 12: return "conversation";
+            case 14: return "scene";
+            case 15: return "starting";
+            case 17: return "Controller Pak";
+            default: return "state " + std::to_string(a);
+        }
+    }
+    std::string trail_last;
+    const auto trail_start = std::chrono::steady_clock::now();
+}
+
+void watch_tick(uint8_t* rdram) {
+    const uint32_t a = MEM_BU(0, kTrekState), b = MEM_BU(0, kGameStateB);
+    std::string trail;
+    if (heap_pointer(MEM_W(0, kTitleScreen))) {
+        trail = "title screen";
+    } else {
+        trail = state_name(a);
+        if (a == 1) trail += " (" + std::to_string(b) + ")";
+        trail += ", map " + std::to_string(MEM_HU(0, kMapDatA)) + " cell " + std::to_string(MEM_H(0, kMapShort1)) + "," +
+                 std::to_string(MEM_H(0, kMapShort1 + 2));
+    }
+    if (trail != trail_last) {
+        trail_last = trail;
+        const long s = (long)std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - trail_start).count();
+        fprintf(stdout, "Trail %ld:%02ld:%02ld %s\n", s / 3600, s / 60 % 60, s % 60, trail.c_str());
+        fflush(stdout);
+    }
+    aidyn::watch::frame(a == 2 || a == 3 ? trail + ", fight state " + std::to_string(MEM_BU(0, (gpr)(int32_t)0x800D9454)) : trail);
+    // AIDYN_FREEZE_TEST=1: once, after 10 seconds of walking about, the game thread stops for 25 seconds, to try the
+    // watchdog's notes and the next start's report end to end (Steam launch options: AIDYN_FREEZE_TEST=1 %command%);
+    // =start: 20 seconds after the first frame, wherever it is (the title screen: no controller needed).
+    static const char* freeze_test = std::getenv("AIDYN_FREEZE_TEST");
+    static const bool at_start = freeze_test != nullptr && std::strcmp(freeze_test, "start") == 0;
+    static double walked = 0.0;
+    static auto last = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (freeze_test != nullptr && (a == 1 || at_start) && walked >= 0.0) {
+        walked += std::chrono::duration<double>(now - last).count();
+        if (walked >= (at_start ? 20.0 : 10.0)) {
+            walked = -1.0;
+            fprintf(stdout, "Freeze test: the game thread stops for 25 s\n");
+            fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::seconds(25));
+        }
+    }
+    last = now;
+    if (const std::string n = aidyn::watch::take_notice(); !n.empty()) {
+        notice(n.c_str(), 8000);
+    }
+}
+
 // Graphics::EndList: the notice, centred at the top, fading out over its last half second (not while Menu is held:
 // the pause menu keeps a picture of the screen).
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     quit_tick(rdram);
+    watch_tick(rdram);
     const gpr font = MEM_W(0, kFontPtr);
     const auto now = std::chrono::steady_clock::now();
     if (notice_text.empty() || now >= notice_until || !heap_pointer(font) || aidyn::input::start_held()) {

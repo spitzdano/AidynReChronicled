@@ -84,6 +84,7 @@ add_executable(AidynReChronicled
     src/main/settings.cpp
     src/main/register_overlays.cpp
     src/main/report.cpp
+    src/main/watch.cpp
     src/main/platform.cpp
     src/main/packs.cpp
     src/game/pak.cpp

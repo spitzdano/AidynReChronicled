@@ -6,6 +6,7 @@
 // last run, since librecomp stores a copy of a validated ROM in the config folder).
 #include "platform.h"
 #include "report.h"
+#include "watch.h"
 #include "settings.h"
 #include "version.h"
 #include <atomic>
@@ -323,6 +324,7 @@ void aidyn::switch_version(aidyn::settings::RomPatch version) {
     args.push_back(version_flag_arg(version));
     printf("Switching to %s\n", version_name(version));
     fflush(stdout);
+    aidyn::watch::session_end();  // not an unclean end: the next process starts its own session
     aidyn::platform::restart(args);
 }
 
@@ -593,6 +595,11 @@ int main(int argc, char** argv) {
     aidyn_quick_saves_set_pak(pak);  // quick and auto saves: beside it, named after it
     aidyn::report::set_paths(data_folder(), pak);
     aidyn::report::install_crash_handler();
+    aidyn::watch::install_crash_signals();
+    // A session that didn't close properly last time gets its report now (src/main/watch.cpp); the --report run (the
+    // launcher's, after a crash) clears the marker, its own report covering it.
+    aidyn::watch::session_start(data_folder(), !report_reason.empty());
+    std::atexit(aidyn::watch::session_end);
     if (!report_reason.empty()) {
         const std::filesystem::path made = aidyn::report::make(report_reason);
         if (made.empty()) {
@@ -657,6 +664,8 @@ int main(int argc, char** argv) {
 
     // Start the game right away; the runtime loads the stored ROM when its game thread sees this.
     recomp::start_game(chosen_id, "");
+    aidyn::watch::start_watchdog();
     recomp::start(cfg);
+    aidyn::watch::session_end();
     return EXIT_SUCCESS;
 }

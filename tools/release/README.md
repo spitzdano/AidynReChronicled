@@ -101,7 +101,8 @@ The **data folder** holds the ROMs, saves, settings, logs and problem reports:
 
 Please report it: a crash, a freeze, a glitch, a wrong picture, anything that looks off.
 
-1. **Make a problem report.** If the game crashed, it already made one and said where. Otherwise pause as close as you
+1. **Make a problem report.** If the game crashed, it already made one and said where; if it froze, or you had to close
+   it by force, it makes one the next time it starts (a notice at the top says so). Otherwise pause as close as you
    can to the problem and choose **Report a problem** at the bottom of the **ReChronicled** page (on the pause
    menu's Menu page): it also keeps a picture of the screen and a save of that moment.
 2. **Open an issue** with the [Problem report form](https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml) and drag in the newest `.zip` from

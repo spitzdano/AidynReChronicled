@@ -19,6 +19,6 @@ namespace aidyn::report {
     // the program (where the game would sit frozen).
     [[noreturn]] void game_crashed(const std::string& reason);
     // Windows: a crash the program doesn't handle itself (an access violation...) writes game-crash.txt (the exception,
-    // where, the call stack) and a problem report, as the Linux launcher does after a crash signal. Linux: nothing.
+    // where, the call stack) and a problem report. Linux: src/main/watch.cpp's signal handler does the same.
     void install_crash_handler();
 }

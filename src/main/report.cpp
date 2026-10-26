@@ -25,6 +25,7 @@
 #include "aidyn_build.h"
 #include "platform.h"
 #include "settings.h"
+#include "watch.h"
 
 namespace {
     std::filesystem::path g_data, g_pak;
@@ -244,5 +245,6 @@ void aidyn::report::game_crashed(const std::string& reason) {
 #else
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Aidyn ReChronicled", text.c_str(), nullptr);
 #endif
+    aidyn::watch::session_end();  // reported: not to be reported again as an unclean end
     std::_Exit(1);
 }
