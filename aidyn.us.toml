@@ -909,3 +909,10 @@ text = "extern void aidyn_hp_parts_begin(uint8_t* rdram, recomp_context* ctx); a
 func = "func_8003C3B4"
 before_vram = 0x8003C3E0
 text = "extern gpr aidyn_hp_parts_end(uint8_t* rdram, recomp_context* ctx, gpr g); ctx->r2 = aidyn_hp_parts_end(rdram, ctx, ctx->r2);"
+
+# Developer: AIDYN_JOURNAL_DUMP=<file> writes every journal entry the journal decrypts as it opens (each with the flag
+# that shows it), for naming the achievements (#42). Journal::ShowTriggeredEntry's entry: a1 the decrypted text.
+[[patches.hook]]
+func = "Journal__ShowTriggeredEntry"
+before_vram = 0x8005256C
+text = "extern void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx); aidyn_journal_dump(rdram, ctx);"

@@ -7510,3 +7510,19 @@ void report_problem(uint8_t* rdram, recomp_context* ctx) {
     notice(made.empty() ? "Could not write the report" : "Report saved in the reports folder");
     rc_sound(rdram, ctx, made.empty() ? 0x741 : 0x740, 60);
 }
+
+// AIDYN_JOURNAL_DUMP=<file>: each journal entry as Journal::Load decrypts it (a1: the text, its flag first), appended
+// once each, to name the achievements by the game's own words (#42; developer only).
+extern "C" void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx) {
+    static const char* path = std::getenv("AIDYN_JOURNAL_DUMP");
+    static std::set<std::string> seen;
+    if (path == nullptr || !heap_pointer(ctx->r5 & ~(gpr)3)) return;
+    std::string text;
+    for (int i = 0; i < 0x2000; i++) {
+        const char c = (char)MEM_B(i, ctx->r5);
+        if (c == 0) break;
+        text += c;
+    }
+    if (!seen.insert(text).second) return;
+    std::ofstream(path, std::ios::app) << text << "\n";
+}
