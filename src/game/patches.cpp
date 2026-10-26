@@ -135,6 +135,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -6663,6 +6664,74 @@ namespace {
                heap_pointer(MEM_W(0, kPlayer));
     }
 
+    // Which version wrote each save (#31). Saves aren't interchangeable: Aidyn Plus has other spell and item databases,
+    // and its loader reads a Patch save's bit-packed party wrong from the first difference on, then equips nonsense and
+    // crashes. A save says nothing of its version, so the port keeps a record beside the saves (save-versions.txt:
+    // FNV-1a of the 7 KB save, the version that wrote it): every save it writes (quick, auto, and each pak save's
+    // -lastsave copy) is added, and on the first start the existing quick and auto saves by their file names (in the
+    // order original, Aidyn Patch, Aidyn Plus, so a copy made under another version's name keeps its first). A save
+    // recorded as another version's is refused (Continue and Quick Load pass over it, the Load screen says so); one
+    // not in the record (older pak saves) loads as before.
+    const char* version_name(aidyn::settings::RomPatch v) {
+        return v == aidyn::settings::RomPatch::AidynPatch ? "aidyn-patch"
+             : v == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus" : "original";
+    }
+    const char* version_title(const std::string& v) {
+        return v == "aidyn-patch" ? "Aidyn Patch" : v == "aidyn-plus" ? "Aidyn Plus" : "the original game";
+    }
+    std::map<uint64_t, std::string> save_versions;
+    bool save_versions_loaded = false;
+    std::string passed_over;  // read_newest: the version of a save it passed over, for the notice
+
+    uint64_t save_hash(const uint8_t* bytes) {
+        uint64_t h = 0xCBF29CE484222325ULL;
+        for (uint32_t i = 0; i < kSaveSize; i++) h = (h ^ bytes[i]) * 0x100000001B3ULL;
+        return h;
+    }
+    uint64_t save_hash(uint8_t* rdram, gpr buffer) {
+        std::vector<uint8_t> b(kSaveSize);
+        for (uint32_t i = 0; i < kSaveSize; i++) b[i] = MEM_BU(i, buffer);
+        return save_hash(b.data());
+    }
+    std::filesystem::path save_versions_path() { return save_dir / "save-versions.txt"; }
+
+    void note_version(uint64_t h, const std::string& v, bool keep_first) {
+        if (keep_first && save_versions.count(h)) return;
+        save_versions[h] = v;
+        std::ofstream out(save_versions_path(), std::ios::app);
+        char line[64];
+        snprintf(line, sizeof(line), "%016llx %s\n", (unsigned long long)h, v.c_str());
+        out << line;
+    }
+
+    void load_save_versions() {
+        if (save_versions_loaded || save_dir.empty()) return;
+        save_versions_loaded = true;
+        std::ifstream in(save_versions_path());
+        std::string hex, v;
+        while (in >> hex >> v) save_versions[std::stoull(hex, nullptr, 16)] = v;  // later lines win
+        if (std::filesystem::exists(save_versions_path())) return;
+        for (const char* stem : { "aidyn", "aidyn-patch", "aidyn-plus" }) {  // the first start: what's there now
+            const std::string v = std::string(stem) == "aidyn" ? "original" : stem;
+            for (const char* suffix : { "-quicksave.sav", "-autosave-1.sav", "-autosave-2.sav", "-lastsave.sav" }) {
+                std::ifstream f(save_dir / (std::string(stem) + suffix), std::ios::binary);
+                std::vector<char> b(kSaveSize);
+                if (f.read(b.data(), (std::streamsize)b.size())) {
+                    note_version(save_hash(reinterpret_cast<uint8_t*>(b.data())), v, true);
+                }
+            }
+        }
+        if (!std::filesystem::exists(save_versions_path())) std::ofstream(save_versions_path()).flush();
+    }
+
+    // "" if the save may load here, else the version it belongs to.
+    std::string foreign_save(uint8_t* rdram, gpr buffer) {
+        load_save_versions();
+        const auto it = save_versions.find(save_hash(rdram, buffer));
+        const std::string here = version_name(aidyn::settings::game().rom_patch);
+        return it == save_versions.end() || it->second == here ? std::string() : it->second;
+    }
+
     bool write_save(uint8_t* rdram, gpr buffer, SaveFile f) {
         std::vector<char> bytes(kSaveSize);
         for (uint32_t i = 0; i < kSaveSize; i++) {
@@ -6688,11 +6757,14 @@ namespace {
             fprintf(stdout, "Saves: wrote %s\n", path.string().c_str());
             fflush(stdout);
         }
+        load_save_versions();
+        note_version(save_hash(reinterpret_cast<const uint8_t*>(bytes.data())), version_name(aidyn::settings::game().rom_patch), false);
         return true;
     }
 
     // The newest of these files whose save is whole, read into kSaveBuffer: false if none.
     bool read_newest(uint8_t* rdram, recomp_context* ctx, std::initializer_list<SaveFile> files) {
+        passed_over.clear();
         std::vector<std::pair<std::filesystem::file_time_type, SaveFile>> found;
         for (SaveFile f : files) {
             std::error_code ec;
@@ -6709,6 +6781,11 @@ namespace {
             }
             for (uint32_t i = 0; i < kSaveSize; i++) {
                 MEM_B(i, kSaveBuffer) = (int8_t)bytes[i];
+            }
+            if (const std::string other = foreign_save(rdram, kSaveBuffer); !other.empty()) {
+                fprintf(stderr, "Saves: %s is from %s, passed over\n", save_path(f).string().c_str(), version_title(other));
+                passed_over = other;
+                continue;
             }
             if (with_crc_table(rdram, ctx, [&] { return call_game(rdram, ctx, func_80019ED4, (uint32_t)kSaveBuffer) & 0xFF; }) != 0) {
                 if (save_log()) {
@@ -6901,6 +6978,19 @@ extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
     return 0;
 }
 
+// WidgetContPakDataLoad::LoadSaveFile (func_8007F220) before it loads the chosen save (s0 the widget, s1 its index:
+// the save at +0x7C + 0x20 each): one recorded as another version's isn't loaded (#31). The screen stays, as after a
+// pak error, with a notice and the game's error sound.
+extern "C" int aidyn_pak_load_check(uint8_t* rdram, recomp_context* ctx) {
+    const gpr save = MEM_W(0x7C + 0x20 * (ctx->r17 & 0xFF), ctx->r16);
+    if (!heap_pointer(save)) return 0;
+    const std::string other = foreign_save(rdram, save);
+    if (other.empty()) return 0;
+    notice((std::string("This save is from ") + version_title(other) + ": switch on the title screen").c_str());
+    rc_sound(rdram, ctx, 0x741, 60);
+    return 1;
+}
+
 // WidgetContPakDataSave::WriteSaveFile (func_8007EE34) once the pak took the save (s0 the widget, its buffer at +0x2C4):
 // the newest manual save, for Continue.
 extern "C" void aidyn_pak_saved(uint8_t* rdram, recomp_context* ctx) {
@@ -6942,7 +7032,8 @@ bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
         return false;
     }
     if (!read_newest(rdram, ctx, { kQuickFile, kAutoFile1, kAutoFile2 })) {
-        notice("No save to load");
+        notice(passed_over.empty() ? "No save to load"
+                                   : (std::string("That save is from ") + version_title(passed_over) + ": switch on the title screen").c_str());
         rc_sound(rdram, ctx, 0x741, 60);
         return true;
     }
@@ -7223,7 +7314,8 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
         return 0;
     }
     if (!read_newest(rdram, ctx, { kQuickFile, kAutoFile1, kAutoFile2, kLastFile })) {
-        notice("No save to load");
+        notice(passed_over.empty() ? "No save to load"
+                                   : (std::string("That save is from ") + version_title(passed_over) + ": switch on the title screen").c_str());
         rc_sound(rdram, ctx, 0x741, 60);
         return 1;
     }

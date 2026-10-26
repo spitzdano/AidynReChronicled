@@ -792,7 +792,9 @@ data only, not the game's code, so the PC version runs it as it is.</p>
   <li><code>--original</code>, <code>--patch</code> or <code>--plus</code> on the command line picks a version for one
   run. The launchers "Aidyn ReChronicled", "(Aidyn Patch)" and "(Aidyn Plus)" do the same.</li>
   <li>Each version has its own Controller Pak (<code>aidyn.mpk</code>, <code>aidyn-patch.mpk</code>,
-  <code>aidyn-plus.mpk</code>). Copy one over another to carry a save across.</li>
+  <code>aidyn-plus.mpk</code>). The original's and Aidyn Patch's saves can be carried across by copying one pak over
+  the other; Aidyn Plus has other spells and items, so its saves and theirs don't mix. The game remembers which version
+  made each save it writes and won't load one from another version (it says which).</li>
 </ul>
 {{PATCH}}
 {{PLUS}}

@@ -656,6 +656,13 @@ func = "func_8001A20C"
 before_vram = 0x8001A20C
 text = "extern int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx); if (aidyn_save_loading(rdram, ctx)) { ctx->r2 = 1; return; }"
 
+# A save another version wrote isn't loaded from the Load screen (src/game/patches.cpp, "Quick and auto saves", #31):
+# WidgetContPakDataLoad::LoadSaveFile where it would load (s0 the widget, s1 the index); its state 0 as after a pak error.
+[[patches.hook]]
+func = "func_8007F220"
+before_vram = 0x8007F26C
+text = "extern int aidyn_pak_load_check(uint8_t* rdram, recomp_context* ctx); if (aidyn_pak_load_check(rdram, ctx)) { MEM_B(0x28C, ctx->r16) = 0; goto L_8007F284; }"
+
 [[patches.hook]]
 func = "func_8007EE34"
 before_vram = 0x8007EEA8
