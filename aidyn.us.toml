@@ -916,3 +916,9 @@ text = "extern gpr aidyn_hp_parts_end(uint8_t* rdram, recomp_context* ctx, gpr g
 func = "Journal__ShowTriggeredEntry"
 before_vram = 0x8005256C
 text = "extern void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx); aidyn_journal_dump(rdram, ctx);"
+
+# Achievements (src/game/patches.cpp, "Achievements", #42): a hit on a party member spoils a fight's Flawless.
+[[patches.hook]]
+func = "Entity__DamageToLevel"
+before_vram = 0x8006EB8C
+text = "extern void aidyn_ach_damage(uint8_t* rdram, recomp_context* ctx); aidyn_ach_damage(rdram, ctx);"

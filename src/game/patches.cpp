@@ -6965,6 +6965,8 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // QuestData::LoadFromMemPak's entry: a save is being loaded (the Load screens', Quick Load, Continue).
+void ach_loaded_save();  // "Achievements", below
+
 extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
     if (MEM_BU(0, kTrekState) == 3 && (ctx->r4 == kSaveBuffer || heap_pointer(ctx->r4))) {  // a fight's pause ("Quit to Title")
         if (ctx->r4 != kSaveBuffer) {
@@ -6980,6 +6982,7 @@ extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
         return 1;
     }
     quit_pending = false;
+    ach_loaded_save();
     saves.save_loaded = true;
     saves.explored = 0.0;
     saves.pending = 0;
@@ -7404,11 +7407,269 @@ void watch_tick(uint8_t* rdram) {
     }
 }
 
+// ---- Achievements (#42) ----
+// Milestones read from the event flags the game keeps in its saves (decomp Flagindecies.h): the story's journal
+// entries, the bosses' "killed" flags, each companion's "joined" flag, maps, keys, stats and skills; and a few the port
+// counts itself (fights won, a flawless fight, a camp ambush survived, a fight fled, gold, levels, a full party). Kept
+// per version (achievements-<pak stem>.txt beside the saves: not in a save), so they add up across playthroughs:
+// "Every Companion" needs all 13, which one playthrough can't recruit (the party holds four; at Gwernia only 2 of
+// Godric, Rheda and Abrecan go along). Every locked one is hidden (the page shows ???). Checked once a second while a
+// game is loaded (getEventFlag); nothing unlocks while the game's own Cheater flag (3693) is set. A save loaded late
+// unlocks what it holds with one notice ("7 achievements unlocked from this save"); otherwise each gets a notice,
+// shown while walking about (not in a fight, a conversation or a menu). Flawless: a fight won with a full party of
+// four against four or more enemies and nobody in the party hit (Entity::DamageToLevel on a party member, hooked:
+// a spell's stamina cost doesn't go through it). AIDYN_ACH_LOG=1 prints each unlock and count.
+extern "C" void getEventFlag(uint8_t* rdram, recomp_context* ctx);
+
+namespace {
+    enum AchKind : uint8_t { kAchAll, kAchAny, kAchCount };
+    struct Achievement {
+        const char* id;
+        const char* title;
+        AchKind kind;
+        std::vector<uint16_t> flags;  // kAchAll: every one set; kAchAny: one set; kAchCount: see ach_count
+    };
+    const std::vector<Achievement>& achievements() {
+        static const std::vector<Achievement> list = {
+            // the story (journal entries' flags)
+            { "story_spirit", "A Strange Spirit", kAchAll, { 9 } },
+            { "story_poisoned", "Poisoned", kAchAll, { 50 } },
+            { "story_errand", "The King's Errand", kAchAll, { 68 } },
+            { "story_sword", "The Missing Sword", kAchAll, { 87 } },
+            { "story_erromon", "City Under the Hills", kAchAll, { 122 } },
+            { "story_promise", "A Broken Promise", kAchAll, { 166 } },
+            { "story_dinner", "Dinner Guest", kAchAll, { 192 } },
+            { "story_school", "Wizard's School", kAchAll, { 216 } },
+            { "story_amaranth", "The Amaranth", kAchAll, { 222 } },
+            { "story_forest", "Friend of the Forest", kAchAll, { 234 } },
+            { "story_nameless", "Nameless", kAchAll, { 240 } },
+            { "story_light", "Let There Be Light", kAchAll, { 5017 } },
+            { "story_sail", "Set Sail", kAchAll, { 297 } },
+            { "story_isle", "Cradawgh's Isle", kAchAll, { 309 } },
+            { "story_bog", "Into the Bog", kAchAll, { 414 } },
+            { "story_trolls", "Troll Toll", kAchAll, { 399 } },
+            { "story_tower", "The Tower", kAchAll, { 438 } },
+            { "story_gate", "The Desert Gate", kAchAll, { 480 } },
+            { "story_emperor", "The Emperor", kAchAll, { 518 } },
+            { "story_fate", "Fate", kAchAll, { 548 } },
+            { "story_whole", "Whole Again", kAchAll, { 566 } },
+            { "story_named", "Named", kAchAll, { 601 } },
+            // bosses (their killed flags)
+            { "boss_kitarak", "The Goblin King", kAchAll, { 154 } },
+            { "boss_shamsuk", "The Necromancer", kAchAll, { 458 } },
+            { "boss_lugash", "The Lich", kAchAll, { 533 } },
+            { "boss_pochanargat", "Pochanargat", kAchAll, { 3204 } },
+            { "boss_behrooz", "Behrooz", kAchAll, { 3733 } },
+            { "boss_nasim", "Nasim", kAchAll, { 3734 } },
+            { "boss_golnar", "Golnar", kAchAll, { 3735 } },
+            { "boss_mehrdad", "Mehrdad", kAchAll, { 3736 } },
+            { "boss_shatrevar", "Shatrevar", kAchAll, { 3737 } },
+            { "boss_ksathra", "Ksathra", kAchAll, { 3738 } },
+            { "boss_assim", "Assim", kAchAll, { 3739 } },
+            // companions (their joined flags, which stay set after they leave)
+            { "join_brenna", "Joined by Brenna", kAchAll, { 92 } },
+            { "join_abrecan", "Joined by Abrecan", kAchAll, { 89 } },
+            { "join_rheda", "Joined by Rheda", kAchAll, { 91 } },
+            { "join_godric", "Joined by Godric", kAchAll, { 90 } },
+            { "join_arturo", "Joined by Arturo", kAchAll, { 247 } },
+            { "join_keelin", "Joined by Keelin", kAchAll, { 265 } },
+            { "join_becan", "Joined by Becan", kAchAll, { 375 } },
+            { "join_baird", "Joined by Baird", kAchAll, { 380 } },
+            { "join_donovan", "Joined by Donovan", kAchAll, { 382 } },
+            { "join_niesen", "Joined by Niesen", kAchAll, { 412 } },
+            { "join_farris", "Joined by Farris", kAchAll, { 455 } },
+            { "join_sholeh", "Joined by Sholeh", kAchAll, { 523 } },
+            { "join_dougal", "Joined by Dougal", kAchAll, { 574 } },
+            { "full_party", "A Full Party", kAchCount, {} },
+            { "every_companion", "Every Companion", kAchCount, {} },
+            // exploration
+            { "cartographer", "Cartographer", kAchAll, { 3406, 3407, 3408, 3409, 3410, 3411, 3412, 3413, 3414, 3415, 3416,
+                                                          3418, 3419, 3420, 3421, 3422, 3423, 3424 } },
+            { "keymaster", "Keymaster", kAchAll, { 3425, 3426, 3427, 3428, 3429, 3430, 3431, 3432 } },
+            // growth
+            { "first_spell", "First Spell", kAchAll, { 3611 } },
+            { "brewer", "Brewer", kAchAll, { 3612 } },
+            { "peak_form", "Peak Form", kAchAny, { 5290, 5294, 5298, 5302, 5306 } },
+            { "master", "Master", kAchAny, { 5346, 5336, 5316, 5326 } },
+            { "veteran", "Veteran", kAchCount, {} },
+            { "legend", "Legend", kAchCount, {} },
+            // feats
+            { "seasoned", "Seasoned", kAchCount, {} },
+            { "flawless", "Flawless", kAchCount, {} },
+            { "night_watch", "Night Watch", kAchCount, {} },
+            { "discretion", "Discretion", kAchCount, {} },
+            { "treasure_hoard", "Treasure Hoard", kAchCount, {} },
+        };
+        return list;
+    }
+
+    struct AchState {
+        bool loaded = false;
+        std::map<std::string, std::string> unlocked;  // id -> when
+        int fights_won = 0;
+        // the fight in progress
+        bool in_fight = false, fight_hit = false, fight_full = false, fight_fled = false, fight_from_camp = false;
+        int fight_enemies = 0;
+        uint32_t last_a = 0xFF, last_walk_b = 0xFF;
+        std::vector<std::string> earned;      // in this check, for the notices
+        std::deque<std::string> notices;
+        bool from_load = false;               // a save was just loaded: its unlocks get one notice
+        std::chrono::steady_clock::time_point next_check{};
+    } ach;
+
+    bool ach_log() {
+        static const bool on = std::getenv("AIDYN_ACH_LOG") != nullptr;
+        return on;
+    }
+    std::filesystem::path ach_path() { return save_dir / ("achievements-" + save_stem + ".txt"); }
+
+    void ach_load() {
+        if (ach.loaded || save_dir.empty()) return;
+        ach.loaded = true;
+        std::ifstream in(ach_path());
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("fights_won ", 0) == 0) ach.fights_won = std::atoi(line.c_str() + 11);
+            else if (line.rfind("unlocked ", 0) == 0) {
+                const std::string rest = line.substr(9);
+                const size_t sp = rest.find(' ');
+                ach.unlocked[rest.substr(0, sp)] = sp == std::string::npos ? "" : rest.substr(sp + 1);
+            }
+        }
+    }
+    void ach_save() {
+        std::error_code ec;
+        std::filesystem::create_directories(save_dir, ec);
+        const std::filesystem::path tmp = ach_path().string() + ".tmp";
+        {
+            std::ofstream out(tmp, std::ios::trunc);
+            out << "# Aidyn ReChronicled achievements (" << save_stem << ")\n";
+            out << "fights_won " << ach.fights_won << "\n";
+            for (const auto& [id, when] : ach.unlocked) out << "unlocked " << id << " " << when << "\n";
+        }
+        std::filesystem::rename(tmp, ach_path(), ec);
+    }
+    void ach_unlock(const std::string& id) {
+        if (ach.unlocked.count(id)) return;
+        char when[32];
+        const std::time_t t = std::time(nullptr);
+        std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&t));
+        ach.unlocked[id] = when;
+        for (const Achievement& a : achievements()) {
+            if (a.id == id) ach.earned.push_back(a.title);
+        }
+        if (ach_log()) {
+            fprintf(stdout, "Achievement: %s\n", id.c_str());
+            fflush(stdout);
+        }
+    }
+    bool flag_set(uint8_t* rdram, recomp_context* ctx, uint16_t f) {
+        return (call_game(rdram, ctx, getEventFlag, f) & 0xFF) != 0;
+    }
+}
+
+void ach_loaded_save() {
+    ach.from_load = true;
+    ach.in_fight = false;
+}
+
+// Entity::DamageToLevel's entry (a0 the character, a1 the damage): a hit on a party member in a fight spoils Flawless.
+extern "C" void aidyn_ach_damage(uint8_t* rdram, recomp_context* ctx) {
+    if (!ach.in_fight || (int16_t)ctx->r5 <= 0) return;
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+    for (int i = 0; heap_pointer(party) && i < 4; i++) {
+        if (MEM_W(4 * i, party) == ctx->r4) ach.fight_hit = true;
+    }
+}
+
+// Once a frame (Graphics::EndList): the fight events every frame, the flags once a second, the notices when quiet.
+void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+    const uint32_t a = MEM_BU(0, kTrekState), b = MEM_BU(0, kGameStateB);
+    const bool playing = heap_pointer(party) && !heap_pointer(MEM_W(0, kTitleScreen)) && a != 0 && a != 15;
+    if (!playing) {
+        ach.last_a = a;
+        return;
+    }
+    ach_load();
+    if (a == 1 && b != 0) ach.last_walk_b = b;
+    // the fight: its start, a flight, its end
+    if (a == 2 && !ach.in_fight) {
+        const gpr combat = MEM_W(0, kCombatP);
+        ach.in_fight = true;
+        ach.fight_hit = ach.fight_fled = false;
+        ach.fight_from_camp = ach.last_walk_b == 17;  // camping (gameStateB 17) when the fight began: an ambush
+        ach.fight_full = MEM_BU(0x24, party) >= 4;     // Party::PartySize
+        ach.fight_enemies = heap_pointer(combat) ? MEM_BU(kEntCount, combat) - MEM_BU(kPartyCount, combat) : 0;
+    }
+    if (ach.in_fight && (a == 2 || a == 3) && MEM_BU(0, (gpr)(int32_t)0x800D9454) == 20) ach.fight_fled = true;
+    if (ach.in_fight && a != 2 && a != 3) {
+        ach.in_fight = false;
+        if (a == 6) {  // after a fight: won
+            ach.fights_won++;
+            if (ach.fights_won >= 100) ach_unlock("seasoned");
+            if (ach.fight_full && ach.fight_enemies >= 4 && !ach.fight_hit) ach_unlock("flawless");
+            if (ach.fight_from_camp) ach_unlock("night_watch");
+        }
+        if (ach.fight_fled) ach_unlock("discretion");
+        ach_save();
+    }
+    ach.last_a = a;
+    // the flags and the counts, once a second
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= ach.next_check) {
+        ach.next_check = now + std::chrono::seconds(1);
+        if (!flag_set(rdram, ctx, 3693)) {  // the game's Cheater flag
+            for (const Achievement& x : achievements()) {
+                if (x.kind == kAchCount || ach.unlocked.count(x.id)) continue;
+                bool all = true, any = false;
+                for (uint16_t f : x.flags) {
+                    const bool on = flag_set(rdram, ctx, f);
+                    all = all && on;
+                    any = any || on;
+                }
+                if (x.kind == kAchAll ? all : any) ach_unlock(x.id);
+            }
+            if (MEM_BU(0x24, party) >= 4) ach_unlock("full_party");
+            if ((uint32_t)MEM_W(0x14, party) >= 10000) ach_unlock("treasure_hoard");
+            int top_level = 0;
+            for (int i = 0; i < 4; i++) {
+                const gpr sheet = MEM_W(4 * i, party);
+                const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0;
+                if (heap_pointer(stats)) {
+                    top_level = std::max(top_level, (int)(int8_t)(call_game(rdram, ctx, CharStats__getBase, (uint32_t)stats, 6) & 0xFF));
+                }
+            }
+            if (top_level >= 10) ach_unlock("veteran");
+            if (top_level >= 20) ach_unlock("legend");
+            int joined = 0;
+            for (const Achievement& x : achievements()) joined += std::string(x.id).rfind("join_", 0) == 0 && ach.unlocked.count(x.id);
+            if (joined >= 13) ach_unlock("every_companion");
+        }
+        if (!ach.earned.empty()) {
+            ach_save();
+            if (ach.from_load && ach.earned.size() > 1) {
+                ach.notices.push_back(std::to_string(ach.earned.size()) + " achievements unlocked from this save");
+            } else {
+                for (const std::string& t : ach.earned) ach.notices.push_back("Achievement unlocked: " + t);
+            }
+            ach.earned.clear();
+        }
+        ach.from_load = false;
+    }
+    // one notice at a time, while walking about
+    if (!ach.notices.empty() && a == 1 && std::chrono::steady_clock::now() >= notice_until) {
+        notice(ach.notices.front().c_str(), 5000);
+        ach.notices.pop_front();
+    }
+}
+
 // Graphics::EndList: the notice, centred at the top, fading out over its last half second (not while Menu is held:
 // the pause menu keeps a picture of the screen).
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     quit_tick(rdram);
     watch_tick(rdram);
+    achievements_tick(rdram, ctx);
     const gpr font = MEM_W(0, kFontPtr);
     const auto now = std::chrono::steady_clock::now();
     if (notice_text.empty() || now >= notice_until || !heap_pointer(font) || aidyn::input::start_held()) {
