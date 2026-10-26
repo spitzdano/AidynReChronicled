@@ -456,7 +456,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   still point into the party a load would replace, so the save is kept, the pause menu closes for a load (gameStateB
   4), which the game turns into CombatState 16 (the fight cleared away, as after a win), and the walk's first frame
   loads it. The lists fit their length: the title's five entries centred with their backing box a row taller for each
-  past three, the Menu page's ten moved up clear of the page arrow.
+  past three, the Menu page's ten moved up clear of the page arrow. The title's backing box (and its Options page's)
+  is drawn as a dark panel with a gold frame and diamonds in place of the game's soft shadow (WidgetBorg8::Render
+  hooked for the IntroMenu's two boxes, gGlobals.titleScreen +0x80 / +0x84).
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.

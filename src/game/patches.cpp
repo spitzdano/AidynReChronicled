@@ -7114,6 +7114,63 @@ extern "C" void aidyn_title_box_fit(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// The title menu's backing box (#37; spitzdano picked a dark panel with a gold frame over the game's soft shadow and a
+// parchment): IntroMenu_ShadowBG's box (a stretched pixel with gradient edges and corners as children) is drawn as a
+// near-opaque dark panel, a gold line round it, a thin darker one inside, and gold diamonds at its corners and the
+// middle of its top and bottom, fading with the game's own box. Hooked at WidgetBorg8::Render's entry: the IntroMenu
+// (gGlobals.titleScreen) keeps its box at +0x84 (and the one fading out at +0x80); for those the game's pieces aren't
+// drawn. The title's Options page gets the same panel.
+namespace {
+    constexpr gpr kTitleScreen = (gpr)(int32_t)0x800D9590;  // gGlobals.titleScreen (IntroMenu*)
+}
+
+extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
+    const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
+    if (!heap_pointer(menu) || !heap_pointer(w) || (w != MEM_W(0x84, menu) && w != MEM_W(0x80, menu))) {
+        return 0;
+    }
+    const uint32_t alpha = MEM_BU(0x5B, w);  // the box's colour: its alpha fades it in and out
+    gpr g = ctx->r5;
+    if (alpha != 0) {
+        const float x0 = (int16_t)MEM_HU(kWidgetPosX, w), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, w);
+        float x1 = x0 + MEM_HU(0x74, w), y1 = y0 + MEM_HU(0x72, w);
+        // The Options page's box is sized down to its Game row (Rename Character), which the title screen hides: it
+        // ran off the bottom of the screen, which the soft shadow hid. A box that would leave the screen ends just
+        // under the Music slider instead (the page's fixed layout: 116 units from the box's top, and a margin).
+        if (y1 > 232.0f) y1 = std::min(y1, y0 + 128.0f);
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        auto a = [&](uint32_t rgb, uint32_t a8) { return rgb << 8 | (a8 * alpha / 255); };
+        constexpr uint32_t kGold = 0xD6B060, kDark = 0x785C2C;
+        g = rect_state(rdram, g);
+        g = rect(rdram, g, x0, y0, x1, y1, a(0x0E0C12, 205), hs, vs);  // the panel
+        auto frame = [&](float i, float t, uint32_t rgb) {  // a line t thick, i in from the edge
+            g = rect(rdram, g, x0 + i, y0 + i, x1 - i, y0 + i + t, a(rgb, 255), hs, vs);
+            g = rect(rdram, g, x0 + i, y1 - i - t, x1 - i, y1 - i, a(rgb, 255), hs, vs);
+            g = rect(rdram, g, x0 + i, y0 + i + t, x0 + i + t, y1 - i - t, a(rgb, 255), hs, vs);
+            g = rect(rdram, g, x1 - i - t, y0 + i + t, x1 - i, y1 - i - t, a(rgb, 255), hs, vs);
+        };
+        frame(0.0f, 0.9f, kGold);
+        frame(2.1f, 0.35f, kDark);
+        auto diamond = [&](float cx, float cy, float r) {  // in thin rows, widest across the middle
+            constexpr int kRows = 14;
+            for (int k = 0; k < kRows; k++) {
+                const float t0 = -r + 2.0f * r * k / kRows, t1 = t0 + 2.0f * r / kRows, mid = (t0 + t1) / 2.0f;
+                const float half = r - std::abs(mid);
+                g = rect(rdram, g, cx - half, cy + t0, cx + half, cy + t1, a(kGold, 255), hs, vs);
+            }
+        };
+        for (float cy : { y0 + 0.45f, y1 - 0.45f }) {
+            diamond(x0 + 0.45f, cy, 2.6f);
+            diamond(x1 - 0.45f, cy, 2.6f);
+            diamond((x0 + x1) / 2.0f, cy, 2.0f);
+        }
+        g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                    MEM_HU(kVres1, (gpr)gGfxManager));
+    }
+    ctx->r2 = g;
+    return 1;
+}
+
 // The Menu page's list once placed (s2 its title, s1 the substruct with the list at +0): ten entries (the field's,
 // with Quick Load and Quit to Title) reach the page arrow under them; the title and list move up 8 units.
 extern "C" void aidyn_menu_list_fit(uint8_t* rdram, recomp_context* ctx) {

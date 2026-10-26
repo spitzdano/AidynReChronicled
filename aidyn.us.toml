@@ -689,6 +689,11 @@ before_vram = 0x8003FCE8
 text = "extern void aidyn_menu_list_fit(uint8_t* rdram, recomp_context* ctx); aidyn_menu_list_fit(rdram, ctx);"
 
 [[patches.hook]]
+func = "WidgetBorg8__Render"
+before_vram = 0x800AF674
+text = "extern int aidyn_title_box(uint8_t* rdram, recomp_context* ctx); if (aidyn_title_box(rdram, ctx)) return;"
+
+[[patches.hook]]
 func = "func_80043598"
 before_vram = 0x80043654
 text = "extern void aidyn_title_box_fit(uint8_t* rdram, recomp_context* ctx); aidyn_title_box_fit(rdram, ctx);"
