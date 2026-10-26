@@ -2612,6 +2612,8 @@ extern "C" int aidyn_combat_bars_hidden() {
     return redesigned_card() ? 1 : 0;
 }
 
+gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, float w, float fx, float fy);  // below
+
 namespace {
     constexpr gpr kHpColorSlot = (gpr)(int32_t)0x80F81780;  // getHPColor's Color32 out (scratch above the game's 15 MB)
 
@@ -2644,6 +2646,10 @@ namespace {
         if (hpf > 0.0f) g = rect(rdram, g, x0, hy0, x0 + (x1 - x0) * hpf, hy1, hp_rgb | 0xFF, hs, vs);
         g = rect(rdram, g, x0, sy0, x1, sy1, 0x262626FF, hs, vs);
         if (stf > 0.0f) g = rect(rdram, g, x0, sy0, x0 + (x1 - x0) * stf, sy1, 0x4A9CFFFF, hs, vs);
+        static const bool tired_test = std::getenv("AIDYN_TIRED_TEST") != nullptr;  // the mark on everyone, to look at it
+        if ((stam <= 0 || tired_test) && hp > 0) {
+            g = tired_mark(rdram, ctx, g, x, y, w, fx, fy);
+        }
         return g;
     }
 }
@@ -4732,7 +4738,9 @@ namespace {
             "Hold \\x84 for spells and skills, or \\x83 for items, choose with the left stick and let go to use it; a "
             "quick tap uses the last one again. \\x87 ends a character's turn.",
             "With a bow or a thrown weapon, \\x86 left and right step through the targets in reach, and the aiming "
-            "marker follows how far you push the left stick, so a light push aims finely." } },
+            "marker follows how far you push the left stick, so a light push aims finely.",
+            "A blue zZ on a portrait means that fighter is out of stamina: they take more damage, hit more weakly and "
+            "can't cast until they rest. The thin blue bar under the hit points shows how much stamina is left." } },
         { "Keyboard and PC", {
             "On a keyboard the arrows move; Z and X are \\x7F and \\x80; K and I are \\x84 and \\x83; J and L are "
             "\\x82 and \\x81; C, Q and E are \\x87, LB and RB; Enter is \\x85. Hold Tab to fast-forward.",
@@ -5218,6 +5226,31 @@ extern "C" gpr aidyn_hp_parts_end(uint8_t* rdram, recomp_context* ctx, gpr g) {
         for (char c : value) w += letter_advance(rdram, ctx, font, c, kScale);
         print_text(rdram, ctx, font, g, value, right - w, row, kScale);
     }
+    font_restore(rdram, font, st);
+    return g;
+}
+
+// The tired mark (#35; spitzdano picked a zZ over a TIRED label and a blue tint): a fighter with no stamina left takes
+// 15% more damage, hits 10 to 20% weaker (CombatEntity's damage formulas) and can't cast, so its portrait gets a small
+// light-blue "zZ" at its top right (the game's letters, small capitals, with the combat log's soft shadow) while its
+// stamina is 0 and it is still standing. Drawn with the portrait's own HUD alignment, after its bars.
+gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, float w, float fx, float fy) {
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!heap_pointer(font)) return g;
+    const float scale = 0.5f * fy;
+    const std::string mark = "zZ";
+    // The bars leave the flat-colour state on: back to the textured one the letters need.
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    float tw = 0.0f;
+    for (char c : mark) tw += letter_advance(rdram, ctx, font, c, scale);
+    const float tx = x + w - tw - 2.0f * fx, ty = y + 1.2f * fy;
+    MEM_W(0x1C, font) = (int32_t)0x101830C8u;  // the shadow, a little down and right
+    print_text(rdram, ctx, font, g, mark, tx + 0.7f, ty + 0.7f, scale);
+    MEM_W(0x1C, font) = (int32_t)0x9CCBFFFFu;
+    print_text(rdram, ctx, font, g, mark, tx, ty, scale);
     font_restore(rdram, font, st);
     return g;
 }

@@ -33,7 +33,7 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 - **Quicksave, autosaves, Quick Load and Continue**, in files of their own beside the Controller Pak; Load Game and
   Quick Load during fights too, and Quit to Title.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
-- **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP and stamina, easier aiming, what a
+- **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP, stamina and a tired mark, easier aiming, what a
   spell, skill or potion does shown while you choose it, and faster turns if you like (your party's and the enemies').
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
