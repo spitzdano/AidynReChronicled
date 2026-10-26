@@ -35,7 +35,7 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
   Quick Load during fights too, and Quit to Title.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
 - **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP, stamina and a tired mark, easier aiming, what a
-  spell, skill or potion does shown while you choose it, and faster turns if you like (your party's and the enemies').
+  spell, skill or potion does and costs shown while you choose it, and faster turns if you like (your party's and the enemies').
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
 - **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options,

@@ -5265,6 +5265,8 @@ gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, flo
 // holds: combat_entry_key. Aidyn Patch and Aidyn Plus keep the 1.0's texts (the same bytes, even for the spells
 // they change). settings.json graphics.combat_log off hides it too.
 extern "C" void func_romstrings(uint8_t* rdram, recomp_context* ctx);  // RomString::Load(rom, size)
+extern "C" void Entity__CheckSpellWizard(uint8_t* rdram, recomp_context* ctx);
+extern "C" void CharSkills__getModdedSkill(uint8_t* rdram, recomp_context* ctx);
 extern "C" void RomString__Free(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
@@ -5331,7 +5333,7 @@ namespace {
     // func_80089114): its item ID in varU16. An item's spell (func_80089178): varU16 where (2 armour, 3 shield,
     // 4 weapon, 5 gear) and varU8 the gear slot; the item (CharSheet +0x20 armour[2], +0x24 weapon, +0x28 gear list
     // -> pItem[]) -> spellCharge (+0x10) -> Spell (+0) -> its ID (+0).
-    uint32_t combat_entry_key(uint8_t* rdram) {
+    uint32_t combat_entry_key(uint8_t* rdram, gpr* spell_out = nullptr) {
         const gpr menu = combat_menu;
         if (!heap_pointer(menu) || MEM_W(0, (gpr)(int32_t)0x800E3170) != menu) return 0;
         const gpr list = MEM_W(0x7C, menu);
@@ -5352,6 +5354,7 @@ namespace {
             const gpr book = MEM_W(0x2C, sheet);
             if (!heap_pointer(book) || var8 >= MEM_BU(4, book)) return 0;
             const gpr spells = MEM_W(0, book);
+            if (spell_out != nullptr && heap_pointer(spells)) *spell_out = MEM_W(4 * var8, spells);
             return heap_pointer(spells) ? spell_key(MEM_W(4 * var8, spells)) : 0;
         }
         if (afunc == kLayOnHandsAFunc) return 0x40000u;
@@ -5459,7 +5462,8 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (!box.seen || !aidyn::settings::graphics().combat_log || !heap_pointer(font)) {
         return g;
     }
-    const uint32_t key = combat_entry_key(rdram);
+    gpr spell = 0;
+    const uint32_t key = combat_entry_key(rdram, &spell);
     if (key == 0) {
         return g;
     }
@@ -5535,8 +5539,37 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
         item = (uint16_t)(0x1000 | (key & 0xFF));
         pack = "In your pack: " + std::to_string(pack_count(rdram, ctx, item));
     }
+    // The stamina line (#39): what it costs the one acting, and how much stamina they have. A spell: its ST less the
+    // caster's rank in it (Entity::CheckSpellWizard), at least 1, as the game charges it (gear with a stamina bonus pays
+    // first); Lay On Hands 3 (Party::PrintHeal); Heal With Herbs 5 less the Healer rank, at least 1 (Party::HerbHeal);
+    // Perform 1 each round it goes on (CombatTurn). Not for potions or an item's spell.
+    std::string stamina;
+    {
+        const gpr combat = MEM_W(0, kCombatP);
+        const gpr ent = heap_pointer(combat) ? MEM_W(kCurrentEnt, combat) : 0;
+        const gpr sheet = heap_pointer(ent) ? MEM_W(0x40, ent) : 0;
+        const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0, skills = heap_pointer(sheet) ? MEM_W(0x1C, sheet) : 0;
+        int cost = -1;
+        const char* each = "";
+        if (key >> 16 == 1 && heap_pointer(spell) && heap_pointer(sheet)) {
+            const int rank = (int)(call_game(rdram, ctx, Entity__CheckSpellWizard, (uint32_t)sheet, (uint32_t)spell) & 0xFF);
+            cost = std::max(1, (int)MEM_BU(0x17, spell) - rank);  // SpellInstance stamina (after the 0x14-byte ItemInstance)
+        } else if (key == 0x40000u) {
+            cost = 3;
+        } else if (key == 0x40001u && heap_pointer(skills)) {
+            const int healer = (int)(int8_t)(call_game(rdram, ctx, CharSkills__getModdedSkill, (uint32_t)skills, 2) & 0xFF);
+            cost = std::max(1, 5 - healer);
+        } else if (key == 0x40002u) {
+            cost = 1;
+            each = " a round";
+        }
+        if (cost > 0 && heap_pointer(stats)) {
+            const int have = (int)(int32_t)call_game(rdram, ctx, CharStats__getModded, (uint32_t)stats, 5);  // STAT_STAM
+            stamina = "Stamina   " + std::to_string(cost) + each + " / " + std::to_string(std::max(0, have));
+        }
+    }
     constexpr float kIcon = 9.0f;  // the icon's size (its 16x16 texels drawn this many units across)
-    const float footer_h = pack.empty() ? 0.0f : kIcon + 3.0f;
+    const float footer_h = (pack.empty() ? 0.0f : kIcon + 3.0f) + (stamina.empty() ? 0.0f : kLine + (pack.empty() ? 3.0f : 0.0f));
     const float lines_h = spell_lines.size() * kLine + footer_h;
     const float x0 = right ? right_x
                            : std::clamp(box.x + box.w / 2.0f - width / 2.0f, 4.0f - shift, 316.0f + shift - width);
@@ -5560,6 +5593,11 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
             MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0xD8B070FFu);  // the combat log's gold
             print_text(rdram, ctx, font, g, pack, x0 + shift + kIcon + 3.0f,
                        y0 + spell_lines.size() * kLine + 3.0f + (kIcon - kLine) / 2, kScale);
+        }
+        if (!stamina.empty()) {  // under the pack line, in the stamina bar's blue
+            MEM_W(0x1C, font) = (int32_t)(pass == 0 ? 0x000000E0u : 0x8EC5FFFFu);
+            const float sy = y0 + spell_lines.size() * kLine + 3.0f + (pack.empty() ? 0.0f : kIcon + 1.0f);
+            print_text(rdram, ctx, font, g, stamina, x0 + shift + kIcon + 3.0f, sy, kScale);
         }
     }
     font_restore(rdram, font, st);
