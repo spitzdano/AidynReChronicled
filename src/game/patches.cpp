@@ -2316,6 +2316,14 @@ extern "C" void aidyn_actors_in_view(uint8_t* rdram, recomp_context* ctx) {
     ctx->f24.fl = in_view_cos(0.7417525f);
 }
 
+// The ground cells too (#10): the zone engine draws a map cell only if it touches a triangle from the camera out
+// 200 units at 42.5 degrees either side of its direction (func_8000D270, FUN_80010598 in the decomp: the angle in
+// f20 for its two Vec2Rot calls), so at 21:9 the picture's sides showed no ground, the dark below-horizon fill
+// in its place. Widened the same way, in degrees.
+extern "C" void aidyn_cells_in_view(uint8_t* rdram, recomp_context* ctx) {
+    ctx->f20.fl = std::acos(in_view_cos(0.7417525f)) * 57.29578f;
+}
+
 extern "C" void aidyn_props_in_view(uint8_t* rdram, recomp_context* ctx) {
     ctx->f24.fl = in_view_cos(0.6544875f);
     ctx->f22.fl = in_view_cos(0.7417525f);

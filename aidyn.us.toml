@@ -274,6 +274,11 @@ before_vram = 0x80013E58
 text = "extern void aidyn_actors_in_view(uint8_t* rdram, recomp_context* ctx); aidyn_actors_in_view(rdram, ctx);"
 
 [[patches.hook]]
+func = "func_8000D270"
+before_vram = 0x8000D37C
+text = "extern void aidyn_cells_in_view(uint8_t* rdram, recomp_context* ctx); aidyn_cells_in_view(rdram, ctx);"
+
+[[patches.hook]]
 func = "RenderVoxelScenes"
 before_vram = 0x8000C70C
 text = "extern void aidyn_props_in_view(uint8_t* rdram, recomp_context* ctx); aidyn_props_in_view(rdram, ctx);"
