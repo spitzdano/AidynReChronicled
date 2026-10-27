@@ -8421,6 +8421,10 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     const float cap_w = std::clamp(text_w + pad, hu * (cover ? 1.4f : 0.9f), std::max(slot_w, hu * (cover ? 1.4f : 1.15f)));
     const float cap_x = slot_x + (slot_w - cap_w) / 2.0f;
     const float end = 4.0f * hu / 12.0f;  // the cap's ends are 4 of its 12 texels
+    // Where the letters' ink sits: the game's text is placed by the top of its box (9 units at scale 1), and a capital's
+    // middle is about 1.95 units below that, so the middle of the cap is where y + that is; horizontally the advance
+    // includes a little room after the last letter, so the ink starts slightly right (measured on the painted caps).
+    constexpr float kLetterCentre = 3.25f, kLetterDx = 0.0f;
     // Each piece is drawn wider by its pad (the texels past its picture are transparent), the middle stretched to fit.
     // They overlap by half a unit where they meet: drawn edge to edge, the filtering at the edges left a thin line.
     constexpr float kOverlap = 0.5f;
@@ -8433,7 +8437,7 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     const FontState st = font_save(rdram, font);
     call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
     MEM_W(0x1C, font) = (int32_t)(0xF2E6C800u | alpha);
-    print_text(rdram, ctx, font, g, face.text, cap_x + (cap_w - text_w) / 2.0f, top + (hu - 9.0f * scale) / 2.0f - 0.3f, scale);
+    print_text(rdram, ctx, font, g, face.text, cap_x + (cap_w - text_w) / 2.0f + kLetterDx * scale, top + hu / 2.0f - kLetterCentre * scale, scale);
     font_restore(rdram, font, st);
     if (text_state) {  // inside the game's own text: its next letter wants the textured state again
         return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
