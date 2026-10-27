@@ -696,6 +696,64 @@ else:  # the drawings: padded the same way
                ("key_cap_r", 4 + KEY_PAD, 12, padded(key_cap("r")))]
     IMAGES += [(f"key_mouse_{n}", 12 + KEY_PAD, 12, padded(mouse_icon(n))) for n in MOUSE_NAMES]
 
+# The letters on the caps are pictures too (the game's text engine places a letter by whole units, which left them a
+# little off the cap's centre by an amount that changed with the cap's size and the page): one picture per character, 12
+# texels high like the cap with the letters' capital height centred on the cap's face (its dark part, rows 2.0 to 10.0 of
+# the 12), and as wide as the letter's ink plus a little. src/game/patches.cpp, draw_button_cap, lays them out by the
+# widths in kKeyGlyphs and centres the whole name on the face.
+KEY_FACE_CENTRE = 5.95   # texels from the cap's top
+KEY_CAP_HEIGHT = 4.6     # a capital letter's height, texels
+KEY_GLYPH_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-+/.;'[]"
+KEY_INK = "#efe6d4"
+
+
+def _key_glyph_metrics():
+    size = 40
+    while True:
+        top, base = cap_rows(MARCELLUS, size, 70 * 2, 200)
+        if base - top >= KEY_CAP_HEIGHT * SS or size > 200:
+            break
+        size += 1
+    baseline = round((KEY_FACE_CENTRE + KEY_CAP_HEIGHT / 2) * SS)
+    out = {}
+    for ch in KEY_GLYPH_CHARS:
+        m = dilate(text_mask(ch, MARCELLUS, size, 400, 12 * SS, 100, baseline), 1)  # a little bolder: they're small
+        cols = np.nonzero(m.max(axis=0) > 0.02)[0]
+        if len(cols) == 0:
+            continue
+        ink = m[:, cols.min():cols.max() + 1]
+        if ch == "0":  # the font's zero is its O: a little narrower (and two pictures can't share pixels)
+            n = round(ink.shape[1] * 0.82)
+            src = np.linspace(0, ink.shape[1] - 1, n)
+            ink = np.stack([np.interp(src, np.arange(ink.shape[1]), row) for row in ink])
+        out[ch] = (ink, ink.shape[1] / SS)
+    return out
+
+
+def key_glyph(ch, ink_w, mask):
+    def draw(w, h):
+        img = np.zeros((h * SS, w * SS, 4), np.float32)
+        x0 = (w * SS - mask.shape[1]) // 2
+        a = mask[:, :min(mask.shape[1], w * SS)]
+        img[:, x0:x0 + a.shape[1], :3] = rgb(KEY_INK) * a[..., None]
+        img[:, x0:x0 + a.shape[1], 3] = a
+        return img
+    return draw
+
+
+KEY_GLYPHS = _key_glyph_metrics()
+KEY_GLYPH_LINES = []
+_KEY_GLYPH_SEEN = set()
+for _ch, (_mask, _ink) in KEY_GLYPHS.items():
+    _gw = int(np.ceil(_ink + 0.3))
+    _draw = key_glyph(_ch, _ink, _mask)
+    # (two letters that come out the same at the game's size, I and 1, are told apart by a texel of width)
+    while (_gw, to_rgba16(_draw(_gw, 12), _gw, 12).tobytes()) in _KEY_GLYPH_SEEN:
+        _gw += 1
+    _KEY_GLYPH_SEEN.add((_gw, to_rgba16(_draw(_gw, 12), _gw, 12).tobytes()))
+    IMAGES.append((f"key_g_{ord(_ch):02x}", _gw, 12, _draw))
+    KEY_GLYPH_LINES.append(f"        {{ {ord(_ch)}, {_ink:.3f}f }},")
+
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"],
@@ -745,6 +803,9 @@ def main():
               "    struct KeySlot {", "        uint16_t x, w;", "        const char* button;", "    };",
               "    struct KeyedImage {", "        const char* name;", "        uint16_t h;", "        uint8_t n;", "        KeySlot slots[4];",
               "    };", "    inline constexpr KeyedImage kKeyed[] = {"] + keyed_lines + ["    };", "",
+              "    // The letters on the caps (key_g_<code>): each ink's width in texels; its picture is centred on the ink.",
+              "    struct KeyGlyph {", "        int ch;", "        float ink;", "    };",
+              "    inline constexpr KeyGlyph kKeyGlyphs[] = {"] + KEY_GLYPH_LINES + ["    };", "",
               "    // The turn order strip's pieces (tools/branding/turn_order.py), in texels: the bar's middle row and a",
               "    // slot's portrait window (left, top, right, bottom; 0 for the others).",
               "    struct TurnPiece {", "        const char* name;", "        float bar_mid, x0, y0, x1, y1;", "    };",

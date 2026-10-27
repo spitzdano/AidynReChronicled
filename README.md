@@ -272,7 +272,7 @@ messages) become caps too: N64BorgImageDraw's entry hook (`glyph_as_key`) draws 
 frame `update_glyph_widths` sets those cells' widths in the font's tables to the caps' so the text lays out around them (the
 originals come back with the pad). The Controls page's hints change too, and a cap covers the DETAILS button painted into
 the inventory page. The caps and mouse pictures are placeholders (`key_cap_*`, `key_mouse_*`). No two pictures may have
-the same pixels (the renderer stops on equal texture hashes: make_branding.py checks).
+the same pixels (the renderer stops on equal texture hashes: make_branding.py checks). The letters on the caps are pictures too (`key_g_<code>`, one per character, 12 texels high like the cap with the capitals centred on its face, `kKeyGlyphs` giving each ink's width): the game's text engine places a letter by whole units, which left them off the cap's centre by a different amount on each page.
 While a conversation is up, "Continue [A]" ("Choose" when it offers answers; the key bound to A while the keyboard
 was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AIDYN_DIALOGUE_LOG=1`).
 `AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with

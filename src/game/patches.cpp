@@ -8382,6 +8382,27 @@ namespace {
     }
 }
 
+// The ink width (texels) of a character's picture on a cap, a space's 0, -1 for one with no picture.
+static float key_glyph_ink(unsigned char c) {
+    for (const auto& k : aidyn::branding::kKeyGlyphs) {
+        if (k.ch == c) return k.ink;
+    }
+    return c == ' ' ? 0.0f : -1.0f;
+}
+
+// A name's width on a cap, texels: its letters' ink with a gap between and spaces of 1.4.
+static float key_text_width(const std::string& text) {
+    constexpr float kGap = 0.5f, kSpace = 1.4f;
+    float w = 0.0f;
+    int shown = 0;
+    for (unsigned char c : text) {
+        const float ink = key_glyph_ink(c);
+        if (ink < 0.0f) continue;
+        w += (c == ' ' ? kSpace : ink) + (shown++ > 0 ? kGap : 0.0f);
+    }
+    return w;
+}
+
 // A cap (or a mouse picture) for `button` in a slot w x h texels at (x, y) on screen (pixels, like draw_rgba16's), a texel
 // being sx x sy pixels; cover: no narrower than the round icon it must hide (a page's painted button).
 gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover, bool text_state) {
@@ -8399,6 +8420,7 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     };
     const SlotFace face = slot_face(button);
     const float slot_x = x / hs, slot_w = w * sx / hs, top = y / vs;
+    constexpr float kFaceCentre = 5.95f;  // texels from the cap's top (make_branding.py: KEY_FACE_CENTRE)
     constexpr float kPad = 2.0f;  // the cap pieces' and mice's transparent texels at the right (make_branding.py: KEY_PAD)
     if (face.mouse != nullptr) {
         piece(face.mouse, slot_x + (slot_w - hu) / 2.0f, top, hu * (12.0f + kPad) / 12.0f, hu);
@@ -8407,24 +8429,18 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
         }
         return g;
     }
-    // The painted cap's rim is thick: its face is about 6/10 of its height, and the ornate ends take most of their 4/12
-    // each: the letters need that much room at each side.
-    const float pad = hu * 0.55f;
-    float scale = 0.055f * hu;
-    float text_w = 0.0f;
-    for (char c : face.text) text_w += letter_advance(rdram, ctx, font, c, scale);
-    if (text_w > slot_w - pad - 0.5f) {  // a long name: smaller letters, to fit the slot
-        scale *= (slot_w - pad - 0.5f) / text_w;
-        text_w = 0.0f;
-        for (char c : face.text) text_w += letter_advance(rdram, ctx, font, c, scale);
+    // The letters are pictures (make_branding.py, key_g_<code>: 12 texels high like the cap, the capitals' height centred
+    // on the cap's face, as wide as their ink), so they are placed exactly: no whole-unit rounding of the game's text.
+    // A texel is hu / 12 units; the caps' ends take 4 of 12 texels each, so the name needs that much room at each side.
+    const float u = hu / 12.0f, pad = hu * 0.55f, gap = 0.5f, space = 1.4f;  // gap and space in texels (key_text_width's)
+    const float text_w = key_text_width(face.text);  // texels
+    float k = 1.0f;  // a long name: smaller letters, to fit the slot
+    if (text_w * u > slot_w - pad - 0.5f) {
+        k = (slot_w - pad - 0.5f) / (text_w * u);
     }
-    const float cap_w = std::clamp(text_w + pad, hu * (cover ? 1.4f : 0.9f), std::max(slot_w, hu * (cover ? 1.4f : 1.15f)));
+    const float cap_w = std::clamp(text_w * u * k + pad, hu * (cover ? 1.4f : 0.9f), std::max(slot_w, hu * (cover ? 1.4f : 1.15f)));
     const float cap_x = slot_x + (slot_w - cap_w) / 2.0f;
     const float end = 4.0f * hu / 12.0f;  // the cap's ends are 4 of its 12 texels
-    // Where the letters' ink sits: the game's text is placed by the top of its box (9 units at scale 1), and a capital's
-    // middle is about 1.95 units below that, so the middle of the cap is where y + that is; horizontally the advance
-    // includes a little room after the last letter, so the ink starts slightly right (measured on the painted caps).
-    constexpr float kLetterCentre = 3.25f, kLetterDx = 0.0f;
     // Each piece is drawn wider by its pad (the texels past its picture are transparent), the middle stretched to fit.
     // They overlap by half a unit where they meet: drawn edge to edge, the filtering at the edges left a thin line.
     constexpr float kOverlap = 0.5f;
@@ -8432,17 +8448,26 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     piece("key_cap_l", cap_x, top, end * (4.0f + kPad) / 4.0f, hu);
     piece("key_cap_m", cap_x + end - kOverlap, top, mid_w * (2.0f + kPad) / 2.0f, hu);
     piece("key_cap_r", cap_x + cap_w - end - kOverlap, top, end * (4.0f + kPad) / 4.0f, hu);
-    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
-                                MEM_HU(kVres1, (gpr)gGfxManager));
-    const FontState st = font_save(rdram, font);
-    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
-    MEM_W(0x1C, font) = (int32_t)(0xF2E6C800u | alpha);
-    print_text(rdram, ctx, font, g, face.text, cap_x + (cap_w - text_w) / 2.0f + kLetterDx * scale, top + hu / 2.0f - kLetterCentre * scale, scale);
-    font_restore(rdram, font, st);
+    float pen = cap_x + (cap_w - text_w * u * k) / 2.0f;
+    const float letter_top = top + (kFaceCentre / 12.0f) * hu * (1.0f - k);  // the face's centre stays where it is
+    for (unsigned char c : face.text) {
+        const float ink = key_glyph_ink(c);
+        if (ink < 0.0f) continue;
+        if (c != ' ') {
+            char name[16];
+            std::snprintf(name, sizeof name, "key_g_%02x", c);
+            const int i = find_image(name);
+            if (i >= 0) {
+                const auto& img = aidyn::branding::kImages[i];
+                piece(name, pen - (img.w - ink) / 2.0f * u * k, letter_top, img.w * u * k, hu * k);
+            }
+        }
+        pen += ((c == ' ' ? space : ink) + gap) * u * k;
+    }
     if (text_state) {  // inside the game's own text: its next letter wants the textured state again
         return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
     }
-    return prompt_state(rdram, g, alpha);  // the next picture draw wants the prompts' state again
+    return g;
 }
 
 gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy) {
@@ -8484,9 +8509,7 @@ namespace {
     int glyph_cap_width(uint8_t* rdram, recomp_context* ctx, gpr font, const char* button) {
         const SlotFace face = slot_face(button);
         if (face.mouse != nullptr) return 9;
-        float w = 0.0f;
-        for (char c : face.text) w += letter_advance(rdram, ctx, font, c, 0.055f * 9.0f);
-        return std::max(9, (int)std::ceil(w + 0.55f * 9.0f));
+        return std::max(9, (int)std::ceil(key_text_width(face.text) * 9.0f / 12.0f + 0.55f * 9.0f));
     }
 }
 
