@@ -41,6 +41,7 @@
 #endif
 
 #include "rt64_context.h"
+#include "controls.h"
 #include "input.h"
 #include "audio.h"
 #include "nfd.h"
@@ -171,7 +172,9 @@ static void update_gfx(void*) {
             break;
         }
         aidyn::input::handle_event(event);
+        aidyn::controls::handle_event(event);
     }
+    aidyn::controls::apply_mouse_mode();  // the field captures the mouse for the camera, anything else lets it go
 }
 
 // Audio tasks run the recompiled aspMain. Anything else is a bug in the port: graphics tasks go to RT64

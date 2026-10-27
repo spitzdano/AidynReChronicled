@@ -32,6 +32,8 @@ namespace {
 // They are drawn only when settings.json has "overscan_borders": true; everything else is as the original.
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
+std::string help_keys_text();               // "Keys on the prompts", below
+gpr draw_card_keys(uint8_t* rdram, recomp_context* ctx, gpr g);  // the keys beside the controls card's lines, below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open);  // "Combat log"
 gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Spell descriptions in combat", below
@@ -78,6 +80,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     heap_trace_frame(rdram);
     free_spill_frame(rdram, ctx);
     g = aidyn_prompts(rdram, g);
+    g = draw_card_keys(rdram, ctx, g);
     if (combat_log_frame) {
         combat_move_log(rdram);
         g = draw_combat_log(rdram, ctx, g, combat_card_top, combat_menu_open);
@@ -299,6 +302,7 @@ extern "C" void aidyn_menu_opened(uint8_t* rdram, gpr scroll) {
 // the camera's own direction as its "behind" point, so the camera stays where it was put and follows at the same
 // distance; pressing the right stick (R3) puts it back behind the player at its resting height, as the original. Movement is relative to
 // the camera, so an angle relative to the player's facing would make the camera chase itself round in circles.
+#include "controls.h"
 #include "input.h"
 #include "watch.h"
 #include <algorithm>
@@ -356,8 +360,16 @@ extern "C" void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor) {
     if (aidyn::settings::graphics().camera_invert_y) {
         ry = -ry;
     }
-    if (rx != 0.0f) {
-        const float a = rx * kTurnSpeed * dt * kDegToRad;  // stick right: the view turns right
+    // The mouse (src/main/controls.cpp): degrees turned and tilted since the last tick, on top of the stick's.
+    float mouse_turn = 0.0f, mouse_tilt = 0.0f;
+    aidyn::controls::look(&mouse_turn, &mouse_tilt);
+    if (aidyn::settings::graphics().camera_invert_x) {
+        mouse_turn = -mouse_turn;
+    }
+    const float turn = rx * kTurnSpeed * dt + mouse_turn;   // right positive
+    const float tilt = ry * kTurnSpeed * dt + mouse_tilt;   // up positive
+    if (turn != 0.0f) {
+        const float a = turn * kDegToRad;  // stick right: the view turns right
         const float c = std::cos(a), s = std::sin(a);
         const float ax = read_f32(rdram, cam + 0x0C), az = read_f32(rdram, cam + 0x14);
         for (int point : { 0x00, 0x18 }) {  // pos, posTarget
@@ -367,12 +379,12 @@ extern "C" void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor) {
         }
         free_camera = true;
     }
-    if (ry != 0.0f) {
+    if (tilt != 0.0f) {
         if (std::isnan(rest_angle)) {
             rest_angle = read_f32(rdram, cam + 0x4C);
         }
         const float lo = rest_angle - kTiltRange, hi = rest_angle + kTiltRange;
-        float angle = read_f32(rdram, cam + 0x48) - ry * kTurnSpeed * dt;  // stick up: the camera dips, looking up
+        float angle = read_f32(rdram, cam + 0x48) - tilt;  // stick up: the camera dips, looking up
         angle = std::clamp(angle, lo, hi);
         write_f32(rdram, cam + 0x48, angle);
         write_f32(rdram, cam + 0x4C, angle);
@@ -3144,6 +3156,12 @@ namespace {
     const Card kCombatCard = { { "ctl_move", "ctl_attack", "ctl_magic", "ctl_endturn", "ctl_combatcam", "ctl_ff",
                                  "ctl_hide", nullptr }, true };
 
+    struct CardRow {
+        std::string name;
+        float x, y, h;  // where its keys go (units of the 320x240 screen)
+    };
+    std::vector<CardRow> card_rows;  // the card's lines as drawn this frame
+
     gpr draw_card(uint8_t* rdram, gpr g, const Card& card) {
         constexpr float kMargin = 6.0f, kPad = 2.0f, kMessagePortraitX = 25.0f, kMessageTop = 178.0f;
         int rows[9], n = 0;
@@ -3183,6 +3201,8 @@ namespace {
         float y = y0 + kPad;
         for (int k = 0; k < n; k++) {
             g = draw_rgba16(rdram, g, rows[k], (x0 + kPad) * hs, y * vs, hs, vs);
+            card_rows.push_back({ aidyn::branding::kImages[rows[k]].name, x0 + kPad + (float)ink_width(rows[k]) + 3.0f, y,
+                                  (float)aidyn::branding::kImages[rows[k]].h });
             y += aidyn::branding::kImages[rows[k]].h;
         }
         return hud_end(rdram, g);
@@ -3567,6 +3587,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             g = hud_end(rdram, g);
         }
     }
+    card_rows.clear();
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
     const uint8_t state_a = MEM_BU(0, (gpr)(int32_t)kGameStateA);
@@ -4281,12 +4302,16 @@ namespace aidyn {
 }
 
 void report_problem(uint8_t* rdram, recomp_context* ctx);  // "Report a problem", below
+void controls_open(uint8_t* rdram, recomp_context* ctx);     // "Controls page", below
+gpr controls_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act);
+void title_controls_open(uint8_t* rdram, recomp_context* ctx);
+gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 
 namespace {
     // Our entries' ids (the game's are 0xA0..0x17A and 9999), their texts and their pages' titles.
     constexpr uint16_t kRcId = 0x7A11, kDisplayId = 0x7A12;
     constexpr gpr kRcText = (gpr)(int32_t)0x80F81100;           // the entries' texts (above the game's 15 MB), 0x20 each
-    enum RcKind { kRcGameplay = 0, kRcDisplay = 1 };
+    enum RcKind { kRcGameplay = 0, kRcDisplay = 1, kRcControls = 2 };
     constexpr const char* kRcEntryText[] = { "ReChronicled", "Display" };
     constexpr uint16_t kRcEntryId[] = { kRcId, kDisplayId };
     constexpr gpr kBigAssMenu = (gpr)(int32_t)0x800D9558;       // gGlobals.BigAssMenu (the pause menu)
@@ -4378,6 +4403,7 @@ namespace {
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
+            { "rc_controls", nullptr, "", nullptr, nullptr, nullptr, controls_open },
             { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
         if (aidyn_restored_samples_available()) {  // the rechronicled-samples pack ("Restored instrument samples")
@@ -4408,7 +4434,7 @@ namespace {
         int repeat = 0;                   // frames up / down / left / right have been held
         int pulse = 0;                    // frames since opening: the highlight's colour
     } rc;
-    int rc_row[2] = { 0, 0 };             // each page's highlighted row, kept between visits
+    int rc_row[3] = { 0, 0, 0 };             // each page's highlighted row, kept between visits
 
     uint32_t rc_highlight() {
         const int k = rc.pulse % 40;
@@ -4530,6 +4556,7 @@ extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
 
 // Graphics__EndList: the page, over everything.
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    g = title_controls_page(rdram, ctx, g);
     if (!rc.open) {
         return g;
     }
@@ -4551,6 +4578,9 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     rc.repeat = dirs != 0 ? rc.repeat + 1 : 0;
     const uint32_t repeated = (rc.repeat > 24 && rc.repeat % 6 == 0) ? dirs : 0;
     const uint32_t act = pressed | repeated;
+    if (rc.kind == kRcControls) {
+        return controls_page(rdram, ctx, g, b, pressed, act);
+    }
     const std::vector<RcRow> rows = rc_rows(rc.kind);
     int& row = rc_row[rc.kind];
     row = std::min(row, (int)rows.size() - 1);
@@ -4774,12 +4804,10 @@ namespace {
             "Hold \\x84 for spells and skills, or \\x83 for items, choose with the left stick and let go to use it; a "
             "quick tap uses the last one again. \\x87 ends a character's turn.",
             "With a bow or a thrown weapon, \\x86 left and right step through the targets in reach, and the aiming "
-            "marker follows how far you push the left stick, so a light push aims finely.",
-            "A blue zZ on a portrait means that fighter is out of stamina: they take more damage, hit more weakly and "
-            "can't cast until they rest. The thin blue bar under the hit points shows how much stamina is left." } },
+            "marker follows how far you push the left stick. A blue zZ on a portrait means that fighter is out of "
+            "stamina: they take more damage, hit more weakly and can't cast until they rest." } },
         { "Keyboard and PC", {
-            "On a keyboard the arrows move; Z and X are \\x7F and \\x80; K and I are \\x84 and \\x83; J and L are "
-            "\\x82 and \\x81; C, Q and E are \\x87, LB and RB; Enter is \\x85. Hold Tab to fast-forward.",
+            "@KEYS@",
             "F1 opens this edition's manual in your web browser. F11, or Alt and Enter, switches between a window and "
             "the full screen (borderless), as does Window on the Display page; it's remembered." } },
     };
@@ -4827,7 +4855,7 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
         subject_choices.push_back(c);
         int prev = c;
         for (const char* page : s.pages) {
-            const int p = add({ page });
+            const int p = add({ std::strcmp(page, "@KEYS@") == 0 ? help_keys_text() : std::string(page) });
             added[prev - first].next = p;
             prev = p;
         }
@@ -4841,7 +4869,8 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
     }
     added[menu - first].choices[subject_choices.size() - 1] = back;
     const int total = first + (int)added.size();
-    if (total > 255) {
+    if (total > 255) {  // the book's links are bytes: a page too many and the whole topic is left out
+        fprintf(stderr, "Help book: %d commands, more than the 255 a link can reach: the ReChronicled topic is left out\n", total);
         return;
     }
     for (int k = 0; k < (int)added.size(); k++) {
@@ -7097,7 +7126,7 @@ bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
 namespace {
     constexpr uint16_t kQuitId = 0x7A14;
     constexpr uint16_t kLoadGameId = 0xA0;                     // the game's Load Game (OptionN_LoadGame)
-    constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0;
+    constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0, kControlsText = kRcText + 0xC0;
     constexpr gpr kCombatNext = (gpr)(int32_t)0x800D9455;      // gGlobals.combatBytes[1]: the fight's state after the pause
     constexpr gpr kCommonStrings = (gpr)(int32_t)0x800DA0D8;   // gGlobals.CommonStrings
     constexpr const char* kQuitLabel = "Quit to Title";
@@ -7222,7 +7251,14 @@ extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
     if (!heap_pointer(memory)) {
         return;
     }
-    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory,
+    const gpr controls = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory,
+                                                 (uint32_t)put_menu_text(rdram, kControlsText, "Controls"), 400);
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)controls);
+    const gpr memory2 = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory2)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory2,
                                               (uint32_t)put_menu_text(rdram, kQuitGameText, "Quit Game"), 400);
     call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
     const int up = std::max(0, list_entries(rdram, list) - 3) * kTitleRow / 2;
@@ -7277,6 +7313,36 @@ namespace {
     }
 }
 
+// The panel from (x0, y0) to (x1, y1), faded by alpha: the slate body with its rails, the top bar (28 units, behind a
+// title) and the closing bar (16).
+gpr title_panel(uint8_t* rdram, recomp_context* ctx, gpr g, float x0, float y0, float x1, float y1, uint32_t alpha) {
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    g = tinted_image_state(rdram, g, 0xFFFFFF00u | alpha);
+    // The bars: 28 units tall at the top (behind the title), 16 at the bottom; their painted part is rows 14..226
+    // of 240, its rails at the top and bottom edges. The slate body runs from under the top bar's lower rail to
+    // under the bottom bar's upper rail.
+    constexpr float kTop = 28.0f, kFoot = 16.0f;
+    const float ty = y0 + 7.0f, fy = y1 - kFoot + 1.0f;  // the top bar centred on the title
+    const float bx0 = x0 + 3.0f, bx1 = x1 - 3.0f, by0 = ty + kTop * 207.0f / 240.0f, by1 = fy + kFoot * 30.0f / 240.0f;
+    const int nx = std::max(1, (int)std::lround((bx1 - bx0) / 32.0f)), ny = std::max(1, (int)std::lround((by1 - by0) / 32.0f));
+    for (int j = 0; j < ny; j++) {
+        for (int i = 0; i < nx; i++) {
+            g = panel_piece(rdram, g, "tp_body", bx0 + (bx1 - bx0) * i / nx, by0 + (by1 - by0) * j / ny,
+                            (bx1 - bx0) / nx, (by1 - by0) / ny, hs, vs);
+        }
+    }
+    const int nr = std::max(1, (int)std::lround((by1 - by0) / 64.0f));
+    for (int j = 0; j < nr; j++) {
+        const float ry = by0 + (by1 - by0) * j / nr, rh = (by1 - by0) / nr;
+        g = panel_piece(rdram, g, "tp_rail_l", bx0 - 2.0f, ry, 5.0f, rh, hs, vs);
+        g = panel_piece(rdram, g, "tp_rail_r", bx1 - 3.0f, ry, 5.0f, rh, hs, vs);
+    }
+    g = panel_bar(rdram, g, "tp_cap_l", x0 - 10.0f, x1 + 10.0f, ty, kTop, hs, vs);
+    g = panel_bar(rdram, g, "tp_cap_l", x0 - 2.0f, x1 + 2.0f, fy, kFoot, hs, vs);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
+}
+
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
     if (!heap_pointer(menu) || !heap_pointer(w) || (w != MEM_W(0x84, menu) && w != MEM_W(0x80, menu))) {
@@ -7291,31 +7357,7 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
         // ran off the bottom of the screen. A box that would leave the screen ends just under the Music slider
         // instead (the page's fixed layout: 116 units from the box's top, and room for the closing bar).
         if (y1 > 232.0f) y1 = std::min(y1, y0 + 140.0f);
-        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-        g = tinted_image_state(rdram, g, 0xFFFFFF00u | alpha);
-        // The bars: 28 units tall at the top (behind the title), 16 at the bottom; their painted part is rows 14..226
-        // of 240, its rails at the top and bottom edges. The slate body runs from under the top bar's lower rail to
-        // under the bottom bar's upper rail.
-        constexpr float kTop = 28.0f, kFoot = 16.0f;
-        const float ty = y0 + 7.0f, fy = y1 - kFoot + 1.0f;  // the top bar centred on the title
-        const float bx0 = x0 + 3.0f, bx1 = x1 - 3.0f, by0 = ty + kTop * 207.0f / 240.0f, by1 = fy + kFoot * 30.0f / 240.0f;
-        const int nx = std::max(1, (int)std::lround((bx1 - bx0) / 32.0f)), ny = std::max(1, (int)std::lround((by1 - by0) / 32.0f));
-        for (int j = 0; j < ny; j++) {
-            for (int i = 0; i < nx; i++) {
-                g = panel_piece(rdram, g, "tp_body", bx0 + (bx1 - bx0) * i / nx, by0 + (by1 - by0) * j / ny,
-                                (bx1 - bx0) / nx, (by1 - by0) / ny, hs, vs);
-            }
-        }
-        const int nr = std::max(1, (int)std::lround((by1 - by0) / 64.0f));
-        for (int j = 0; j < nr; j++) {
-            const float ry = by0 + (by1 - by0) * j / nr, rh = (by1 - by0) / nr;
-            g = panel_piece(rdram, g, "tp_rail_l", bx0 - 2.0f, ry, 5.0f, rh, hs, vs);
-            g = panel_piece(rdram, g, "tp_rail_r", bx1 - 3.0f, ry, 5.0f, rh, hs, vs);
-        }
-        g = panel_bar(rdram, g, "tp_cap_l", x0 - 10.0f, x1 + 10.0f, ty, kTop, hs, vs);
-        g = panel_bar(rdram, g, "tp_cap_l", x0 - 2.0f, x1 + 2.0f, fy, kFoot, hs, vs);
-        g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
-                                    MEM_HU(kVres1, (gpr)gGfxManager));
+        g = title_panel(rdram, ctx, g, x0, y0, x1, y1, alpha);
     }
     ctx->r2 = g;
     return 1;
@@ -7363,6 +7405,11 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
     std::string text;
     for (int i = 0; i < 16 && MEM_B(i, str) != 0; i++) {
         text += (char)MEM_B(i, str);
+    }
+    if (text == "Controls") {
+        rc_sound(rdram, ctx, 0x740, 60);
+        title_controls_open(rdram, ctx);
+        return 1;
     }
     if (text == "Quit Game") {
         rc_sound(rdram, ctx, 0x740, 60);
@@ -7430,6 +7477,8 @@ void watch_tick(uint8_t* rdram) {
         fprintf(stdout, "Trail %ld:%02ld:%02ld %s\n", s / 3600, s / 60 % 60, s % 60, trail.c_str());
         fflush(stdout);
     }
+    // The mouse looks around only while walking about (not in a menu, a conversation or a fight).
+    aidyn::controls::want_capture(!heap_pointer(MEM_W(0, kTitleScreen)) && a == 1 && !quit_pending);
     aidyn::watch::frame(a == 2 || a == 3 ? trail + ", fight state " + std::to_string(MEM_BU(0, (gpr)(int32_t)0x800D9454)) : trail);
     // AIDYN_FREEZE_TEST=1: once, after 10 seconds of walking about, the game thread stops for 25 seconds, to try the
     // watchdog's notes and the next start's report end to end (Steam launch options: AIDYN_FREEZE_TEST=1 %command%);
@@ -7798,6 +7847,430 @@ extern "C" void aidyn_walk_steps_end(uint8_t* rdram, recomp_context* ctx) {
         ctx->r30 = (gpr)walk_saved_ticks;
         walk_saved_ticks = -1;
     }
+}
+
+// ---- Controls page (#44) ----
+// The pause menu's ReChronicled page ends with Controls (and the title menu has an entry for it): one row for each
+// action with its two bindings (a key, a mouse button or a wheel step; src/main/controls.cpp), then the mouse's rows
+// (look on / off, sensitivity, tilt inverted) and Reset to defaults. Up / down choose a row, left / right a binding of
+// it, A listens for the next key, mouse button or wheel step (Esc, or the pad's B, cancels), Y clears the binding, B or
+// Start goes back. A binding used by another action moves to this one. The words are the game's own letters printed
+// at runtime (print_text): this is the first version, with plain text where the cards will have key pictures.
+namespace {
+    using aidyn::controls::Action;
+
+    struct CtlRow {
+        enum Kind { kBinding, kMouseLook, kSensitivity, kInvertTilt, kReset } kind;
+        Action action = aidyn::controls::kA;
+    };
+
+    const std::vector<CtlRow>& ctl_rows() {
+        static const std::vector<CtlRow> rows = [] {
+            using namespace aidyn::controls;
+            std::vector<CtlRow> r;
+            for (Action a : { kMoveUp, kMoveDown, kMoveLeft, kMoveRight, kA, kB, kX, kY, kView, kLT, kRT, kLB, kRB, kMenu,
+                              kCamUp, kCamDown, kCamLeft, kCamRight, kCamReset, kDpadUp, kDpadDown, kDpadLeft,
+                              kDpadRight, kFastForward }) {
+                r.push_back({ CtlRow::kBinding, a });
+            }
+            r.push_back({ CtlRow::kMouseLook });
+            r.push_back({ CtlRow::kSensitivity });
+            r.push_back({ CtlRow::kInvertTilt });
+            r.push_back({ CtlRow::kReset });
+            return r;
+        }();
+        return rows;
+    }
+
+    constexpr float kSensitivities[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 3.0f };
+    constexpr int kCtlVisible = 12;
+    constexpr float kCtlRowStep = 9.6f, kCtlScale = 0.6f;
+
+    struct CtlPage {
+        int row = 0, slot = 0, top = 0;
+        bool listening = false;
+        bool wait_release = false;  // after a binding: the click or key that made it isn't an action
+        bool confirm_reset = false;
+        std::string note;
+        int note_frames = 0;
+    } ctl;
+
+    float ctl_width(uint8_t* rdram, recomp_context* ctx, gpr font, const std::string& text, float scale) {
+        float w = 0.0f;
+        for (char c : text) w += letter_advance(rdram, ctx, font, c, scale);
+        return w;
+    }
+
+    // Text in the game's letters at (x, y) in the menu's units; right: x is its right end.
+    gpr ctl_text(uint8_t* rdram, recomp_context* ctx, gpr g, const std::string& text, float x, float y, float scale,
+                 uint32_t rgb, int alpha, bool right = false, bool centre = false) {
+        const gpr font = MEM_W(0, kFontPtr);
+        if (!heap_pointer(font) || text.empty()) return g;
+        const FontState st = font_save(rdram, font);
+        call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+        MEM_W(0x1C, font) = (int32_t)(rgb << 8 | (uint32_t)std::clamp(alpha, 0, 255));
+        const float w = ctl_width(rdram, ctx, font, text, scale);
+        print_text(rdram, ctx, font, g, text, right ? x - w : centre ? x - w / 2.0f : x, y, scale);
+        font_restore(rdram, font, st);
+        return g;
+    }
+
+    gpr ctl_state(uint8_t* rdram, recomp_context* ctx, gpr g) {
+        return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                       MEM_HU(kVres1, (gpr)gGfxManager));
+    }
+
+    void ctl_note(const std::string& text) {
+        ctl.note = text;
+        ctl.note_frames = 180;
+    }
+
+    std::string ctl_label(const CtlRow& r) {
+        switch (r.kind) {
+        case CtlRow::kBinding: return aidyn::controls::info(r.action).label;
+        case CtlRow::kMouseLook: return "Mouse look";
+        case CtlRow::kSensitivity: return "Mouse sensitivity";
+        case CtlRow::kInvertTilt: return "Mouse tilt inverted";
+        default: return "Reset to defaults";
+        }
+    }
+
+    int ctl_sens_index() {
+        const float s = aidyn::controls::mouse_sensitivity();
+        int best = 0;
+        for (int i = 0; i < (int)std::size(kSensitivities); i++) {
+            if (std::fabs(kSensitivities[i] - s) < std::fabs(kSensitivities[best] - s)) best = i;
+        }
+        return best;
+    }
+
+    std::string ctl_value(const CtlRow& r) {
+        char buf[16];
+        switch (r.kind) {
+        case CtlRow::kMouseLook: return aidyn::controls::mouse_look() ? "On" : "Off";
+        case CtlRow::kSensitivity:
+            std::snprintf(buf, sizeof buf, "%.2gx", aidyn::controls::mouse_sensitivity());
+            return buf;
+        case CtlRow::kInvertTilt: return aidyn::controls::mouse_invert_y() ? "On" : "Off";
+        case CtlRow::kReset: return ctl.confirm_reset ? "A again to reset" : "";
+        default: return "";
+        }
+    }
+
+    // A / left / right on a row that isn't a binding.
+    void ctl_change(const CtlRow& r, int step) {
+        switch (r.kind) {
+        case CtlRow::kMouseLook: aidyn::controls::set_mouse_look(!aidyn::controls::mouse_look()); break;
+        case CtlRow::kSensitivity: {
+            const int n = (int)std::size(kSensitivities);
+            aidyn::controls::set_mouse_sensitivity(kSensitivities[std::clamp(ctl_sens_index() + step, 0, n - 1)]);
+            break;
+        }
+        case CtlRow::kInvertTilt: aidyn::controls::set_mouse_invert_y(!aidyn::controls::mouse_invert_y()); break;
+        default: break;
+        }
+    }
+
+    void ctl_stop_listening() {
+        ctl.listening = false;
+        aidyn::controls::listen(false);
+    }
+}
+
+namespace {
+    // Where the page is shown: the pause menu's parchment (red-brown letters, the page fading the list under it) or
+    // the title screen (ivory letters on the title panel).
+    struct CtlHost {
+        bool title;
+        int fade;
+        bool closing;
+        int pulse;
+        gpr list;  // the pause menu's list to fade (0: the title)
+    };
+
+    uint32_t ctl_highlight(const CtlHost& h) {
+        if (!h.title) return rc_highlight();
+        const int k = h.pulse % 40;
+        const float t = (k < 20 ? k : 40 - k) / 20.0f;  // gold to white and back
+        const uint32_t r = 0xE8 + (uint32_t)((0xFF - 0xE8) * t), g = 0xB8 + (uint32_t)((0xFF - 0xB8) * t), b = 0x50 + (uint32_t)((0xFF - 0x50) * t);
+        return r << 16 | g << 8 | b;
+    }
+
+    // One frame of the page: its input, its fade and its drawing. Returns true once it is closed (and input given back).
+    bool controls_frame(uint8_t* rdram, recomp_context* ctx, gpr& g, CtlHost& h, uint32_t b, uint32_t pressed, uint32_t act) {
+        const std::vector<CtlRow>& rows = ctl_rows();
+        const int n = (int)rows.size();
+        ctl.row = std::clamp(ctl.row, 0, n - 1);
+        const bool ready = !h.closing && h.fade == 255;
+        if (ctl.wait_release) {
+            if (b == 0) ctl.wait_release = false;
+        } else if (ready && ctl.listening) {
+            aidyn::controls::Input in;
+            if (aidyn::input::pad_b_held() && (pressed & 0x4000)) {
+                ctl_stop_listening();  // the pad's B
+                ctl.wait_release = true;
+            } else if (aidyn::controls::take_pressed(&in)) {
+                ctl_stop_listening();
+                ctl.wait_release = true;  // the key or click that bound it isn't an action
+                if (aidyn::controls::is_escape(in)) {
+                    ctl_note("Cancelled");
+                } else if (aidyn::controls::reserved(in)) {
+                    ctl_note(aidyn::controls::input_name(in) + " is the game's own key");
+                } else {
+                    const int from = aidyn::controls::set_binding(rows[ctl.row].action, ctl.slot, in);
+                    ctl_note(aidyn::controls::input_name(in) +
+                             (from >= 0 && from != rows[ctl.row].action
+                                  ? " moved here from " + std::string(aidyn::controls::info((Action)from).label) : " bound"));
+                    rc_sound(rdram, ctx, 0x740, 60);
+                }
+            }
+        } else if (ready) {
+            if (act & 0x0800) { ctl.row = (ctl.row + n - 1) % n; ctl.confirm_reset = false; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0400) { ctl.row = (ctl.row + 1) % n; ctl.confirm_reset = false; rc_sound(rdram, ctx, 0x73B, 30); }
+            const CtlRow& cur = rows[ctl.row];
+            if (cur.kind == CtlRow::kBinding) {
+                if (pressed & 0x0200) { ctl.slot = 0; rc_sound(rdram, ctx, 0x73B, 30); }
+                if (pressed & 0x0100) { ctl.slot = 1; rc_sound(rdram, ctx, 0x73B, 30); }
+                if (pressed & 0x8000) {
+                    ctl.listening = true;
+                    aidyn::controls::listen(true);
+                    ctl_note("");
+                }
+                if (pressed & 0x0008) {  // Y: clear
+                    if (!aidyn::controls::binding(cur.action, ctl.slot).empty()) {
+                        aidyn::controls::clear_binding(cur.action, ctl.slot);
+                        ctl_note("Cleared");
+                        rc_sound(rdram, ctx, 0x740, 60);
+                    }
+                }
+            } else if (cur.kind == CtlRow::kReset) {
+                if (pressed & 0x8000) {
+                    if (ctl.confirm_reset) {
+                        aidyn::controls::reset_defaults();
+                        ctl.confirm_reset = false;
+                        ctl_note("Back to the defaults");
+                    } else {
+                        ctl.confirm_reset = true;
+                    }
+                    rc_sound(rdram, ctx, 0x740, 60);
+                }
+            } else {
+                if (pressed & 0x8000) { ctl_change(cur, 1); rc_sound(rdram, ctx, 0x740, 60); }
+                else if (act & 0x0300) { ctl_change(cur, (act & 0x0200) ? -1 : 1); rc_sound(rdram, ctx, 0x740, 60); }
+            }
+            if (pressed & (0x4000 | 0x1000)) {  // B, Start: back
+                h.closing = true;
+                rc_sound(rdram, ctx, 0x741, 60);
+            }
+        }
+        if (ctl.row < ctl.top) ctl.top = ctl.row;
+        if (ctl.row >= ctl.top + kCtlVisible) ctl.top = ctl.row - kCtlVisible + 1;
+        if (ctl.note_frames > 0) ctl.note_frames--;
+
+        h.fade = std::clamp(h.fade + (h.closing ? -60 : 60), 0, 255);
+        if (h.list != 0) call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)h.list, (uint32_t)(255 - h.fade));
+        if (h.closing && h.fade == 0) {
+            if (b == 0) {
+                if (ctl.listening) ctl_stop_listening();
+                return true;
+            }
+            return false;
+        }
+        h.pulse++;
+        // Where things go.
+        const float left = h.title ? 54.0f : kRowsLeft, right = h.title ? 266.0f : kRowsRight, top = h.title ? 52.0f : kRowsTop;
+        const float col0 = h.title ? 152.0f : 168.0f, col1 = h.title ? 212.0f : 230.0f;
+        const uint32_t ink_normal = h.title ? 0xF2E6C8 : kMenuInk, ink_empty = h.title ? 0x8C8470 : 0xA09090;
+        const float centre = (left + right) / 2.0f;
+        if (h.title) {
+            g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 194.0f, (uint32_t)h.fade);
+        }
+        g = ctl_state(rdram, ctx, g);
+        g = ctl_text(rdram, ctx, g, "Controls", centre, h.title ? 26.0f : top - 30.0f, h.title ? 0.9f : 1.0f,
+                     h.title ? 0xE8C060 : kMenuInk, h.fade, false, true);
+        for (int i = 0; i < kCtlVisible && ctl.top + i < n; i++) {
+            const int k = ctl.top + i;
+            const CtlRow& r = rows[k];
+            const float y = top - 2.0f + kCtlRowStep * i;
+            const bool sel = k == ctl.row;
+            const uint32_t ink = sel ? ctl_highlight(h) : ink_normal;
+            g = ctl_text(rdram, ctx, g, ctl_label(r), left, y, kCtlScale, ink, h.fade);
+            if (r.kind == CtlRow::kBinding) {
+                for (int sl = 0; sl < aidyn::controls::kSlots; sl++) {
+                    const aidyn::controls::Input in = aidyn::controls::binding(r.action, sl);
+                    const bool here = sel && sl == ctl.slot;
+                    const std::string text = (here && ctl.listening) ? "press a key" : aidyn::controls::input_name(in);
+                    g = ctl_text(rdram, ctx, g, text, sl == 0 ? col0 : col1, y, kCtlScale,
+                                 here ? ctl_highlight(h) : (in.empty() ? ink_empty : ink_normal), h.fade);
+                }
+            } else {
+                g = ctl_text(rdram, ctx, g, ctl_value(r), right, y, kCtlScale, ink, h.fade, true);
+            }
+        }
+        const float hint_y = top - 2.0f + kCtlRowStep * kCtlVisible + 3.0f;
+        const std::string hint = ctl.listening ? "Press a key, a mouse button or the wheel (Esc: cancel)"
+                                 : ctl.note_frames > 0 && !ctl.note.empty() ? ctl.note
+                                 : rows[ctl.row].kind == CtlRow::kBinding ? "A: bind   Y: clear   B: back"
+                                                                          : "A / left / right: change   B: back";
+        g = ctl_text(rdram, ctx, g, hint, centre, hint_y, kCtlScale, ink_normal, h.fade, false, true);
+        g = ctl_text(rdram, ctx, g, std::to_string(ctl.row + 1) + " / " + std::to_string(n), right, top - (h.title ? 24.0f : 30.0f),
+                     0.55f, ink_normal, h.fade, true);
+        return false;
+    }
+
+    // The title screen's host.
+    struct TitleControls {
+        bool open = false, closing = false;
+        int fade = 0, pulse = 0, repeat = 0;
+        uint32_t held = 0xFFFFFFFF;
+    } tc;
+}
+
+void controls_open(uint8_t* rdram, recomp_context* ctx) {
+    ctl = CtlPage{};
+    rc.kind = kRcControls;
+    rc.held = 0xFFFFFFFF;  // the A that opened it is still down
+    ctl.wait_release = true;
+}
+
+gpr controls_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act) {
+    CtlHost h{ false, rc.fade, rc.closing, rc.pulse, rc.list };
+    const bool done = controls_frame(rdram, ctx, g, h, b, pressed, act);
+    rc.fade = h.fade;
+    rc.closing = h.closing;
+    rc.pulse = h.pulse;
+    if (done) rc_end();
+    return g;
+}
+
+// The title menu's Controls entry (aidyn_title_choice): the page over the title screen.
+void title_controls_open(uint8_t* rdram, recomp_context* ctx) {
+    ctl = CtlPage{};
+    ctl.wait_release = true;
+    tc = TitleControls{};
+    tc.open = true;
+    aidyn::input::set_capture(true);
+}
+
+gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (!tc.open) return g;
+    if (!heap_pointer(MEM_W(0, kTitleScreen))) {  // the title is gone (a version switch, a game starting)
+        if (ctl.listening) ctl_stop_listening();
+        tc = TitleControls{};
+        aidyn::input::set_capture(false);
+        return g;
+    }
+    uint32_t b = 0;
+    float sx = 0.0f, sy = 0.0f;
+    aidyn::input::captured(&b, &sx, &sy);
+    if (sy > 0.5f) b |= 0x0800;
+    if (sy < -0.5f) b |= 0x0400;
+    if (sx < -0.5f) b |= 0x0200;
+    if (sx > 0.5f) b |= 0x0100;
+    const uint32_t pressed = tc.held == 0xFFFFFFFF ? 0 : (b & ~tc.held);
+    tc.held = (tc.held == 0xFFFFFFFF && (b & 0x8000)) ? 0xFFFFFFFF : b;
+    const uint32_t dirs = b & 0x0F00;
+    tc.repeat = dirs != 0 ? tc.repeat + 1 : 0;
+    const uint32_t act = pressed | ((tc.repeat > 24 && tc.repeat % 6 == 0) ? dirs : 0);
+    CtlHost h{ true, tc.fade, tc.closing, tc.pulse, 0 };
+    const bool done = controls_frame(rdram, ctx, g, h, b, pressed, act);
+    tc.fade = h.fade;
+    tc.closing = h.closing;
+    tc.pulse = h.pulse;
+    if (done) {
+        tc = TitleControls{};
+        aidyn::input::set_capture(false);
+    }
+    return g;
+}
+
+// ---- Keys on the prompts (#44) ----
+// The controls card shows the keys and mouse buttons bound to each of its lines, in gold after the line, while the
+// keyboard or the mouse is what was used last (aidyn::input::keyboard_last: a pad player sees the card as before);
+// the Help book's Keyboard and PC page says the current keys. Plain text for now; key pictures come with the art.
+namespace {
+    std::string keys_of(aidyn::controls::Action a, bool all = true) {
+        std::string out;
+        for (int sl = 0; sl < aidyn::controls::kSlots; sl++) {
+            const aidyn::controls::Input in = aidyn::controls::binding(a, sl);
+            if (in.empty()) continue;
+            if (!out.empty()) out += all ? " or " : "";
+            if (!all && !out.empty()) break;
+            out += aidyn::controls::input_name(in);
+            if (!all) break;
+        }
+        return out.empty() ? "no key" : out;
+    }
+
+    std::string move_keys() {
+        using namespace aidyn::controls;
+        std::string out;
+        for (Action a : { kMoveUp, kMoveLeft, kMoveDown, kMoveRight }) {
+            if (!out.empty()) out += " ";
+            out += keys_of(a, false);
+        }
+        return out;
+    }
+
+    std::string card_row_keys(const std::string& row) {
+        using namespace aidyn::controls;
+        auto join = [&](std::initializer_list<Action> list) {
+            std::string out;
+            for (Action a : list) {
+                if (!out.empty()) out += ", ";
+                out += keys_of(a);
+            }
+            return out;
+        };
+        if (row == "ctl_walk" || row == "ctl_move") return move_keys();
+        if (row == "ctl_camera") return (mouse_look() ? std::string("Mouse") : std::string("camera keys")) + ", " + keys_of(kCamReset);
+        if (row == "ctl_talk" || row == "ctl_attack") return keys_of(kA);
+        if (row == "ctl_party") return keys_of(kB);
+        if (row == "ctl_sneak" || row == "ctl_endturn") return keys_of(kLT);
+        if (row == "ctl_ff") return keys_of(kFastForward);
+        if (row == "ctl_quicksave") return keys_of(kView);
+        if (row == "ctl_menu") return join({ kMenu, kLB });
+        if (row == "ctl_magic") return join({ kX, kY });
+        if (row == "ctl_combatcam") return keys_of(kRB);
+        if (row == "ctl_hide") return keys_of(kLB);
+        return "";
+    }
+}
+
+gpr draw_card_keys(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (card_rows.empty() || !aidyn::input::keyboard_last()) return g;
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!heap_pointer(font)) return g;
+    constexpr float kScale = 0.5f;
+    g = hud_begin(rdram, g, false);
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    const FontState st = font_save(rdram, font);
+    call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+    for (const CardRow& row : card_rows) {
+        const std::string keys = card_row_keys(row.name);
+        if (keys.empty()) continue;
+        const float y = row.y + (row.h - 9.0f * kScale) / 2.0f - 0.5f;
+        MEM_W(0x1C, font) = (int32_t)0x101830C8u;  // the soft shadow, a little down and right
+        print_text(rdram, ctx, font, g, keys, row.x + 0.6f, y + 0.6f, kScale);
+        MEM_W(0x1C, font) = (int32_t)0xE8C060FFu;  // gold
+        print_text(rdram, ctx, font, g, keys, row.x, y, kScale);
+    }
+    font_restore(rdram, font, st);
+    return hud_end(rdram, g);
+}
+
+std::string help_keys_text() {
+    using namespace aidyn::controls;
+    auto k = [](Action a) { return keys_of(a, false); };
+    std::string t = "On a keyboard, " + move_keys() + " move; " + k(kA) + " and " + k(kB) + " are \\x7F and \\x80; " +
+                    k(kX) + " and " + k(kY) + " are \\x84 and \\x83; " + k(kView) + " and " + k(kRT) +
+                    " are \\x82 and \\x81; " + k(kLT) + ", " + k(kLB) + " and " + k(kRB) + " are \\x87, LB and RB; " +
+                    k(kMenu) + " is \\x85. Hold " + k(kFastForward) + " to fast-forward.";
+    if (mouse_look()) {
+        t += " The mouse turns the camera; " + k(kCamReset) + " puts it behind the party.";
+    }
+    return t + " Controls, on the ReChronicled page or the title screen, changes them.";
 }
 
 // ---- Report a problem ----

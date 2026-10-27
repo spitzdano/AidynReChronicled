@@ -80,6 +80,7 @@ add_executable(AidynReChronicled
     src/main/main.cpp
     src/main/audio.cpp
     src/main/input.cpp
+    src/main/controls.cpp
     src/main/rt64_context.cpp
     src/main/settings.cpp
     src/main/register_overlays.cpp

@@ -133,17 +133,22 @@ An Xbox-style controller, or the keyboard:
 
 | Controller | Keyboard | |
 |---|---|---|
-| Left stick, D-pad | Arrows, keypad 8 4 5 6 | Walk, move in combat, menus |
-| Right stick (click: recentre) | | Camera |
-| A / B | Z / X | Confirm, talk, attack / back, cancel |
+| Left stick, D-pad | W A S D or the arrows, keypad 8 4 5 6 | Walk, move in combat, menus |
+| Right stick (click: recentre) | Mouse (middle button: recentre) | Camera |
+| A / B | Z / X, left / right mouse button | Confirm, talk, attack / back, cancel |
 | X / Y | K / I | Details, spells / items; switch versions (title screen) |
 | View | J | Quicksave (walking about) |
-| LT / RT | C / L | Sneak (walking), end turn (combat); previous / next party member (pause menu, shops, trainers) |
+| LT / RT | C / L, mouse back / forward button | Sneak (walking), end turn (combat); previous / next party member (pause menu, shops, trainers) |
 | LB / RB | Q / E | Show / hide the controls card (walking, combat); previous / next page (pause menu) |
 | Menu | Enter | Pause menu |
 | Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
 | | F2 | The newly painted art off / on, to compare with what was there before |
 | | F11, Alt+Enter / Shift+Esc | Windowed or borderless full screen (also the Display page's Window row; remembered) / quit (as Quit Game on the title's menu) |
+
+Every key and mouse button can be changed: **Controls** on the title screen's menu, or the last row of the pause menu's
+**ReChronicled** page. Pick a row, press A, then the key, mouse button or wheel step you want (Esc cancels, Y clears it);
+two bindings to an action, and the mouse's sensitivity is there too. The controls card (LB) shows your keys beside its
+lines while the keyboard or mouse is what you last used.
 
 ## Settings, saves, logs
 

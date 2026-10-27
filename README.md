@@ -243,21 +243,30 @@ ROM is there instead, for that run, and lights that one. The list is on the titl
 
 | N64 | Xbox controller | Keyboard | In the game |
 |---|---|---|---|
-| Control stick | Left stick | Arrows | walk, move in combat, menus |
-| (camera) | Right stick | | turn the camera around the party (left/right), tilt it up or down (up/down), both at the same speed, 30 degrees each way from its resting height; once turned, the camera keeps that direction while walking (`camera_invert_x` / `camera_invert_y` flip them) |
-| (camera) | Right stick click | | camera back behind the party at its resting height (the original follow camera) |
+| Control stick | Left stick | W A S D, arrows | walk, move in combat, menus |
+| (camera) | Right stick | mouse; [ ] ; ' | turn the camera around the party (left/right), tilt it up or down (up/down), both at the same speed, 30 degrees each way from its resting height; once turned, the camera keeps that direction while walking (`camera_invert_x` / `camera_invert_y` flip them) |
+| (camera) | Right stick click | middle mouse button | camera back behind the party at its resting height (the original follow camera) |
 | (fast-forward) | Left stick click | hold Tab | fast-forward on / off: everything runs `fast_forward_speed` times faster (3); a marker shows at the top right |
-| A | A | Z | talk, open, confirm; in combat: attack, then act on the target |
-| B | B | X | back, cancel; walking: show the party's portraits; title menu: back to the title card |
+| A | A | Z, left mouse button | talk, open, confirm; in combat: attack, then act on the target |
+| B | B | X, right mouse button | back, cancel; walking: show the party's portraits; title menu: back to the title card |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
 | C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one); title screen: switch to the version marked Y |
 | C-left | View | J | walking: quicksave; in combat and the menus: nothing (not passed to the game) |
-| C-right | RT | L | pause menu, shops, trainers: next party member |
-| Z | LT | C | walking: hold + stick to sneak; combat: end the turn; pause menu, shops, trainers: previous party member (passed to the game as C-left; the game's Z turned the page back, as LB does) |
+| C-right | RT | L, mouse forward button | pause menu, shops, trainers: next party member |
+| Z | LT | C, mouse back button | walking: hold + stick to sneak; combat: end the turn; pause menu, shops, trainers: previous party member (passed to the game as C-left; the game's Z turned the page back, as LB does) |
 | L | LB | Q | walking and in combat: show / hide the controls card (not passed to the game there; in combat it was a second End turn); pause menu: previous page |
 | R | RB | E | pause menu: next page; hold + stick: the game's own camera control |
 | Start | Menu | Enter | pause menu; back to the game |
 | D-pad | D-pad | keypad 8 4 5 6 | menus |
+
+The keyboard and mouse column is the default: every key and mouse button (left, right, middle, back and forward, the
+wheel) can be changed, two to an action, on the Controls page (the title menu's Controls, or the pause menu's
+ReChronicled page, last row; `src/main/controls.cpp`, kept in settings.json's `controls` section: `bindings` by action
+id, `mouse_look`, `mouse_sensitivity`, `mouse_invert_y`). The mouse turns and tilts the camera in the field (SDL's
+relative mouse mode, captured only while walking about and the window has the focus). The controls card shows the keys
+beside its lines, and the Help book's keyboard page names them, while the keyboard or mouse was used last.
+`AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with
+`tools/dev/vpad.py` (a virtual Xbox pad for the real pad path), `AIDYN_CONTROLS_LOG=1` (mouse capture changes).
 
 These are the game's own controls (from its 2001 instruction booklet) on the port's buttons; the manual has them per
 screen.

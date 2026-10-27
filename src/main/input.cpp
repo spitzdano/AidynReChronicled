@@ -5,8 +5,8 @@
 // Pad:       A/B/X/Y -> A/B/Z/(unused)   right stick -> C buttons   triggers -> L/R, Z
 //            left stick, D-pad, Start as expected; right shoulder -> R, left shoulder -> L
 //            (in the field and in combat LB shows / hides the controls card, and in the field View quicksaves: get())
-// Keyboard:  arrows = stick, Z = A, X = B, C = Z, Enter = Start, WASD-less on purpose
-//            IJKL = C buttons, Q = L, E = R, 8456 = D-pad
+// Keyboard and mouse: src/main/controls.cpp (bindings in settings.json: WASD and the arrows move, Z X C Enter Q E I J K L,
+//            the mouse looks and its buttons are A, B...), read here through aidyn::controls::down
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -16,6 +16,7 @@
 
 #include "SDL2/SDL.h"
 
+#include "controls.h"
 #include "input.h"
 #include "settings.h"
 #include "rt64_context.h"
@@ -45,6 +46,8 @@ namespace {
     std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
     std::atomic_bool menu_mode{ false };  // aidyn::input::set_menu_mode
     std::atomic_bool start{ false };
+    std::atomic_int last_device{ -1 };  // 0 the pad, 1 the keyboard or mouse, -1 neither yet (the keyboard if there is no pad)
+    std::atomic_bool pad_b{ false };  // the pad's B (not the keyboard's or the mouse's)
     std::atomic_bool quicksave_pressed{ false };  // View pressed in the field: aidyn::input::quicksave_asked
     std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
 
@@ -56,7 +59,8 @@ namespace {
     void open_first_pad() {
         // A test run (AIDYN_PAD_FILE, tools/dev/pad.sh) opens no controller: the game reads controllers in the
         // background too, and presses meant for something else on the desktop would steer the test.
-        static const bool test_run = std::getenv("AIDYN_PAD_FILE") != nullptr;
+        // AIDYN_TEST_PAD=1: but a virtual pad made for the test (tools/dev/vpad.py) may be read.
+        static const bool test_run = std::getenv("AIDYN_PAD_FILE") != nullptr && std::getenv("AIDYN_TEST_PAD") == nullptr;
         if (pad != nullptr || test_run) {
             return;
         }
@@ -122,6 +126,8 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     float sx = 0.0f, sy = 0.0f, rx = 0.0f, ry = 0.0f;
     bool click = false;
     bool l3 = false;
+    bool keyboard_ff = false;
+    bool pad_b_now = false;
 
     {
         std::lock_guard lock{ pad_mutex };
@@ -131,7 +137,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
             // face buttons and RT: X = C-down (Details; in combat, spells), Y = C-up (in combat, items and potions),
             // View = C-left and RT = C-right (next party member in the pause menu, where LT is C-left: set_menu_mode).
             if (down(SDL_CONTROLLER_BUTTON_A)) b |= A;
-            if (down(SDL_CONTROLLER_BUTTON_B)) b |= B;
+            if (down(SDL_CONTROLLER_BUTTON_B)) { b |= B; pad_b_now = true; }
             if (down(SDL_CONTROLLER_BUTTON_X)) b |= CD;
             if (down(SDL_CONTROLLER_BUTTON_Y)) b |= CU;
             if (down(SDL_CONTROLLER_BUTTON_BACK)) b |= CL;
@@ -154,25 +160,30 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         }
     }
 
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    if (keys[SDL_SCANCODE_Z]) b |= A;
-    if (keys[SDL_SCANCODE_X]) b |= B;
-    if (keys[SDL_SCANCODE_C]) b |= Z;
-    if (keys[SDL_SCANCODE_RETURN]) b |= START;
-    if (keys[SDL_SCANCODE_Q]) b |= L;
-    if (keys[SDL_SCANCODE_E]) b |= R;
-    if (keys[SDL_SCANCODE_I]) b |= CU;
-    if (keys[SDL_SCANCODE_K]) b |= CD;
-    if (keys[SDL_SCANCODE_J]) b |= CL;
-    if (keys[SDL_SCANCODE_L]) b |= CR;
-    if (keys[SDL_SCANCODE_KP_8]) b |= DU;
-    if (keys[SDL_SCANCODE_KP_5]) b |= DD;
-    if (keys[SDL_SCANCODE_KP_4]) b |= DL;
-    if (keys[SDL_SCANCODE_KP_6]) b |= DR;
-    if (keys[SDL_SCANCODE_RIGHT]) sx = 1.0f;
-    if (keys[SDL_SCANCODE_LEFT]) sx = -1.0f;
-    if (keys[SDL_SCANCODE_UP]) sy = 1.0f;
-    if (keys[SDL_SCANCODE_DOWN]) sy = -1.0f;
+    const bool pad_used = b != 0 || std::fabs(sx) > 0.3f || std::fabs(sy) > 0.3f || std::fabs(rx) > 0.3f || std::fabs(ry) > 0.3f;
+    bool keyboard_used = false;
+    // Keyboard and mouse: whatever the Controls page has bound (src/main/controls.cpp; WASD, Z X C... by default).
+    {
+        using namespace aidyn::controls;
+        static constexpr struct { Action action; uint16_t bit; } kButtons[] = {
+            { kA, A }, { kB, B }, { kLT, Z }, { kMenu, START }, { kLB, L }, { kRB, R },
+            { kY, CU }, { kX, CD }, { kView, CL }, { kRT, CR },
+            { kDpadUp, DU }, { kDpadDown, DD }, { kDpadLeft, DL }, { kDpadRight, DR },
+        };
+        for (const auto& m : kButtons) {
+            if (down(m.action)) { b |= m.bit; keyboard_used = true; }
+        }
+        if (down(kMoveRight)) { sx = 1.0f; keyboard_used = true; }
+        if (down(kMoveLeft)) { sx = -1.0f; keyboard_used = true; }
+        if (down(kMoveUp)) { sy = 1.0f; keyboard_used = true; }
+        if (down(kMoveDown)) { sy = -1.0f; keyboard_used = true; }
+        if (down(kCamRight)) { rx = 1.0f; keyboard_used = true; }
+        if (down(kCamLeft)) { rx = -1.0f; keyboard_used = true; }
+        if (down(kCamUp)) { ry = 1.0f; keyboard_used = true; }
+        if (down(kCamDown)) { ry = -1.0f; keyboard_used = true; }
+        if (down(kCamReset)) { click = true; keyboard_used = true; }
+        keyboard_ff = down(kFastForward);
+    }
 
     // Test aid for automated play-testing: AIDYN_PAD_FILE names a text file holding "<hex buttons> <x> <y> [<rx> <ry>]"
     // (N64 button bits as above, plus 0x10000 for R3, 0x20000 for L3 and 0x40000 for F2; sticks -1..1, the right stick optional). Read on every poll and
@@ -201,6 +212,12 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
             }
         }
     }
+    pad_b.store(pad_b_now, std::memory_order_relaxed);
+    if (pad_used) {
+        last_device.store(0, std::memory_order_relaxed);
+    } else if (keyboard_used) {
+        last_device.store(1, std::memory_order_relaxed);
+    }
     right_x.store(rx, std::memory_order_relaxed);
     right_y.store(ry, std::memory_order_relaxed);
     right_click.store(click, std::memory_order_relaxed);
@@ -208,7 +225,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         ff_toggled.store(!ff_toggled.load(std::memory_order_relaxed), std::memory_order_relaxed);
     }
     l3_was_down = l3;
-    ff_held.store(keys[SDL_SCANCODE_TAB] != 0, std::memory_order_relaxed);
+    ff_held.store(keyboard_ff, std::memory_order_relaxed);
     c_down.store((b & CD) != 0, std::memory_order_relaxed);
     c_up.store((b & CU) != 0, std::memory_order_relaxed);
     start.store((b & START) != 0, std::memory_order_relaxed);
@@ -262,6 +279,17 @@ void aidyn::input::set_card_mode(int mode) {
 
 bool aidyn::input::quicksave_asked() {
     return quicksave_pressed.exchange(false, std::memory_order_relaxed);
+}
+
+bool aidyn::input::keyboard_last() {
+    const int d = last_device.load(std::memory_order_relaxed);
+    if (d >= 0) return d == 1;
+    std::lock_guard lock{ pad_mutex };
+    return pad == nullptr;  // nothing pressed yet: the keyboard when there is no pad
+}
+
+bool aidyn::input::pad_b_held() {
+    return pad_b.load(std::memory_order_relaxed);
 }
 
 bool aidyn::input::start_held() {

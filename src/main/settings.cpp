@@ -308,6 +308,12 @@ void aidyn::settings::save_number(const char* section, const char* key, double v
     });
 }
 
+void aidyn::settings::save_section(const char* section, const std::string& json_text) {
+    edit_file(g_folder / "settings.json", [&](nlohmann::ordered_json& j) {
+        j[section] = nlohmann::ordered_json::parse(json_text);
+    });
+}
+
 void aidyn::settings::apply_widescreen() {
     if (g_graphics.widescreen && g_graphics.aspect_text == "4:3") {
         g_graphics.aspect_text = "16:9";

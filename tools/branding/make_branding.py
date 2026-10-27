@@ -472,7 +472,7 @@ RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_v
             ("rc_stick_camera", "Right-stick camera"), ("rc_invert_x", "Invert camera turning"),
             ("rc_invert_y", "Invert camera tilt"),
             ("rc_on", "On"), ("rc_off", "Off"), ("rc_dd_1", "Original"), ("rc_dd_15", "1.5x"), ("rc_dd_2", "2x"),
-            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_ws_125", "1.25x"),
+            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_controls", "Controls"), ("rc_ws_125", "1.25x"),
             ("rc_ws_175", "1.75x"), ("rc_window", "Window"), ("rc_windowed", "Windowed"), ("rc_borderless", "Borderless"),
             ("rc_sound", "Sound"), ("rc_enhanced", "Enhanced"),
             ("rc_combat_speed", "Combat speed"), ("rc_enemy_turns", "Enemy turns"), ("rc_x4", "4x"),

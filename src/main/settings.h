@@ -86,6 +86,8 @@ namespace aidyn::settings {
     Audio& audio_rw();
     void save_bool(const char* section, const char* key, bool value);
     void save_number(const char* section, const char* key, double value);
+    // Replaces a whole section of settings.json with JSON text (the Controls page's bindings: src/main/controls.cpp).
+    void save_section(const char* section, const std::string& json_text);
     // The Display page's Widescreen switch: graphics().aspect again from "aspect" and widescreen (turning it on with
     // "aspect": "4:3" makes that "16:9", saved). Saving widescreen itself is the caller's.
     void apply_widescreen();

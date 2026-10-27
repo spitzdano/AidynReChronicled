@@ -16,6 +16,8 @@ namespace aidyn::input {
     void set_card_mode(int mode);           // 1 field, 2 combat, 0 elsewhere: there LB shows / hides the controls card
     bool quicksave_asked();                 // View pressed in the field since last asked (src/game/patches.cpp)
     bool controls_card();                   // the controls card shown (settings.json graphics.controls_card)
+    bool keyboard_last();                   // the keyboard or mouse was used last (a pad's presses count for the pad): prompts show keys
+    bool pad_b_held();                      // the pad's own B held (the Controls page: it cancels listening)
     bool start_held();                      // N64 Start held (Menu, keyboard Enter), as last polled
     void set_rumble(int controller_num, bool rumble);
     void set_controls_card(bool shown);     // the pause menu's ReChronicled page: show / hide it (and remember it)
