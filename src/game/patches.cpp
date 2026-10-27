@@ -8390,11 +8390,11 @@ gpr title_versions_panel(uint8_t* rdram, gpr g) {
             pic("vw_missing", kRight - 22.0f - width("vw_missing"), y, 0x8C8470);
         }
     }
-    // The hints sit inside the closing bar (16 units, its rails at the top and bottom edges): drawn at 0.8 so the icons
-    // clear the rails.
-    constexpr float kHint = 0.8f;
+    // The hints sit inside the closing bar (16 units, its rails at the top and bottom edges): the 11-unit icons, 2.5 down
+    // from the bar's top, clear both rails (drawn smaller, the picture's top row was cut off).
+    constexpr float kHint = 1.0f;
     const float footer = (width("dlg_choose") + width("dlg_back")) * kHint + 12.0f;
-    const float foot_y = kBottom - 15.0f + 3.4f;
+    const float foot_y = kBottom - 15.0f + 2.5f;
     auto hint = [&](const char* name, float x) {
         const int i = title_image(name);
         if (i < 0) return;
