@@ -949,3 +949,10 @@ text = "extern int aidyn_borg_holder_up(uint8_t* rdram, uint32_t index, uint32_t
 func = "func_80099274"
 before_vram = 0x80099274
 text = "extern int aidyn_borg_holder_down(uint8_t* rdram, recomp_context* ctx); if (aidyn_borg_holder_down(rdram, ctx)) return;"
+
+# WidgetScrollMenu::Tick's entry (a0 the list): the mouse pointer over one of its entries highlights it (#44; src/game/
+# patches.cpp, "The pointer over the game's lists").
+[[patches.hook]]
+func = "WidgetScrollMenu__Tick"
+before_vram = 0x800AFE88
+text = "extern void aidyn_list_pointer(uint8_t* rdram, recomp_context* ctx); aidyn_list_pointer(rdram, ctx);"

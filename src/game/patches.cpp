@@ -8330,6 +8330,50 @@ gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     return g;
 }
 
+// ---- The pointer over the game's lists (#44) ----
+// The game's scroll lists (WidgetScrollMenu: the pause menu's Menu page, the title menu, the Options pages' lists...):
+// when the mouse pointer has moved over one of a visible list's entries, that entry becomes the highlighted one (WSMSub
+// +0x1E), as Up and Down would make it; a click is A as usual and acts on it. Entries are placed by the list's own Tick
+// (posX/posY, their width and height: BaseWidget +0x60, +0x62, +0x74, +0x72) in the 320 x 240 screen, as the pointer is.
+extern "C" void aidyn_list_pointer(uint8_t* rdram, recomp_context* ctx) {
+    const gpr list = ctx->r4;
+    if (!heap_pointer(list) || MEM_BU(0x5B, list) == 0) return;  // not shown (faded out under one of our pages)
+    const gpr sub = MEM_W(0x40, list);
+    if (!heap_pointer(sub)) return;
+    float x = 0.0f, y = 0.0f;
+    uint32_t moves = 0;
+    if (!aidyn::controls::pointer(&x, &y, &moves)) return;
+    static std::unordered_map<uint32_t, uint32_t> seen;  // by list: the moves it has followed
+    uint32_t& last = seen[(uint32_t)list];
+    if (last == moves) return;
+    last = moves;
+    const gpr items = MEM_W(0x18, sub);
+    const int n = MEM_HU(0x20, sub);
+    if (std::getenv("AIDYN_LIST_LOG")) {
+        fprintf(stdout, "List %08x: pointer %.1f,%.1f, %d entries, highlight %u\n", (uint32_t)list, x, y, n, MEM_HU(0x1E, sub));
+        for (int i = 0; heap_pointer(items) && i < n; i++) {
+            const gpr e = MEM_W(4 * i, items);
+            if (heap_pointer(e)) fprintf(stdout, "  %d: %d,%d %ux%u\n", i, (int16_t)MEM_HU(kWidgetPosX, e),
+                                         (int16_t)MEM_HU(kWidgetPosX + 2, e), MEM_HU(0x74, e), MEM_HU(0x72, e));
+        }
+        fflush(stdout);
+    }
+    for (int i = 0; heap_pointer(items) && i < n; i++) {
+        const gpr e = MEM_W(4 * i, items);
+        if (!heap_pointer(e)) continue;
+        const float ex = (int16_t)MEM_HU(kWidgetPosX, e), ey = (int16_t)MEM_HU(kWidgetPosX + 2, e);
+        const float ew = MEM_HU(0x74, e), eh = MEM_HU(0x72, e);
+        // half the gap to the next entry above and below it (the title menu's are 8 apart), a little to the sides
+        if (eh == 0 || y < ey - 4.0f || y >= ey + eh + 4.0f) continue;
+        if (ew > 0 && (x < ex - 16.0f || x > ex + ew + 16.0f)) continue;
+        if (MEM_HU(0x1E, sub) != i) {
+            MEM_H(0x1E, sub) = (int16_t)i;
+            rc_sound(rdram, ctx, 0x73B, 30);
+        }
+        return;
+    }
+}
+
 // ---- Achievements page and toast (#42) ----
 // The toast: at the top right while walking about, 5 seconds a toast, one at a time: the turn bar's left cap with its
 // plate (the medal in it), its middle and right cap (title_panel.py's pieces, as the title menu's panel), "Achievement

@@ -414,8 +414,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   `AIDYN_ACHIEVEMENTS=0` turns them off; `AIDYN_ACH_LOG=1` logs each unlock.
 - **The mouse pointer on the port's own pages.** On the ReChronicled, Display, Controls, Achievements and Versions
   pages, moving the pointer over a row highlights it (a click is A as usual: it then acts on that row);
-  `aidyn::controls::pointer` maps the window to the menus' 320 x 240 units. The game's own menus (the pause list, the
-  title menu, shops) don't follow it yet.
+  `aidyn::controls::pointer` maps the window to the menus' 320 x 240 units. The game's own scroll lists (the pause
+  menu's Menu page, the title menu, the Options lists: WidgetScrollMenu::Tick, hooked) follow it the same way
+  (`AIDYN_LIST_LOG=1` prints each list's entries as the pointer moves). Other game menus (shops, the inventory's lists)
+  don't yet.
 
 - **Help book.** The pause menu's Help (a dialogue, `BORG13_HelpMenu`) is copied as it loads with its words fitted to
   this edition: the BUTTON after each button icon dropped (they're Xbox icons now), "the left stick" for the Control
