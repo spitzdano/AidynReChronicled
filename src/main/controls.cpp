@@ -80,6 +80,9 @@ namespace {
     int g_motion_x = 0, g_motion_y = 0;  // mouse counts since the camera last asked
     std::atomic<int64_t> g_look_asked_ms{ 0 };
     std::atomic_bool g_want_capture{ false };
+    // The pointer in the window (SDL_MOUSEMOTION while not captured) and the window's size then; a count of moves.
+    int g_pointer_x = 0, g_pointer_y = 0, g_window_w = 0, g_window_h = 0;
+    uint32_t g_pointer_moves = 0;
 
     int64_t now_ms() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -188,6 +191,7 @@ namespace {
     struct TestInput {
         std::vector<Input> held;
         float look_x = 0.0f, look_y = 0.0f;
+        float point_x = -1.0f, point_y = -1.0f;  // point=x,y: the pointer in the menus' 320 x 240 units
     };
 
     TestInput read_test_file() {
@@ -203,6 +207,13 @@ namespace {
             const size_t a = token.find_first_not_of(' '), b = token.find_last_not_of(' ');
             if (a == std::string::npos) continue;
             token = token.substr(a, b - a + 1);
+            if (token.rfind("point=", 0) == 0) {
+                std::string y;
+                std::getline(ss, y, ',');
+                t.point_x = (float)std::atof(token.c_str() + 6);
+                t.point_y = (float)std::atof(y.c_str());
+                continue;
+            }
             if (token.rfind("look=", 0) == 0) {
                 std::string y;
                 std::getline(ss, y, ',');
@@ -425,6 +436,16 @@ void apply_mouse_mode() {
 void handle_event(const SDL_Event& event) {
     switch (event.type) {
     case SDL_MOUSEMOTION: {
+        // The pointer, for the menus (pointer()): where it is in the window, while the mouse isn't the camera's.
+        if (SDL_GetRelativeMouseMode() != SDL_TRUE) {
+            if (SDL_Window* w = SDL_GetWindowFromID(event.motion.windowID)) {
+                int ww = 0, wh = 0;
+                SDL_GetWindowSize(w, &ww, &wh);
+                std::lock_guard g(g_event_lock);
+                g_pointer_x = event.motion.x, g_pointer_y = event.motion.y, g_window_w = ww, g_window_h = wh;
+                g_pointer_moves++;
+            }
+        }
         // Only while the camera is asking (the field): menus and fights would pile it up for later.
         if (now_ms() - g_look_asked_ms.load() < 200) {
             std::lock_guard g(g_event_lock);
@@ -455,6 +476,26 @@ void handle_event(const SDL_Event& event) {
     default:
         break;
     }
+}
+
+bool pointer(float* x, float* y, uint32_t* moves) {
+    const TestInput test = read_test_file();
+    if (test.point_x >= 0.0f) {  // AIDYN_INPUT_FILE's point=x,y (tests): moved whenever it changes
+        static float last_x = -1.0f, last_y = -1.0f;
+        static uint32_t n = 0;
+        if (test.point_x != last_x || test.point_y != last_y) n++;
+        last_x = test.point_x, last_y = test.point_y;
+        *x = test.point_x, *y = test.point_y, *moves = n | 0x80000000u;
+        return true;
+    }
+    std::lock_guard g(g_event_lock);
+    if (g_window_h <= 0 || g_pointer_moves == 0) return false;
+    // The menus are the picture's middle 4:3 (or the whole of a narrower window), 240 units tall.
+    const float unit = std::min((float)g_window_h / 240.0f, (float)g_window_w / 320.0f);
+    *x = (g_pointer_x - (g_window_w - 320.0f * unit) / 2.0f) / unit;
+    *y = (g_pointer_y - (g_window_h - 240.0f * unit) / 2.0f) / unit;
+    *moves = g_pointer_moves;
+    return true;
 }
 
 void listen(bool on) {

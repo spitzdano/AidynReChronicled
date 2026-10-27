@@ -4326,15 +4326,37 @@ namespace aidyn {
 
 void report_problem(uint8_t* rdram, recomp_context* ctx);  // "Report a problem", below
 void controls_open(uint8_t* rdram, recomp_context* ctx);     // "Controls page", below
+void ach_open(uint8_t* rdram, recomp_context* ctx);          // "Achievements page and toast", below
+gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act);
+bool ach_shown();
 gpr controls_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act);
 void title_controls_open(uint8_t* rdram, recomp_context* ctx);
 gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 
 namespace {
+    // The mouse pointer over one of the port's own lists (#44): when it has moved since this list last looked
+    // (seen), the row under it (rows `step` apart from `top`, between `left` and `right`), or -1; x is where it is.
+    struct PointerPick { bool moved = false; int row = -1; float x = 0.0f; };
+    PointerPick pointer_pick(float top, float step, int count, float left, float right, uint32_t& seen) {
+        PointerPick p;
+        float x = 0.0f, y = 0.0f;
+        uint32_t moves = 0;
+        if (!aidyn::controls::pointer(&x, &y, &moves) || moves == seen) return p;
+        seen = moves;
+        p.moved = true;
+        p.x = x;
+        if (x < left || x > right) return p;
+        const int i = (int)std::floor((y - top + 2.0f) / step);
+        if (i >= 0 && i < count) p.row = i;
+        return p;
+    }
+}
+
+namespace {
     // Our entries' ids (the game's are 0xA0..0x17A and 9999), their texts and their pages' titles.
     constexpr uint16_t kRcId = 0x7A11, kDisplayId = 0x7A12;
     constexpr gpr kRcText = (gpr)(int32_t)0x80F81100;           // the entries' texts (above the game's 15 MB), 0x20 each
-    enum RcKind { kRcGameplay = 0, kRcDisplay = 1, kRcControls = 2 };
+    enum RcKind { kRcGameplay = 0, kRcDisplay = 1, kRcControls = 2, kRcAchievements = 3 };
     constexpr const char* kRcEntryText[] = { "ReChronicled", "Display" };
     constexpr uint16_t kRcEntryId[] = { kRcId, kDisplayId };
     constexpr gpr kBigAssMenu = (gpr)(int32_t)0x800D9558;       // gGlobals.BigAssMenu (the pause menu)
@@ -4427,8 +4449,12 @@ namespace {
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
             { "rc_controls", nullptr, "", nullptr, nullptr, nullptr, controls_open },
+            { "rc_achievements", nullptr, "", nullptr, nullptr, nullptr, ach_open },
             { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
+        if (!ach_shown()) {
+            rows.erase(std::remove_if(rows.begin(), rows.end(), [](const RcRow& r) { return std::strcmp(r.label, "rc_achievements") == 0; }), rows.end());
+        }
         if (aidyn_restored_samples_available()) {  // the rechronicled-samples pack ("Restored instrument samples")
             rows.insert(rows.begin() + 1, { "rc_instruments", &sound.restored_samples, "restored_samples", nullptr,
                                             nullptr, nullptr, nullptr, "rc_restored", "rc_dd_1", "audio" });
@@ -4604,9 +4630,18 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (rc.kind == kRcControls) {
         return controls_page(rdram, ctx, g, b, pressed, act);
     }
+    if (rc.kind == kRcAchievements) {
+        return achievements_page(rdram, ctx, g, b, pressed, act);
+    }
     const std::vector<RcRow> rows = rc_rows(rc.kind);
     int& row = rc_row[rc.kind];
     row = std::min(row, (int)rows.size() - 1);
+    if (!rc.closing && rc.fade == 255) {  // the pointer over a row highlights it (A, or a click, then acts on it)
+        static uint32_t seen = 0;
+        const float step = rows.size() > 9 ? 14.5f * 9.0f / (float)(rows.size() - 1) : kRowStep;
+        const PointerPick p = pointer_pick(kRowsTop, step, (int)rows.size(), kRowsLeft - 8.0f, kRowsRight + 4.0f, seen);
+        if (p.row >= 0 && p.row != row) { row = p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+    }
     if (!rc.closing && rc.fade == 255) {
         if (act & 0x0800) { row = (row + (int)rows.size() - 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0400) { row = (row + 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
@@ -7093,6 +7128,7 @@ extern "C" void aidyn_trek_tick(uint8_t* rdram, recomp_context* ctx) {
 
 // QuestData::LoadFromMemPak's entry: a save is being loaded (the Load screens', Quick Load, Continue).
 void ach_loaded_save();  // "Achievements", below
+gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Achievements page and toast", below
 
 extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
     if (MEM_BU(0, kTrekState) == 3 && (ctx->r4 == kSaveBuffer || heap_pointer(ctx->r4))) {  // a fight's pause ("Quit to Title")
@@ -7594,8 +7630,9 @@ void watch_tick(uint8_t* rdram) {
 // unlocks what it holds with one notice ("7 achievements unlocked from this save"); otherwise each gets a notice,
 // shown while walking about (not in a fight, a conversation or a menu). Flawless: a fight won with a full party of
 // four against four or more enemies and nobody in the party hit (Entity::DamageToLevel on a party member, hooked:
-// a spell's stamina cost doesn't go through it). AIDYN_ACH_LOG=1 prints each unlock and count. Off unless
-// AIDYN_ACHIEVEMENTS=1 until the toast and the page are done (ach_enabled).
+// a spell's stamina cost doesn't go through it). AIDYN_ACH_LOG=1 prints each unlock and count; AIDYN_ACHIEVEMENTS=0
+// turns them off. Each unlock shows a toast at the top right (ach_toast: the medal on the turn bar's pieces), and the
+// ReChronicled page's Achievements row lists them (achievements_page).
 extern "C" void getEventFlag(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
@@ -7689,15 +7726,17 @@ namespace {
         int fight_enemies = 0;
         uint32_t last_a = 0xFF, last_walk_b = 0xFF;
         std::vector<std::string> earned;      // in this check, for the notices
-        std::deque<std::string> notices;
+        struct Toast { std::string head, title; };
+        std::deque<Toast> toasts;
+        bool toast_on = false;
+        std::chrono::steady_clock::time_point toast_start{};
         bool from_load = false;               // a save was just loaded: its unlocks get one notice
         std::chrono::steady_clock::time_point next_check{};
     } ach;
 
-    // Held back until the toast and the page are done (0.8.1 ships without): nothing is tracked, saved or shown unless
-    // AIDYN_ACHIEVEMENTS=1 (developers).
+    // On unless AIDYN_ACHIEVEMENTS=0 (nothing tracked, saved or shown then).
     bool ach_enabled() {
-        static const bool on = [] { const char* v = std::getenv("AIDYN_ACHIEVEMENTS"); return v != nullptr && *v != '\0' && *v != '0'; }();
+        static const bool on = [] { const char* v = std::getenv("AIDYN_ACHIEVEMENTS"); return v == nullptr || *v == '\0' || *v != '0'; }();
         return on;
     }
     bool ach_log() {
@@ -7834,18 +7873,22 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
         if (!ach.earned.empty()) {
             ach_save();
             if (ach.from_load && ach.earned.size() > 1) {
-                ach.notices.push_back(std::to_string(ach.earned.size()) + " achievements unlocked from this save");
+                ach.toasts.push_back({ "Achievements unlocked", std::to_string(ach.earned.size()) + " from this save" });
             } else {
-                for (const std::string& t : ach.earned) ach.notices.push_back("Achievement unlocked: " + t);
+                for (const std::string& t : ach.earned) ach.toasts.push_back({ "Achievement unlocked", t });
             }
             ach.earned.clear();
         }
         ach.from_load = false;
     }
-    // one notice at a time, while walking about
-    if (!ach.notices.empty() && a == 1 && std::chrono::steady_clock::now() >= notice_until) {
-        notice(ach.notices.front().c_str(), 5000);
-        ach.notices.pop_front();
+    // one toast at a time, started while walking about (ach_toast draws it)
+    if (!ach.toast_on && !ach.toasts.empty() && a == 1) {
+        ach.toast_on = true;
+        ach.toast_start = std::chrono::steady_clock::now();
+        if (ach_log()) {
+            fprintf(stdout, "Achievement toast: %s / %s\n", ach.toasts.front().head.c_str(), ach.toasts.front().title.c_str());
+            fflush(stdout);
+        }
     }
 }
 
@@ -7855,6 +7898,7 @@ gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     quit_tick(rdram);
     watch_tick(rdram);
     achievements_tick(rdram, ctx);
+    g = ach_toast(rdram, ctx, g);
     const gpr font = MEM_W(0, kFontPtr);
     const auto now = std::chrono::steady_clock::now();
     if (notice_text.empty() || now >= notice_until || !heap_pointer(font) || aidyn::input::start_held()) {
@@ -8084,6 +8128,22 @@ namespace {
         const int n = (int)rows.size();
         ctl.row = std::clamp(ctl.row, 0, n - 1);
         const bool ready = !h.closing && h.fade == 255;
+        if (ready && !ctl.listening) {  // the pointer: its row, and on a binding row its column (first or second key)
+            static uint32_t seen = 0;
+            const float pleft = h.title ? 54.0f : kRowsLeft, pright = h.title ? 266.0f : kRowsRight;
+            const float ptop = (h.title ? 52.0f : kRowsTop) - 2.0f, pcol1 = h.title ? 212.0f : 230.0f;
+            const PointerPick p = pointer_pick(ptop, kCtlRowStep, std::min(kCtlVisible, n - ctl.top), pleft - 8.0f, pright + 4.0f, seen);
+            if (p.row >= 0) {
+                const int r = ctl.top + p.row;
+                const int slot = (rows[r].kind == CtlRow::kBinding && p.x >= pcol1 - 4.0f) ? 1 : 0;
+                if (r != ctl.row || slot != ctl.slot) {
+                    ctl.row = r;
+                    ctl.slot = slot;
+                    ctl.confirm_reset = false;
+                    rc_sound(rdram, ctx, 0x73B, 30);
+                }
+            }
+        }
         if (ctl.wait_release) {
             if (b == 0) ctl.wait_release = false;
         } else if (ready && ctl.listening) {
@@ -8270,6 +8330,137 @@ gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     return g;
 }
 
+// ---- Achievements page and toast (#42) ----
+// The toast: at the top right while walking about, 5 seconds a toast, one at a time: the turn bar's left cap with its
+// plate (the medal in it), its middle and right cap (title_panel.py's pieces, as the title menu's panel), "Achievement
+// unlocked" in gold over the title in ivory. Not drawn while Menu is held (the pause menu keeps a picture of the screen).
+// The page: the ReChronicled page's Achievements row opens it on the scroll, the earned ones by their titles with the
+// day they were earned, the rest ??? (hidden until earned), up and down to scroll, B back.
+bool ach_shown() { return ach_enabled(); }
+
+gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (!ach.toast_on || ach.toasts.empty()) return g;
+    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - ach.toast_start).count();
+    constexpr double kShow = 5.0;
+    if (t >= kShow) {
+        ach.toasts.pop_front();
+        ach.toast_on = false;
+        return g;
+    }
+    const gpr font = MEM_W(0, kFontPtr);
+    if (MEM_BU(0, kTrekState) != 1 || aidyn::input::start_held() || !heap_pointer(font)) return g;
+    const uint32_t alpha = (uint32_t)std::lround(255.0 * std::clamp(std::min(t / 0.25, (kShow - t) / 0.5), 0.0, 1.0));
+    const auto& toast = ach.toasts.front();
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    constexpr float kH = 26.0f, kHead = 0.5f, kTitle = 0.72f;
+    const float k = kH / 30.0f, lw = 38.0f * k, rw = 25.0f * k;
+    const float text_w = std::max(ctl_width(rdram, ctx, font, toast.head, kHead), ctl_width(rdram, ctx, font, toast.title, kTitle));
+    const float w = std::max(130.0f, lw + text_w + 6.0f + rw);
+    // under the FPS counter when it's shown (top right too)
+    const float x1 = 314.0f, x0 = x1 - w, y0 = aidyn::settings::graphics().fps_counter ? 20.0f : 5.0f;
+    // As the controls card and the FPS counter are drawn here: the pieces in the prompts' picture state, then the text
+    // in the 2D state, its rectangles aligned to the picture's right edge again (borg8DlistInit resets that).
+    copy_branding(rdram);
+    const bool wide = hud_wide();
+    g = hud_begin(rdram, g, wide);
+    g = prompt_state(rdram, g, (uint8_t)alpha);
+    g = panel_bar(rdram, g, "tp_cap_l_plate", x0, x1, y0, kH, hs, vs);
+    g = panel_piece(rdram, g, "tp_medal", x0 + 10.5f * k, y0 + 5.0f * k, 20.0f * k, 20.0f * k, hs, vs);
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    GfxCommand a[2];
+    gEXSetRectAlign(&a[0], wide ? G_EX_ORIGIN_RIGHT : G_EX_ORIGIN_LEFT, wide ? G_EX_ORIGIN_RIGHT : G_EX_ORIGIN_LEFT,
+                    wide ? -320 * 4 : 0, 0, wide ? -320 * 4 : 0, 0);
+    g = put_cmds(rdram, g, a, 2);
+    g = ctl_text(rdram, ctx, g, toast.head, x0 + lw + 2.0f, y0 + 6.5f, kHead, 0xE8C060, (int)alpha);
+    g = ctl_text(rdram, ctx, g, toast.title, x0 + lw + 2.0f, y0 + 12.5f, kTitle, 0xF2E6C8, (int)alpha);
+    g = hud_end(rdram, g);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
+}
+
+namespace {
+    int ach_row = 0, ach_top = 0;
+}
+
+void ach_open(uint8_t* rdram, recomp_context* ctx) {
+    ach_load();
+    rc.kind = kRcAchievements;
+    rc.held = 0xFFFFFFFF;  // the A that opened it is still down
+    ach_row = 0;
+    ach_top = 0;
+}
+
+gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act) {
+    // the earned ones first (in the list's order), then the rest
+    std::vector<const Achievement*> list;
+    for (int pass = 0; pass < 2; pass++) {
+        for (const Achievement& a : achievements()) {
+            if ((ach.unlocked.count(a.id) != 0) == (pass == 0)) list.push_back(&a);
+        }
+    }
+    const int n = (int)list.size();
+    constexpr int kVisible = 12;
+    if (!rc.closing && rc.fade == 255) {
+        static uint32_t seen = 0;
+        const PointerPick p = pointer_pick(kRowsTop - 2.0f, kCtlRowStep, std::min(kVisible, n - ach_top), kRowsLeft - 8.0f, kRowsRight + 4.0f, seen);
+        if (p.row >= 0 && ach_top + p.row != ach_row) { ach_row = ach_top + p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+    }
+    if (!rc.closing && rc.fade == 255) {
+        if (act & 0x0800) { ach_row = (ach_row + n - 1) % n; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0400) { ach_row = (ach_row + 1) % n; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0200) { ach_row = std::max(0, ach_row - kVisible); rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0100) { ach_row = std::min(n - 1, ach_row + kVisible); rc_sound(rdram, ctx, 0x73B, 30); }
+        if (pressed & (0x4000 | 0x1000)) {
+            rc.closing = true;
+            rc_sound(rdram, ctx, 0x741, 60);
+        }
+    }
+    if (ach_row < ach_top) ach_top = ach_row;
+    if (ach_row >= ach_top + kVisible) ach_top = ach_row - kVisible + 1;
+    rc.fade = std::clamp(rc.fade + (rc.closing ? -60 : 60), 0, 255);
+    call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)rc.list, (uint32_t)(255 - rc.fade));
+    if (rc.closing && rc.fade == 0) {
+        if (b == 0) rc_end();
+        return g;
+    }
+    rc.pulse++;
+    const float left = kRowsLeft, right = kRowsRight, top = kRowsTop, centre = (left + right) / 2.0f;
+    g = ctl_state(rdram, ctx, g);
+    int earned = 0;
+    for (const Achievement* a : list) earned += ach.unlocked.count(a->id) ? 1 : 0;
+    {  // the title, a picture in halves like the ReChronicled page's (4 KB of TMEM each)
+        copy_branding(rdram);
+        const int tl = branding_index("ach_title_l"), tr = branding_index("ach_title_r");
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        if (tl >= 0 && tr >= 0) {
+            const float w = aidyn::branding::kImages[tl].w;
+            g = prompt_state(rdram, g, (uint8_t)rc.fade);
+            g = draw_rgba16(rdram, g, tl, (centre - w) * hs, (top - 31.0f) * vs, hs, vs);
+            g = draw_rgba16(rdram, g, tr, centre * hs, (top - 31.0f) * vs, hs, vs);
+            g = ctl_state(rdram, ctx, g);
+        }
+    }
+    g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(n), right, top - 16.0f, 0.55f, kMenuInk,
+                 rc.fade, true);
+    for (int i = 0; i < kVisible && ach_top + i < n; i++) {
+        const int r = ach_top + i;
+        const auto it = ach.unlocked.find(list[r]->id);
+        const bool got = it != ach.unlocked.end();
+        const float y = top - 2.0f + kCtlRowStep * i;
+        const uint32_t ink = r == ach_row ? rc_highlight() : got ? kMenuInk : 0xA09090;
+        g = ctl_text(rdram, ctx, g, got ? list[r]->title : "???", left, y, kCtlScale, ink, rc.fade);
+        if (got && it->second.size() >= 10) {
+            g = ctl_text(rdram, ctx, g, it->second.substr(0, 10), right, y, 0.5f, 0xA09090, rc.fade, true);
+        }
+    }
+    const bool kb = aidyn::input::keyboard_last();
+    const std::string back = kb ? keys_of(aidyn::controls::kB, false) : "B";
+    g = ctl_text(rdram, ctx, g, "Up / down: scroll   " + back + ": back", centre, top - 2.0f + kCtlRowStep * kVisible + 3.0f,
+                 kCtlScale, kMenuInk, rc.fade, false, true);
+    return g;
+}
+
 // ---- The versions list (title screen) ----
 // Y on the title card opens a panel listing the versions: Original first, then the mods (Aidyn Patch, Aidyn Plus, Action
 // Edition). Up and Down choose (the pad's D-pad or stick, or the keyboard's movement keys), A plays the chosen one (the
@@ -8323,6 +8514,11 @@ gpr title_versions_panel(uint8_t* rdram, gpr g) {
         const uint32_t dirs = b & 0x0C00;
         vers.repeat = dirs != 0 ? vers.repeat + 1 : 0;
         const uint32_t act = pressed | ((vers.repeat > 24 && vers.repeat % 6 == 0) ? dirs : 0);
+        if (!vers.closing) {
+            static uint32_t seen = 0;
+            const PointerPick p = pointer_pick(52.0f + 40.0f - 1.5f, 13.5f, kVersionCount, 70.0f, 250.0f, seen);
+            if (p.row >= 0 && p.row != vers.sel) { vers.sel = p.row; rc_sound(rdram, ctx, 0x740, 60); }
+        }
         if (!vers.closing) {
             if (act & 0x0800) {
                 vers.sel = (vers.sel + kVersionCount - 1) % kVersionCount;
@@ -8578,8 +8774,9 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     const float cap_x = slot_x + (slot_w - cap_w) / 2.0f;
     const float end = 4.0f * hu / 12.0f;  // the cap's ends are 4 of its 12 texels
     // Each piece is drawn wider by its pad (the texels past its picture are transparent), the middle stretched to fit.
-    // They overlap by half a unit where they meet: drawn edge to edge, the filtering at the edges left a thin line.
-    constexpr float kOverlap = 0.5f;
+    // They overlap by a unit where they meet: drawn edge to edge (or by half a unit), the filtering at the edges left a
+    // thin dark line.
+    constexpr float kOverlap = 1.0f;
     const float mid_w = std::max(0.0f, cap_w - 2.0f * end) + 2.0f * kOverlap;
     piece("key_cap_l", cap_x, top, end * (4.0f + kPad) / 4.0f, hu);
     piece("key_cap_m", cap_x + end - kOverlap, top, mid_w * (2.0f + kPad) / 2.0f, hu);
@@ -8595,7 +8792,8 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
             const int i = find_image(name);
             if (i >= 0) {
                 const auto& img = aidyn::branding::kImages[i];
-                piece(name, pen - (img.w - ink) / 2.0f * u * k, letter_top, img.w * u * k, hu * k);
+                // its ink centred in its first img.w - kPad texels (the last kPad are transparent)
+                piece(name, pen - (img.w - kPad - ink) / 2.0f * u * k, letter_top, img.w * u * k, hu * k);
             }
         }
         pen += ((c == ' ' ? space : ink) + gap) * u * k;

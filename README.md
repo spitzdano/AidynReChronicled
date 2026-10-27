@@ -405,6 +405,18 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
+- **Achievements (#42).** 61 milestones, most read from the event flags the game keeps in its saves (the story's
+  journal entries, bosses' "killed" flags, companions joining, maps, keys, stats and skills), a few counted by the port
+  (fights won, a flawless fight, a camp ambush survived, a fight fled, gold, levels). Kept per version beside the saves
+  (`achievements-<pak>.txt`, not in a save), so they add up across playthroughs; nothing unlocks while the game's own
+  Cheater flag is set. Each unlock shows a toast at the top right while walking about (the turn bar's pieces with a
+  medal); the ReChronicled page's **Achievements** row lists the earned ones (with the day) and the rest as `???`.
+  `AIDYN_ACHIEVEMENTS=0` turns them off; `AIDYN_ACH_LOG=1` logs each unlock.
+- **The mouse pointer on the port's own pages.** On the ReChronicled, Display, Controls, Achievements and Versions
+  pages, moving the pointer over a row highlights it (a click is A as usual: it then acts on that row);
+  `aidyn::controls::pointer` maps the window to the menus' 320 x 240 units. The game's own menus (the pause list, the
+  title menu, shops) don't follow it yet.
+
 - **Help book.** The pause menu's Help (a dialogue, `BORG13_HelpMenu`) is copied as it loads with its words fitted to
   this edition: the BUTTON after each button icon dropped (they're Xbox icons now), "the left stick" for the Control
   Stick, RT (not View, which quicksaves) to pick a target. A **ReChronicled** topic is added before Exit

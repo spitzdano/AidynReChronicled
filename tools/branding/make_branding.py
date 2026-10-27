@@ -512,7 +512,7 @@ RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_v
             ("rc_stick_camera", "Right-stick camera"), ("rc_invert_x", "Invert camera turning"),
             ("rc_invert_y", "Invert camera tilt"),
             ("rc_on", "On"), ("rc_off", "Off"), ("rc_dd_1", "Original"), ("rc_dd_15", "1.5x"), ("rc_dd_2", "2x"),
-            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_controls", "Controls"), ("rc_ws_125", "1.25x"),
+            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_controls", "Controls"), ("rc_achievements", "Achievements"), ("rc_ws_125", "1.25x"),
             ("rc_ws_175", "1.75x"), ("rc_window", "Window"), ("rc_windowed", "Windowed"), ("rc_borderless", "Borderless"),
             ("rc_sound", "Sound"), ("rc_enhanced", "Enhanced"),
             ("rc_combat_speed", "Combat speed"), ("rc_enemy_turns", "Enemy turns"), ("rc_x4", "4x"),
@@ -530,6 +530,9 @@ def half(draw, w, h, right):
 
 IMAGES += [("rc_title_display", int(ink_width("Display", MARCELLUS, TITLE_SIZE) / SS) + 10, 25,
             page_title("Display", TITLE_SIZE, 5))]
+ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
+IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
+           ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]
 IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, False)),
            ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, True))]
 IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
@@ -739,9 +742,12 @@ def _key_glyph_metrics():
 
 
 def key_glyph(ch, ink_w, mask):
+    """The letter centred in the picture's first w - KEY_PAD texels; the last KEY_PAD are transparent (the renderer
+    draws a picture one unit wider than its texels and repeats the last column: without them a thin letter like I
+    smeared to the right)."""
     def draw(w, h):
         img = np.zeros((h * SS, w * SS, 4), np.float32)
-        x0 = (w * SS - mask.shape[1]) // 2
+        x0 = ((w - KEY_PAD) * SS - mask.shape[1]) // 2
         a = mask[:, :min(mask.shape[1], w * SS)]
         img[:, x0:x0 + a.shape[1], :3] = rgb(KEY_INK) * a[..., None]
         img[:, x0:x0 + a.shape[1], 3] = a
@@ -753,7 +759,7 @@ KEY_GLYPHS = _key_glyph_metrics()
 KEY_GLYPH_LINES = []
 _KEY_GLYPH_SEEN = set()
 for _ch, (_mask, _ink) in KEY_GLYPHS.items():
-    _gw = int(np.ceil(_ink + 0.3))
+    _gw = int(np.ceil(_ink + 0.3)) + KEY_PAD
     _draw = key_glyph(_ch, _ink, _mask)
     # (two letters that come out the same at the game's size, I and 1, are told apart by a texel of width)
     while (_gw, to_rgba16(_draw(_gw, 12), _gw, 12).tobytes()) in _KEY_GLYPH_SEEN:
