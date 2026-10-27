@@ -265,6 +265,8 @@ ReChronicled page, last row; `src/main/controls.cpp`, kept in settings.json's `c
 id, `mouse_look`, `mouse_sensitivity`, `mouse_invert_y`). The mouse turns and tilts the camera in the field (SDL's
 relative mouse mode, captured only while walking about and the window has the focus). The controls card shows the keys
 beside its lines, and the Help book's keyboard page names them, while the keyboard or mouse was used last.
+While a conversation is up, "Continue [A]" ("Choose" when it offers answers; the key bound to A while the keyboard
+was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AIDYN_DIALOGUE_LOG=1`).
 `AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with
 `tools/dev/vpad.py` (a virtual Xbox pad for the real pad path), `AIDYN_CONTROLS_LOG=1` (mouse capture changes).
 

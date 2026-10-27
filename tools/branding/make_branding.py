@@ -494,6 +494,8 @@ IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", T
            ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, True))]
 IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
 IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back", 60, 11, menu_hint("Back", "B"))]
+# A conversation's hint (src/game/patches.cpp, "Conversation hint"): A moves it on, or picks the highlighted answer.
+IMAGES += [("dlg_continue", 64, 11, menu_hint("Continue", "A", light=True)), ("dlg_choose", 64, 11, menu_hint("Choose", "A", light=True))]
 # The inventory page's party switch: LT and RT beside the party's portraits (previous / next member; the port makes LT the
 # game's C-left in the pause menu, src/main/input.cpp).
 IMAGES += [("party_prev", 11, 11, page_prompt("Z")), ("party_next", 11, 11, page_prompt("CR"))]

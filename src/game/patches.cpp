@@ -33,6 +33,7 @@ namespace {
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 std::string help_keys_text();               // "Keys on the prompts", below
+gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Conversation hint", below
 gpr draw_card_keys(uint8_t* rdram, recomp_context* ctx, gpr g);  // the keys beside the controls card's lines, below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open);  // "Combat log"
@@ -81,6 +82,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     free_spill_frame(rdram, ctx);
     g = aidyn_prompts(rdram, g);
     g = draw_card_keys(rdram, ctx, g);
+    g = draw_dialogue_hint(rdram, ctx, g);
     if (combat_log_frame) {
         combat_move_log(rdram);
         g = draw_combat_log(rdram, ctx, g, combat_card_top, combat_menu_open);
@@ -8271,6 +8273,66 @@ std::string help_keys_text() {
         t += " The mouse turns the camera; " + k(kCamReset) + " puts it behind the party.";
     }
     return t + " Controls, on the ReChronicled page or the title screen, changes them.";
+}
+
+// ---- Conversation hint ----
+// A conversation (gameStateA 12) says nothing about how to move it on. While one is up, the bottom right of its dark
+// band shows "Continue [A]", or "Choose [A]" when it offers answers: the A button's picture, or the key bound to A
+// ("Continue  Z") while the keyboard or mouse was used last. gGlobals.diaClass (0x800D964C) -> its menu (+4, substruct
+// +0x40: DiaMenuSub, Background +0xC, the answers' scroll menu +0x28). AIDYN_DIALOGUE_LOG=1 prints what it finds.
+gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (MEM_BU(0, kTrekState) != 12 || heap_pointer(MEM_W(0, kTitleScreen)) || aidyn::input::start_held() ||
+        !aidyn::settings::graphics().button_prompts) {
+        return g;
+    }
+    const gpr dia = MEM_W(0, (gpr)(int32_t)0x800D964C);
+    const gpr menu = heap_pointer(dia) ? MEM_W(4, dia) : 0;
+    const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
+    const gpr bg = heap_pointer(sub) ? MEM_W(0xC, sub) : 0;
+    if (!heap_pointer(bg)) return g;
+    const uint32_t alpha = MEM_BU(0x5B, bg);
+    const float x0 = (int16_t)MEM_HU(kWidgetPosX, bg), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, bg);
+    const float x1 = x0 + MEM_HU(0x74, bg), y1 = y0 + MEM_HU(0x72, bg);
+    const gpr scroll = MEM_W(0x28, sub);
+    const gpr ssub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
+    const int answers = heap_pointer(ssub) ? MEM_HU(0x20, ssub) : 0;
+    static const bool log = std::getenv("AIDYN_DIALOGUE_LOG") != nullptr;
+    if (log) {
+        static int frames = 0;
+        if (++frames % 30 == 0) {
+            fprintf(stdout, "Dialogue: band %.0f,%.0f to %.0f,%.0f alpha %u, %d answers\n", x0, y0, x1, y1, alpha, answers);
+            fflush(stdout);
+        }
+    }
+    if (alpha < 128) return g;
+    const gpr font = MEM_W(0, kFontPtr);
+    const bool keys = aidyn::input::keyboard_last();
+    const int image = branding_index(answers > 0 ? "dlg_choose" : "dlg_continue");
+    if (image < 0 || (keys && !heap_pointer(font))) return g;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    const float w = (float)ink_width(image);
+    const std::string key = keys_of(aidyn::controls::kA, false);
+    constexpr float kScale = 0.62f;
+    const float key_w = keys ? ctl_width(rdram, ctx, font, key, kScale) + 4.0f : 0.0f;
+    copy_branding(rdram);
+    g = hud_begin(rdram, g, false);
+    GfxCommand a[2];
+    gEXSetRectAlign(&a[0], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, -160 * 4, 0, -160 * 4, 0);  // the 4:3 picture's own units
+    g = put_cmds(rdram, g, a, 2);
+    const float x = x1 - 8.0f - (keys ? ctl_width(rdram, ctx, font, std::string(answers > 0 ? "Choose" : "Continue"), kScale) + key_w : w);
+    const float y = y1 - 13.0f;
+    if (!keys) {
+        g = prompt_state(rdram, g, (uint8_t)alpha);
+        g = draw_rgba16(rdram, g, image, (x1 - 8.0f - w) * hs, y * vs, hs, vs);
+    } else {
+        g = ctl_state(rdram, ctx, g);
+        g = ctl_text(rdram, ctx, g, answers > 0 ? "Choose" : "Continue", x + 0.6f, y + 1.6f, kScale, 0x101830, (int)alpha);
+        g = ctl_text(rdram, ctx, g, answers > 0 ? "Choose" : "Continue", x, y + 1.0f, kScale, 0xF2E6C8, (int)alpha);
+        const float kx = x + ctl_width(rdram, ctx, font, std::string(answers > 0 ? "Choose" : "Continue"), kScale) + 4.0f;
+        g = ctl_text(rdram, ctx, g, key, kx + 0.6f, y + 1.6f, kScale, 0x101830, (int)alpha);
+        g = ctl_text(rdram, ctx, g, key, kx, y + 1.0f, kScale, 0xE8C060, (int)alpha);
+    }
+    return hud_end(rdram, g);
 }
 
 // ---- Report a problem ----
