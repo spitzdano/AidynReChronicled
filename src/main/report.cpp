@@ -177,6 +177,36 @@ std::filesystem::path aidyn::report::make(const std::string& reason,
 
 #ifdef _WIN32
 namespace {
+    // A minidump at the crash (every thread's stack, the crashing one at the exception) through dbghelp.dll, loaded
+    // when needed. MINIDUMP_EXCEPTION_INFORMATION is packed to 4 bytes (dbghelp.h's pshpack4), hence the pragma.
+#pragma pack(push, 4)
+    struct DumpException {
+        DWORD thread_id;
+        EXCEPTION_POINTERS* pointers;
+        BOOL client_pointers;
+    };
+#pragma pack(pop)
+    std::vector<uint8_t> crash_minidump(EXCEPTION_POINTERS* info) {
+        namespace fs = std::filesystem;
+        using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, int, void*, void*, void*);
+        const fs::path path = g_data / "logs" / "crash.dmp";
+        std::error_code ec;
+        fs::create_directories(path.parent_path(), ec);
+        HMODULE dbghelp = LoadLibraryA("dbghelp.dll");
+        if (dbghelp == nullptr) return {};
+        const auto write = reinterpret_cast<MiniDumpWriteDumpFn>(GetProcAddress(dbghelp, "MiniDumpWriteDump"));
+        bool ok = false;
+        HANDLE file = CreateFileW(path.wstring().c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (write != nullptr && file != INVALID_HANDLE_VALUE) {
+            DumpException ex{ GetCurrentThreadId(), info, FALSE };
+            constexpr int kNormalWithThreadInfo = 0x00001000;  // MiniDumpNormal | MiniDumpWithThreadInfo
+            ok = write(GetCurrentProcess(), GetCurrentProcessId(), file, kNormalWithThreadInfo, &ex, nullptr, nullptr) != 0;
+        }
+        if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+        FreeLibrary(dbghelp);
+        return ok ? read_file(path) : std::vector<uint8_t>{};
+    }
+
     LONG WINAPI unhandled(EXCEPTION_POINTERS* info) {
         static volatile LONG entered = 0;
         if (InterlockedExchange(&entered, 1) != 0) {
@@ -209,9 +239,14 @@ namespace {
             std::fputs(out.c_str(), f);
             std::fclose(f);
         }
-        char reason[96];
-        std::snprintf(reason, sizeof reason, "The game crashed (exception 0x%08lX, game-crash.txt)", rec->ExceptionCode);
-        aidyn::report::game_crashed(reason);
+        std::vector<std::pair<std::string, std::vector<uint8_t>>> extra;
+        if (std::vector<uint8_t> dump = crash_minidump(info); !dump.empty()) {
+            extra.emplace_back("logs/crash.dmp", std::move(dump));
+        }
+        char reason[128];
+        std::snprintf(reason, sizeof reason, "The game crashed (exception 0x%08lX, game-crash.txt%s)", rec->ExceptionCode,
+                      extra.empty() ? "" : ", logs/crash.dmp");
+        aidyn::report::game_crashed(reason, extra);
     }
 }
 #endif
@@ -222,8 +257,9 @@ void aidyn::report::install_crash_handler() {
 #endif
 }
 
-void aidyn::report::game_crashed(const std::string& reason) {
-    const std::filesystem::path made = make(reason);
+void aidyn::report::game_crashed(const std::string& reason,
+                                 const std::vector<std::pair<std::string, std::vector<uint8_t>>>& extra) {
+    const std::filesystem::path made = make(reason, extra);
     std::string text = "Aidyn ReChronicled ran into a problem and has to close.\n\n";
     if (!made.empty()) {
 #ifdef _WIN32
@@ -239,12 +275,12 @@ void aidyn::report::game_crashed(const std::string& reason) {
     }
     fprintf(stderr, "%s\n", text.c_str());
     fflush(stderr);
+    aidyn::watch::session_end();  // reported: not to be reported again as an unclean end, nor the message as a freeze
 #ifdef _WIN32
     // Windows' own message box: it works from inside the crash handler, where SDL's may not.
     MessageBoxA(nullptr, text.c_str(), "Aidyn ReChronicled", MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND);
 #else
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Aidyn ReChronicled", text.c_str(), nullptr);
 #endif
-    aidyn::watch::session_end();  // reported: not to be reported again as an unclean end
     std::_Exit(1);
 }

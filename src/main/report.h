@@ -17,8 +17,10 @@ namespace aidyn::report {
                                const std::vector<std::pair<std::string, std::vector<uint8_t>>>& extra = {});
     // The game hit its own crash check (src/game/patches.cpp): a report, a message saying where it is, and the end of
     // the program (where the game would sit frozen).
-    [[noreturn]] void game_crashed(const std::string& reason);
+    [[noreturn]] void game_crashed(const std::string& reason,
+                                   const std::vector<std::pair<std::string, std::vector<uint8_t>>>& extra = {});
     // Windows: a crash the program doesn't handle itself (an access violation...) writes game-crash.txt (the exception,
-    // where, the call stack) and a problem report. Linux: src/main/watch.cpp's signal handler does the same.
+    // where, the call stack), logs/crash.dmp (a minidump: every thread's stack, read with the release's .pdb) and a
+    // problem report with both. Linux: src/main/watch.cpp's signal handler does the same.
     void install_crash_handler();
 }

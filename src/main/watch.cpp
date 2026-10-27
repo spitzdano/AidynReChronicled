@@ -48,6 +48,7 @@ namespace {
     fs::path g_data, g_marker;
     std::atomic<int64_t> g_last_frame{ 0 };   // steady clock, ms; 0 before the first frame
     std::atomic<uint64_t> g_sound_ticks{ 0 };
+    std::atomic_bool g_ended{ false };          // session_end: the watchdog stops (a crash's message box isn't a freeze)
     const auto g_started = clock_type::now();
     std::mutex g_lock;
     std::string g_state = "starting", g_notice;
@@ -148,8 +149,9 @@ namespace {
     void watchdog() {
         bool frozen = false;
         int64_t frozen_since = 0;
-        while (!aidyn_quitting.load()) {
+        while (!aidyn_quitting.load() && !g_ended.load()) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
+            if (g_ended.load()) break;
             const int64_t last = g_last_frame.load();
             if (last == 0) continue;  // not started yet (the ROM loading, the first frame)
             const int64_t age = now_ms() - last;
@@ -230,6 +232,7 @@ void aidyn::watch::session_start(const fs::path& data, bool report_only) {
 }
 
 void aidyn::watch::session_end() {
+    g_ended = true;
     if (g_marker.empty()) return;
     std::error_code ec;
     fs::remove(g_marker, ec);

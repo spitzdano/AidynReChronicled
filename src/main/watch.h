@@ -8,7 +8,8 @@ namespace aidyn::watch {
     // force) gets a problem report now, with the freeze watchdog's notes if it left any, and a notice for the player.
     // Then this session's marker is made. `report_only`: the --report run, which leaves the marker alone.
     void session_start(const std::filesystem::path& data, bool report_only);
-    // The session ends properly (closed, restarted into another version, or after a reported crash): marker removed.
+    // The session ends properly (closed, restarted into another version, or after a reported crash): marker removed,
+    // and the watchdog stops.
     void session_end();
     // The freeze watchdog: a thread that, once the game has drawn its first frame, notices when no frame comes for
     // kFreezeSeconds and writes what it can into the log and logs/hang.txt (the game's state, whether the sound still
