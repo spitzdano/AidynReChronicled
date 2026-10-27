@@ -739,6 +739,13 @@ func = "ProcessPlayers"
 before_vram = 0x8001343C
 text = "extern void aidyn_walk_steps_end(uint8_t* rdram, recomp_context* ctx); aidyn_walk_steps_end(rdram, ctx);"
 
+# Storm lightning at the N64's pace (src/game/patches.cpp "Lightning"): RenderSky's storm timer (a2 = its old value,
+# about to be counted up modulo 20) only comes round to 0, the frame a flash may come, every third time.
+[[patches.hook]]
+func = "RenderSky"
+before_vram = 0x8001D884
+text = "extern void aidyn_storm_timer(uint8_t* rdram, recomp_context* ctx); aidyn_storm_timer(rdram, ctx);"
+
 # The outdoor sky's fill below the horizon (RenderSky's DrawRectangle at 0x8001DD50: a2 = the horizon row, colour
 # bytes on the stack at sp + 0x14..0x20): src/game/patches.cpp "Below the horizon".
 [[patches.hook]]

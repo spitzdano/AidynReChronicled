@@ -2896,6 +2896,32 @@ extern "C" void aidyn_sky_fill(uint8_t* rdram, recomp_context* ctx) {
     ctx->r6 = y;
 }
 
+// Lightning. In a storm RenderSky counts a timer up each frame, modulo 20, and when it comes round to 0 a flash may
+// come (a chance of the storm's strength / 4): the whole screen white for a frame, the sky white, and a thunderclap.
+// The N64 drew about 20 frames a second, so that was a chance about once a second; the port draws 60, so storms
+// flashed three times as often (a player reported "the sky flashes a lot"). The timer now comes round to 0 every
+// third time and starts again at 1 otherwise: a chance every 58 frames, about once a second again.
+// AIDYN_STORM_LOG=1 logs each chance with the storm's strength; AIDYN_STORM_TEST=<0..1> holds a storm (testing).
+extern "C" void aidyn_storm_timer(uint8_t* rdram, recomp_context* ctx) {
+    static const bool log = std::getenv("AIDYN_STORM_LOG") != nullptr;
+    static const char* test = std::getenv("AIDYN_STORM_TEST");  // testing: the storm's strength held at this
+    static uint32_t rounds = 0;
+    const gpr terrain = (gpr)MEM_W(0, (gpr)(int32_t)0x800E303C);  // TerrainPointer
+    if (test != nullptr && terrain != 0) {
+        write_f32(rdram, terrain + 0x10, (float)std::atof(test));
+    }
+    if ((ctx->r6 + 1) % 20 != 0) {
+        return;
+    }
+    if (++rounds % 3 != 0) {
+        ctx->r6 = 0;  // counted up to 1, not 0
+        return;
+    }
+    if (log) {
+        fprintf(stderr, "storm: a lightning chance, thunder %.3f\n", terrain != 0 ? read_f32(rdram, terrain + 0x10) : 0.0f);
+    }
+}
+
 extern "C" void aidyn_sound_falloff(uint8_t* rdram, recomp_context* ctx) {
     if (MEM_BU(0, (gpr)(int32_t)0x800D80C8) == 2) {  // gGlobals.gameStateA: 2 = combat
         return;
@@ -7439,7 +7465,8 @@ void watch_tick(uint8_t* rdram) {
 // unlocks what it holds with one notice ("7 achievements unlocked from this save"); otherwise each gets a notice,
 // shown while walking about (not in a fight, a conversation or a menu). Flawless: a fight won with a full party of
 // four against four or more enemies and nobody in the party hit (Entity::DamageToLevel on a party member, hooked:
-// a spell's stamina cost doesn't go through it). AIDYN_ACH_LOG=1 prints each unlock and count.
+// a spell's stamina cost doesn't go through it). AIDYN_ACH_LOG=1 prints each unlock and count. Off unless
+// AIDYN_ACHIEVEMENTS=1 until the toast and the page are done (ach_enabled).
 extern "C" void getEventFlag(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
@@ -7538,6 +7565,12 @@ namespace {
         std::chrono::steady_clock::time_point next_check{};
     } ach;
 
+    // Held back until the toast and the page are done (0.8.1 ships without): nothing is tracked, saved or shown unless
+    // AIDYN_ACHIEVEMENTS=1 (developers).
+    bool ach_enabled() {
+        static const bool on = [] { const char* v = std::getenv("AIDYN_ACHIEVEMENTS"); return v != nullptr && *v != '\0' && *v != '0'; }();
+        return on;
+    }
     bool ach_log() {
         static const bool on = std::getenv("AIDYN_ACH_LOG") != nullptr;
         return on;
@@ -7590,13 +7623,14 @@ namespace {
 }
 
 void ach_loaded_save() {
+    if (!ach_enabled()) return;
     ach.from_load = true;
     ach.in_fight = false;
 }
 
 // Entity::DamageToLevel's entry (a0 the character, a1 the damage): a hit on a party member in a fight spoils Flawless.
 extern "C" void aidyn_ach_damage(uint8_t* rdram, recomp_context* ctx) {
-    if (!ach.in_fight || (int16_t)ctx->r5 <= 0) return;
+    if (!ach_enabled() || !ach.in_fight || (int16_t)ctx->r5 <= 0) return;
     const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
     for (int i = 0; heap_pointer(party) && i < 4; i++) {
         if (MEM_W(4 * i, party) == ctx->r4) ach.fight_hit = true;
@@ -7605,6 +7639,7 @@ extern "C" void aidyn_ach_damage(uint8_t* rdram, recomp_context* ctx) {
 
 // Once a frame (Graphics::EndList): the fight events every frame, the flags once a second, the notices when quiet.
 void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
+    if (!ach_enabled()) return;
     const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
     const uint32_t a = MEM_BU(0, kTrekState), b = MEM_BU(0, kGameStateB);
     const bool playing = heap_pointer(party) && !heap_pointer(MEM_W(0, kTitleScreen)) && a != 0 && a != 15;

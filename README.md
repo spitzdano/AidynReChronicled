@@ -185,7 +185,7 @@ Ports 2 to 4 report no pack. `osPfsChecker` always reports "consistent": it talk
 
 Runtime-shell stubs (`src/game/stubs.cpp`): `__osSiGetAccess` / `__osSiRelAccess` (no-op), `__osSpDeviceBusy` (never busy), `__osGetSR`
 (context status register), and `aidyn_park_boot_thread` (hooked at the entrypoint's trailing `break`: bootproc returns on the runtime but
-never on hardware). `src/main/audio.cpp` caps the reported audio queue at one VI so the game's unsigned buffer-size arithmetic can't wrap.
+never on hardware). `src/main/audio.cpp` caps the reported audio queue at one VI so the game's unsigned buffer-size arithmetic can't wrap, and keeps the game's sound three VIs ahead (52 to 68 ms queued; it was one, 18 to 35 ms, and a hold-up of the game's thread longer than that played silence: a pop). The log notes each time the queue was found empty ("Sound: ran dry"); `AIDYN_AUDIO_AHEAD=<VIs>` (testing).
 
 Split fix-ups (all in `tools/`, applied by `tools/split.sh`; `decomp/` is never edited): `yaml_options.txt` + `yaml_fixes.txt`
 (segment boundary moves and replacements), `symbol_fixes.txt` (named/sized symbols), `symbol_fixes_auto.txt` (functions reached only
@@ -443,7 +443,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   with a notice for the player. The freeze watchdog, a thread the game checks in with once a frame (from
   Graphics::EndList), notes a stop of 15 s in the log and `logs/hang.txt`: what the game was doing, whether the sound
   still runs, and where the game thread is (its stack on Linux, taken with SIGUSR2; `logs/hang.dmp`, a minidump of every
-  thread through dbghelp, on Windows, read against the release's `.pdb`). It leaves the game alone, which may go on
+  thread through dbghelp, on Windows, read against the release's `.pdb`; a Windows crash's report holds `logs/crash.dmp` the same way, with the exception). It leaves the game alone, which may go on
   ("FREEZE over"); the next start reports that too. Each change of the game's state is a `Trail` line in the log (the
   title screen, walking, a fight, a menu, a conversation, with the map and cell), so the last lines before a freeze or
   crash say what led to it. Linux crash signals (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT) write `game-crash.txt` and a
