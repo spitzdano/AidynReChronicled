@@ -8399,27 +8399,35 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     };
     const SlotFace face = slot_face(button);
     const float slot_x = x / hs, slot_w = w * sx / hs, top = y / vs;
+    constexpr float kPad = 2.0f;  // the cap pieces' and mice's transparent texels at the right (make_branding.py: KEY_PAD)
     if (face.mouse != nullptr) {
-        piece(face.mouse, slot_x + (slot_w - hu) / 2.0f, top, hu, hu);
+        piece(face.mouse, slot_x + (slot_w - hu) / 2.0f, top, hu * (12.0f + kPad) / 12.0f, hu);
         if (text_state) {
             return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
         }
         return g;
     }
-    float scale = 0.07f * hu;
+    // The painted cap's rim is thick: its face is about 6/10 of its height, and the ornate ends take most of their 4/12
+    // each: the letters need that much room at each side.
+    const float pad = hu * 0.55f;
+    float scale = 0.055f * hu;
     float text_w = 0.0f;
     for (char c : face.text) text_w += letter_advance(rdram, ctx, font, c, scale);
-    if (text_w > slot_w - 3.0f) {  // a long name: smaller letters, to fit the slot
-        scale *= (slot_w - 3.0f) / text_w;
+    if (text_w > slot_w - pad - 0.5f) {  // a long name: smaller letters, to fit the slot
+        scale *= (slot_w - pad - 0.5f) / text_w;
         text_w = 0.0f;
         for (char c : face.text) text_w += letter_advance(rdram, ctx, font, c, scale);
     }
-    const float cap_w = std::clamp(text_w + 3.0f, hu * (cover ? 1.15f : 0.9f), std::max(slot_w, hu * 1.15f));
+    const float cap_w = std::clamp(text_w + pad, hu * (cover ? 1.4f : 0.9f), std::max(slot_w, hu * (cover ? 1.4f : 1.15f)));
     const float cap_x = slot_x + (slot_w - cap_w) / 2.0f;
     const float end = 4.0f * hu / 12.0f;  // the cap's ends are 4 of its 12 texels
-    piece("key_cap_l", cap_x, top, end, hu);
-    piece("key_cap_m", cap_x + end, top, std::max(0.0f, cap_w - 2.0f * end), hu);
-    piece("key_cap_r", cap_x + cap_w - end, top, end, hu);
+    // Each piece is drawn wider by its pad (the texels past its picture are transparent), the middle stretched to fit.
+    // They overlap by half a unit where they meet: drawn edge to edge, the filtering at the edges left a thin line.
+    constexpr float kOverlap = 0.5f;
+    const float mid_w = std::max(0.0f, cap_w - 2.0f * end) + 2.0f * kOverlap;
+    piece("key_cap_l", cap_x, top, end * (4.0f + kPad) / 4.0f, hu);
+    piece("key_cap_m", cap_x + end - kOverlap, top, mid_w * (2.0f + kPad) / 2.0f, hu);
+    piece("key_cap_r", cap_x + cap_w - end - kOverlap, top, end * (4.0f + kPad) / 4.0f, hu);
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
     const FontState st = font_save(rdram, font);
@@ -8473,8 +8481,8 @@ namespace {
         const SlotFace face = slot_face(button);
         if (face.mouse != nullptr) return 9;
         float w = 0.0f;
-        for (char c : face.text) w += letter_advance(rdram, ctx, font, c, 0.07f * 9.0f);
-        return std::max(9, (int)std::ceil(w + 3.0f));
+        for (char c : face.text) w += letter_advance(rdram, ctx, font, c, 0.055f * 9.0f);
+        return std::max(9, (int)std::ceil(w + 0.55f * 9.0f));
     }
 }
 

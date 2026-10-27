@@ -658,8 +658,43 @@ def mouse_icon(which):
     return draw
 
 
-IMAGES += [("key_cap_l", 4, 12, key_cap("l")), ("key_cap_m", 2, 12, key_cap("m")), ("key_cap_r", 4, 12, key_cap("r"))]
-IMAGES += [(f"key_mouse_{n}", 12, 12, mouse_icon(n)) for n in ("left", "right", "middle", "back", "forward", "wheelup", "wheeldown", "move")]
+# Codex's painted ones (art/hud/source/keys: eleven PNGs at 8 pixels a unit, from the brief in ~/Work/aidyn-keys-brief) when
+# the art submodule has them; the drawings above otherwise.
+KEYS_SOURCE = PROJECT / "art/hud/source/keys"
+MOUSE_NAMES = ("left", "right", "middle", "back", "forward", "wheelup", "wheeldown", "move")
+
+
+def key_piece(name, flip=False, pad=0):
+    """A painted piece, as it is (or mirrored), with `pad` transparent texels added at its right: the renderer draws a
+    picture one unit wider than its texels cover and repeats the last column over it, which would show as a stub."""
+    def draw(w, h):
+        from pngio import read_png
+        pw, ph, rgba = read_png(KEYS_SOURCE / f"{name}.png")
+        a = np.frombuffer(bytes(rgba), np.uint8).reshape(ph, pw, 4).astype(np.float32) / 255
+        a[..., :3] *= a[..., 3:]  # premultiplied
+        if flip:
+            a = a[:, ::-1]
+        a = np.pad(a, ((0, 0), (0, pad * SS), (0, 0)))
+        if a.shape[:2] != (h * SS, w * SS):
+            sys.exit(f"make_branding.py: {name}.png is {pw}x{ph}, not {(w - pad) * SS}x{h * SS}")
+        return a.copy()
+    return draw
+
+
+# The caps' pieces and the mice carry 2 transparent texels at the right (KEY_PAD): src/game/patches.cpp, draw_button_cap,
+# draws them that much wider.
+KEY_PAD = 2
+if (KEYS_SOURCE / "key_cap_l.png").exists():
+    IMAGES += [("key_cap_l", 4 + KEY_PAD, 12, key_piece("key_cap_l", pad=KEY_PAD)),
+               ("key_cap_m", 2 + KEY_PAD, 12, key_piece("key_cap_m", pad=KEY_PAD)),
+               ("key_cap_r", 4 + KEY_PAD, 12, key_piece("key_cap_l", flip=True, pad=KEY_PAD))]
+    IMAGES += [(f"key_mouse_{n}", 12 + KEY_PAD, 12, key_piece(f"key_mouse_{n}", pad=KEY_PAD)) for n in MOUSE_NAMES]
+else:  # the drawings: padded the same way
+    def padded(draw, pad=KEY_PAD):
+        return lambda w, h: np.pad(draw(w - pad, h), ((0, 0), (0, pad * SS), (0, 0)))
+    IMAGES += [("key_cap_l", 4 + KEY_PAD, 12, padded(key_cap("l"))), ("key_cap_m", 2 + KEY_PAD, 12, padded(key_cap("m"))),
+               ("key_cap_r", 4 + KEY_PAD, 12, padded(key_cap("r")))]
+    IMAGES += [(f"key_mouse_{n}", 12 + KEY_PAD, 12, padded(mouse_icon(n))) for n in MOUSE_NAMES]
 
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
