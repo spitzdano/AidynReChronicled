@@ -14,8 +14,11 @@ body:
           (on the pause menu's Menu page) as close as you can to where it happened: it also keeps a picture of the
           screen and a save of that moment.
 
-        Reports are in the `reports` folder of the game's data folder: `~/.local/share/AidynReChronicled/reports`
-        (on a Steam Deck or an Ally, switch to Desktop Mode to reach it). They hold nothing from the game's ROM.
+        Reports are in the `reports` folder of the game's data folder. They hold nothing from the game's ROM.
+
+        - **Windows:** `%APPDATA%\AidynReChronicled\reports` (paste that into File Explorer's address bar).
+        - **Linux:** `~/.local/share/AidynReChronicled/reports` (on a Steam Deck or an Ally, switch to Desktop Mode to
+          reach it).
   - type: textarea
     id: what
     attributes:
@@ -41,6 +44,7 @@ body:
     attributes:
       label: Played on
       options:
+        - A Windows PC
         - A Linux PC
         - Steam Deck
         - ROG Ally / Xbox Ally (Bazzite, SteamOS)
