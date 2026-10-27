@@ -254,6 +254,12 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     if (!(g_graphics.draw_distance >= 1.0f && g_graphics.draw_distance <= 3.0f)) {
         bad(path, "graphics.draw_distance must be 1 (original) to 3");
     }
+    // Test runs (tools/dev/pad.sh sets it): no anti-aliasing and no supersampling for this run, so a test costs little;
+    // only in memory: nothing is written back to settings.json unless the Display page changes them.
+    if (const char* light = std::getenv("AIDYN_TEST_LIGHT"); light != nullptr && *light != '\0' && *light != '0') {
+        g_graphics.msaa = 0;
+        g_graphics.supersampling = 1;
+    }
     if (!(g_graphics.walk_speed >= 1.0f && g_graphics.walk_speed <= 2.0f)) {
         bad(path, "graphics.walk_speed must be 1 (original) to 2");
     }

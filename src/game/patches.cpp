@@ -8300,12 +8300,6 @@ namespace {
         aidyn::input::set_capture(false);
     }
 
-    std::string first_key_of(aidyn::controls::Action a, const char* pad) {
-        if (!aidyn::input::keyboard_last()) return pad;
-        aidyn::controls::Input in = aidyn::controls::binding(a, 0);
-        if (in.empty()) in = aidyn::controls::binding(a, 1);
-        return in.empty() ? pad : aidyn::controls::input_name(in);
-    }
 }
 
 gpr title_versions_panel(uint8_t* rdram, gpr g) {
@@ -8359,35 +8353,56 @@ gpr title_versions_panel(uint8_t* rdram, gpr g) {
     const int fade = vers.fade;
     constexpr float kLeft = 70.0f, kRight = 250.0f, kTop = 52.0f, kBottom = 170.0f;
     g = title_panel(rdram, ctx, g, kLeft, kTop, kRight, kBottom, (uint32_t)fade);
-    g = ctl_state(rdram, ctx, g);
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     const CtlHost h{ true, fade, vers.closing, vers.pulse, 0 };
-    g = ctl_text(rdram, ctx, g, "Versions", (kLeft + kRight) / 2.0f, kTop + 13.0f, 0.9f, 0xE8C060, fade, false, true);
-    const int run = running_version();
-    for (int i = 0; i < kVersionCount; i++) {
-        const float y = kTop + 40.0f + 13.0f * i;
-        const bool here = version_here(i);
-        const uint32_t ink = i == vers.sel ? ctl_highlight(h) : here ? 0xF2E6C8 : 0x8C8470;
-        static const char* kNames[kVersionCount] = { "Original", "Aidyn Patch", "Aidyn Plus", "Action Edition" };
-        if (i == vers.sel) {  // the title's copper marker (a picture: the text state is left and taken up again)
-            const int mark = find_image("ver_mark");
-            const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-            if (mark >= 0) {
-                g = prompt_state(rdram, g, (uint8_t)fade);
-                g = draw_rgba16(rdram, g, mark, (kLeft + 8.0f) * hs, (y - 1.5f) * vs, hs, vs);
-                g = ctl_state(rdram, ctx, g);
-            }
-        }
-        g = ctl_text(rdram, ctx, g, kNames[i], kLeft + 22.0f, y, 0.7f, ink, fade);
-        if (i == run) {
-            g = ctl_text(rdram, ctx, g, "playing", kRight - 22.0f, y, 0.6f, 0xE8C060, fade, true);
-        } else if (!here) {
-            g = ctl_text(rdram, ctx, g, "not found", kRight - 22.0f, y, 0.6f, 0x8C8470, fade, true);
+    // Everything is pictures in the title menu's own looks (make_branding.py): the heading like Menu and Load Game, the
+    // names in the weight of its words (tinted here), the hints with the button icons or their keys.
+    auto pic = [&](const char* name, float x, float y, uint32_t rgb) {
+        const int i = title_image(name);
+        if (i < 0) return;
+        g = tinted_image_state(rdram, g, rgb << 8 | (uint32_t)fade);
+        g = draw_rgba16(rdram, g, i, x * hs, y * vs, hs, vs);
+    };
+    auto width = [&](const char* name) {
+        const int i = title_image(name);
+        return i < 0 ? 0.0f : (float)ink_width(i);
+    };
+    const float centre = (kLeft + kRight) / 2.0f;
+    {
+        const int i = find_image("rc_title_versions");
+        if (i >= 0) {
+            pic("rc_title_versions", centre - aidyn::branding::kImages[i].w / 2.0f, kTop + 8.5f, 0xFFFFFF);
         }
     }
-    using aidyn::controls::kA;
-    using aidyn::controls::kB;
-    g = ctl_text(rdram, ctx, g, first_key_of(kA, "A") + "  choose      " + first_key_of(kB, "B") + "  back",
-                 (kLeft + kRight) / 2.0f, kBottom - 13.0f, 0.55f, 0xC8BFA8, fade, false, true);
+    static const char* kNames[kVersionCount] = { "rc_dd_1", "vw_patch", "vw_plus", "vw_action" };
+    const int run = running_version();
+    for (int i = 0; i < kVersionCount; i++) {
+        const float y = kTop + 38.0f + 13.5f * i;
+        const bool here = version_here(i);
+        const uint32_t ink = i == vers.sel ? ctl_highlight(h) : here ? 0xF2E6C8 : 0x8C8470;
+        if (i == vers.sel) {  // the title's copper marker
+            pic("ver_mark", kLeft + 8.0f, y - 0.5f, 0xFFFFFF);
+        }
+        pic(kNames[i], kLeft + 22.0f, y, ink);
+        if (i == run) {
+            pic("vw_playing", kRight - 22.0f - width("vw_playing"), y, 0xE8C060);
+        } else if (!here) {
+            pic("vw_missing", kRight - 22.0f - width("vw_missing"), y, 0x8C8470);
+        }
+    }
+    // The hints sit inside the closing bar (16 units, its rails at the top and bottom edges): drawn at 0.8 so the icons
+    // clear the rails.
+    constexpr float kHint = 0.8f;
+    const float footer = (width("dlg_choose") + width("dlg_back")) * kHint + 12.0f;
+    const float foot_y = kBottom - 15.0f + 3.4f;
+    auto hint = [&](const char* name, float x) {
+        const int i = title_image(name);
+        if (i < 0) return;
+        g = tinted_image_state(rdram, g, 0xF2E6C800u | (uint32_t)fade);
+        g = draw_rgba16(rdram, g, i, x * hs, foot_y * vs, hs * kHint, vs * kHint);
+    };
+    hint("dlg_choose", centre - footer / 2.0f);
+    hint("dlg_back", centre - footer / 2.0f + width("dlg_choose") * kHint + 12.0f);
     return g;
 }
 

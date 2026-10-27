@@ -533,9 +533,16 @@ IMAGES += [("rc_title_display", int(ink_width("Display", MARCELLUS, TITLE_SIZE) 
 IMAGES += [("rc_title_l", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, False)),
            ("rc_title_r", RC_TITLE_W // 2, 25, half(page_title("ReChronicled", TITLE_SIZE, 5), RC_TITLE_W, 25, True))]
 IMAGES += [page_word_image(name, text) for name, text in RC_WORDS]
+# The Versions panel on the title screen (src/game/patches.cpp, "The versions list"): its heading like Menu and Load Game,
+# its rows in the menu words' weight (tinted by the game; Original is the Display page's rc_dd_1), and its hints.
+IMAGES += [("rc_title_versions", int(ink_width("Versions", MARCELLUS, TITLE_SIZE) / SS) + 10, 25, page_title("Versions", TITLE_SIZE, 5))]
+IMAGES += [page_word_image(name, text) for name, text in
+           (("vw_patch", "Aidyn Patch"), ("vw_plus", "Aidyn Plus"),
+            ("vw_action", "Action Edition"), ("vw_playing", "Playing"), ("vw_missing", "Not found"))]
 IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back", 60, 11, menu_hint("Back", "B"))]
 # A conversation's hint (src/game/patches.cpp, "Conversation hint"): A moves it on, or picks the highlighted answer.
-IMAGES += [("dlg_continue", 64, 11, menu_hint("Continue", "A", light=True)), ("dlg_choose", 64, 11, menu_hint("Choose", "A", light=True))]
+IMAGES += [("dlg_continue", 64, 11, menu_hint("Continue", "A", light=True)), ("dlg_choose", 64, 11, menu_hint("Choose", "A", light=True)),
+           ("dlg_back", 64, 11, menu_hint("Back", "B", light=True))]
 # The inventory page's party switch: LT and RT beside the party's portraits (previous / next member; the port makes LT the
 # game's C-left in the pause menu, src/main/input.cpp).
 IMAGES += [("party_prev", 11, 11, page_prompt("Z")), ("party_next", 11, 11, page_prompt("CR"))]
@@ -757,7 +764,7 @@ for _ch, (_mask, _ink) in KEY_GLYPHS.items():
 
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
-                "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"],
+                "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],
                 "chint_choose": ["DPAD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
 ICON_BUTTONS.update({name: [button] for name, _, button in HINTS})
 ICON_BUTTONS.update({name: [b for pairs_ in pairs for b in pairs_[0] if b != "+"] for name, *pairs in CONTROLS})
