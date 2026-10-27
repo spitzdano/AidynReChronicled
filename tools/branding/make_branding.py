@@ -202,6 +202,9 @@ def version_button(button):
         import buttons
         W, H = w * SS, h * SS
         img = np.zeros((H, W, 4), np.float32)
+        if KEYS["on"]:
+            KEYS["slots"].append((0, slot_width(button), button))
+            return img
         px = 10 * SS
         ic = np.frombuffer(bytes(buttons.icon_for(button, 10, 10, SS)), np.uint8).reshape(px, px, 4).astype(np.float32) / 255.0
         y0 = (H - px) // 2
@@ -237,10 +240,37 @@ def fast_forward(w, h):
 ROW_W, ROW_H = 84, 7
 
 
+# Keyboard variants. Every picture with a button icon in it also has a "_k" twin whose icons are blank slots (wide enough
+# for a key's name), and a table of where the slots are (header: kKeyed); while the keyboard or mouse was used last the
+# game draws the twin and a key cap or mouse picture in each slot (src/game/patches.cpp, "Keys on the prompts").
+KEYS = {"on": False, "slots": []}
+SLOTS = {}  # name_k -> (icon height, [(x, w, button)])
+SLOT_W = {"LS": 24, "DPAD": 15, "L3": 15, "R3": 13, "RS": 13}
+
+
+def slot_width(button):
+    return SLOT_W.get(button, 14)
+
+
+def keyed(name, draw):
+    """The twin's drawing: the same, with the icons left blank and their places noted."""
+    def run(w, h):
+        KEYS["on"], KEYS["slots"] = True, []
+        try:
+            img = draw(w, h)
+        finally:
+            KEYS["on"] = False
+        SLOTS[name + "_k"] = (h, list(KEYS["slots"]))
+        return img
+    return run
+
+
 def icon(button, h):
     """(w texels, premultiplied float rgba at SS) of one button icon, h texels square (bumpers and triggers too: their
     shape is as wide as a round button, so a wider box would only shift them right)."""
     import buttons
+    if KEYS["on"]:
+        return slot_width(button), None
     w = h
     px = np.frombuffer(bytes(buttons.icon_for(button, w, h, SS)), np.uint8).reshape(h * SS, w * SS, 4)
     px = px.astype(np.float32) / 255.0
@@ -274,8 +304,11 @@ def control_row(*pairs):
                     x += text_line(img, x, "+", size, baseline) + SS
                     continue
                 bw, px = icon(b, h)
-                region = img[:, x:x + bw * SS]
-                over(region, px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
+                if px is None:
+                    KEYS["slots"].append((x // SS, bw, b))
+                else:
+                    region = img[:, x:x + bw * SS]
+                    over(region, px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
                 x += bw * SS + SS // 2
             x += SS // 2
             x += text_line(img, x, label, size, baseline)
@@ -298,7 +331,10 @@ def page_prompt(button):
         img = np.zeros((h * SS, w * SS, 4), np.float32)
         bw, px = icon(button, h)
         x0 = (w - bw) * SS // 2
-        over(img[:, x0:x0 + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
+        if px is None:
+            KEYS["slots"].append((x0 // SS, bw, button))
+        else:
+            over(img[:, x0:x0 + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
         return img
     return draw
 
@@ -322,7 +358,10 @@ def menu_hint(label, button, light=False):
         bw, px = icon(button, h)
         if x + bw * SS > W:
             sys.exit(f"make_branding.py: the {label!r} hint is wider than {w} texels")
-        over(img[:, x:x + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
+        if px is None:
+            KEYS["slots"].append((x // SS, bw, button))
+        else:
+            over(img[:, x:x + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
         return img
     return draw
 
@@ -544,6 +583,101 @@ def to_rgba16(img, w, h):
     return (q[..., 0] << 11) | (q[..., 1] << 6) | (q[..., 2] << 1) | (a >= 0.5).astype(np.uint16)
 
 
+# Placeholder key caps and mouse pictures for the keyboard twins (spitzdano will have better art made; the game draws a
+# cap as its two ends and a middle stretched to the key's name, then the name on it, and a mouse picture as it is).
+def _rrect_sdf(xs, ys, cx, cy, hw, hh, r):
+    qx = np.abs(xs - cx) - (hw - r)
+    qy = np.abs(ys - cy) - (hh - r)
+    return np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - r
+
+
+def _paint(img, mask, colour, alpha=1.0):
+    over(img, rgb(colour), mask * alpha)
+
+
+def key_cap(piece):
+    """One piece of a key cap, cut from a 12 x 12 cap: slate with a brass rim."""
+    cols = {"l": (0, 4), "m": (5, 7), "r": (8, 12)}[piece]
+
+    def draw(w, h):
+        W, H = 12 * SS, 12 * SS
+        ys, xs = np.mgrid[0:H, 0:W].astype(np.float32) / SS + 0.5 / SS
+        d = _rrect_sdf(xs, ys, 6.0, 6.0, 5.9, 5.9, 2.6)
+        inside = np.clip(0.5 - d * SS, 0, 1)
+        rim = np.clip(0.5 - (np.abs(d + 0.45) - 0.45) * SS, 0, 1)
+        img = np.zeros((H, W, 4), np.float32)
+        _paint(img, inside, "#262a31")
+        _paint(img, inside * np.clip((4.0 - ys) / 3.0, 0, 1), "#4a505b", 0.55)
+        _paint(img, rim, "#d6c08a")
+        return img[:, cols[0] * SS:cols[1] * SS]
+    return draw
+
+
+MOUSE_GOLD = "#f0bd2c"
+
+
+def mouse_icon(which):
+    """A mouse seen from above with one thing lit (a button, the wheel, a side button, a wheel step) or its movement."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        ys, xs = np.mgrid[0:H, 0:W].astype(np.float32) / SS + 0.5 / SS
+        sx, sy = w / 12.0, h / 12.0
+        xs, ys = xs / sx, ys / sy  # work in a 12 x 12 box
+        d = _rrect_sdf(xs, ys, 6.0, 6.0, 3.1, 5.6, 3.0)
+        inside = np.clip(0.5 - d * SS * sx, 0, 1)
+        rim = np.clip(0.5 - (np.abs(d + 0.4) - 0.4) * SS * sx, 0, 1)
+        img = np.zeros((H, W, 4), np.float32)
+        _paint(img, inside, "#262a31")
+        top = (ys < 5.2).astype(np.float32)
+        if which == "left":
+            _paint(img, inside * top * (xs < 5.8), MOUSE_GOLD)
+        elif which == "right":
+            _paint(img, inside * top * (xs > 6.2), MOUSE_GOLD)
+        if which in ("middle", "wheelup", "wheeldown"):
+            _paint(img, ((np.abs(xs - 6.0) < 0.8) & (ys > 1.2) & (ys < 4.2)).astype(np.float32), MOUSE_GOLD)
+        if which == "back":
+            _paint(img, ((xs > 1.6) & (xs < 3.2) & (ys > 5.4) & (ys < 7.6)).astype(np.float32), MOUSE_GOLD)
+        if which == "forward":
+            _paint(img, ((xs > 1.6) & (xs < 3.2) & (ys > 2.6) & (ys < 4.8)).astype(np.float32), MOUSE_GOLD)
+        _paint(img, rim * (0.0 < 1), "#d6c08a")
+        # the dividers
+        _paint(img, ((np.abs(ys - 5.2) < 0.3) & (np.abs(xs - 6.0) < 2.9)).astype(np.float32), "#d6c08a", 0.8)
+        _paint(img, ((np.abs(xs - 6.0) < 0.3) & (ys < 5.2) & (ys > 0.6)).astype(np.float32), "#d6c08a", 0.8)
+        if which == "wheelup":
+            tri = ((ys > 1.6) & (ys < 4.0) & (xs > 9.2) & (np.abs(xs - 10.6) < (ys - 1.6) * 0.6)).astype(np.float32)
+            _paint(img, tri, MOUSE_GOLD)
+        if which == "wheeldown":
+            tri = ((ys > 6.4) & (ys < 8.8) & (xs > 9.2) & (np.abs(xs - 10.6) < (8.8 - ys) * 0.6)).astype(np.float32)
+            _paint(img, tri, MOUSE_GOLD)
+        if which == "move":
+            for flip in (1, -1):
+                cx = 6.0 + flip * 5.1
+                tri = ((np.abs(ys - 6.0) < (1.3 - np.abs(xs - cx) * 0.9)) & (np.abs(xs - cx) < 1.4)).astype(np.float32)
+                _paint(img, tri, MOUSE_GOLD)
+        return img
+    return draw
+
+
+IMAGES += [("key_cap_l", 4, 12, key_cap("l")), ("key_cap_m", 2, 12, key_cap("m")), ("key_cap_r", 4, 12, key_cap("r"))]
+IMAGES += [(f"key_mouse_{n}", 12, 12, mouse_icon(n)) for n in ("left", "right", "middle", "back", "forward", "wheelup", "wheeldown", "move")]
+
+# The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
+ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
+                "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"],
+                "chint_choose": ["DPAD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
+ICON_BUTTONS.update({name: [button] for name, _, button in HINTS})
+ICON_BUTTONS.update({name: [b for pairs_ in pairs for b in pairs_[0] if b != "+"] for name, *pairs in CONTROLS})
+_by_name = {n: (w, h, d) for n, w, h, d in IMAGES}
+for _name, _buttons in ICON_BUTTONS.items():
+    _w, _h, _d = _by_name[_name]
+    # (Twins that would be the same picture once their icons are blank are one texel wider for the second of the pair: no
+    # two share a texture's hash.)
+    _wk = slot_width(_buttons[0]) if _name in ("prompt_lb", "prompt_rb", "party_prev", "party_next", "ver_x", "ver_y") \
+        else _w + sum(slot_width(b) for b in _buttons)
+    _wk += 1 if _name in ("prompt_rb", "party_next", "ver_y", "chint_use_spells") else 0
+    IMAGES.append((_name + "_k", _wk, _h, keyed(_name, _d)))
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for path in hud_frames.write_art():
@@ -566,8 +700,16 @@ def main():
         lines.append("    };")
         table.append(f'        {{ "{name}", {w}, {h}, {ident} }},')
         print(f"make_branding.py: {name} {w}x{h} -> {OUT / (name + '@8x.png')}")
+    keyed_lines = []
+    for name_k, (kh, slots) in SLOTS.items():
+        cells = ", ".join(f'{{ {x}, {sw}, "{b}" }}' for x, sw, b in slots)
+        keyed_lines.append(f'        {{ "{name_k}", {kh}, {len(slots)}, {{ {cells} }} }},')
     lines += ["", "    struct Image {", "        const char* name;", "        uint16_t w, h;", "        const uint16_t* rgba16;",
               "    };", "    inline constexpr Image kImages[] = {"] + table + ["    };", "",
+              "    // Each keyboard twin's slots: where (texels from its left), how wide, and the button it stands for.",
+              "    struct KeySlot {", "        uint16_t x, w;", "        const char* button;", "    };",
+              "    struct KeyedImage {", "        const char* name;", "        uint16_t h;", "        uint8_t n;", "        KeySlot slots[4];",
+              "    };", "    inline constexpr KeyedImage kKeyed[] = {"] + keyed_lines + ["    };", "",
               "    // The turn order strip's pieces (tools/branding/turn_order.py), in texels: the bar's middle row and a",
               "    // slot's portrait window (left, top, right, bottom; 0 for the others).",
               "    struct TurnPiece {", "        const char* name;", "        float bar_mid, x0, y0, x1, y1;", "    };",
@@ -596,7 +738,13 @@ def write_pack():
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     textures = []
-    for (name, _), h_ in zip(images.items(), portraits.hashes(tool, jobs)):
+    hashes = portraits.hashes(tool, jobs)
+    seen = {}
+    for name, h_ in zip(images, hashes):
+        if h_ in seen:  # two pictures with the same pixels would be one texture to the renderer, and it stops on that
+            sys.exit(f"make_branding.py: {name} and {seen[h_]} are the same picture (hash {h_}): make them differ")
+        seen[h_] = name
+    for (name, _), h_ in zip(images.items(), hashes):
         shutil.copy(OUT / f"{name}@8x.png", tmp / f"{h_}.png")
         textures.append({"path": f"{h_}.png", "hashes": {"rt64": h_}, "operation": "preload"})
     db = {"configuration": {"configurationVersion": 3, "autoPath": "rt64", "defaultOperation": "stream",

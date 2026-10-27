@@ -147,8 +147,9 @@ An Xbox-style controller, or the keyboard:
 
 Every key and mouse button can be changed: **Controls** on the title screen's menu, or the last row of the pause menu's
 **ReChronicled** page. Pick a row, press A, then the key, mouse button or wheel step you want (Esc cancels, Y clears it);
-two bindings to an action, and the mouse's sensitivity is there too. The controls card (LB) shows your keys beside its
-lines while the keyboard or mouse is what you last used.
+two bindings to an action, and the mouse's sensitivity is there too. While the keyboard or mouse is what you last used,
+the on-screen prompts (the controls card on LB, the menu hints, the page arrows, "Continue" in conversations) show your
+keys instead of the controller's buttons.
 
 ## Settings, saves, logs
 

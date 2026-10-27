@@ -33,8 +33,10 @@ namespace {
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 std::string help_keys_text();               // "Keys on the prompts", below
+std::string help_with_keys(std::string text);  // the same
+gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy);  // "Keys on the prompts", below
+gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover);
 gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Conversation hint", below
-gpr draw_card_keys(uint8_t* rdram, recomp_context* ctx, gpr g);  // the keys beside the controls card's lines, below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open);  // "Combat log"
 gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Spell descriptions in combat", below
@@ -72,7 +74,10 @@ extern "C" void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx) {
     ctx->r7 = kDisplayListBytes / 8;
 }
 
+recomp_context* frame_ctx = nullptr;  // this frame's context, for the key caps drawn inside picture draws
+
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
+    frame_ctx = ctx;
     aidyn::set_gap_fill_horizon(aidyn_sky_horizon);
     aidyn_sky_horizon = -1;
     gpr g = ctx->r4;
@@ -81,7 +86,6 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     heap_trace_frame(rdram);
     free_spill_frame(rdram, ctx);
     g = aidyn_prompts(rdram, g);
-    g = draw_card_keys(rdram, ctx, g);
     g = draw_dialogue_hint(rdram, ctx, g);
     if (combat_log_frame) {
         combat_move_log(rdram);
@@ -1878,6 +1882,10 @@ namespace {
         cmd(0xE4000000 | ((xh & 0xFFF) << 12) | (yh & 0xFFF), (0u << 24) | ((xl & 0xFFF) << 12) | (yl & 0xFFF));
         cmd(0xE1000000, 0);                                                              // s, t = 0
         cmd(0xF1000000, (dsdx << 16) | dtdy);
+        const size_t n = std::strlen(img.name);
+        if (n > 2 && img.name[n - 2] == '_' && img.name[n - 1] == 'k') {  // a keyboard twin: its slots get key caps
+            g = draw_key_slots(rdram, g, index, x, y, sx, sy);
+        }
         return g;
     }
 }
@@ -1897,13 +1905,25 @@ namespace {
     constexpr RomPatch kVersions[3] = { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus };
     constexpr const char* kVersionImages[3] = { "ver_original", "ver_patch", "ver_plus" };
 
+    // A picture by its name, from a table made once.
+    int find_image(const std::string& name) {
+        static const std::unordered_map<std::string, int> by_name = [] {
+            std::unordered_map<std::string, int> m;
+            for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) m[aidyn::branding::kImages[i].name] = (int)i;
+            return m;
+        }();
+        const auto it = by_name.find(name);
+        return it == by_name.end() ? -1 : it->second;
+    }
+
+    // The picture to show: a prompt's keyboard twin (its button icons left as blank slots, which draw_rgba16 fills with
+    // key caps, "Keys on the prompts") while the keyboard or mouse was used last, else the picture itself.
     int title_image(const char* name) {
-        for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
-            if (std::strcmp(aidyn::branding::kImages[i].name, name) == 0) {
-                return (int)i;
-            }
+        if (aidyn::input::keyboard_last()) {
+            const int twin = find_image(std::string(name) + "_k");
+            if (twin >= 0) return twin;
         }
-        return -1;
+        return find_image(name);
     }
 
     // Stored ROMs don't change while the game runs: looked up once.
@@ -3029,12 +3049,7 @@ namespace {
     constexpr uint32_t kGameStateA = 0x800D80C8;  // gGlobals.gameStateA (u8)
 
     int branding_index(const char* name) {
-        for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
-            if (std::strcmp(aidyn::branding::kImages[i].name, name) == 0) {
-                return (int)i;
-            }
-        }
-        return -1;
+        return title_image(name);
     }
 
     // Texels from the left edge to the last column with any opaque texel.
@@ -3048,11 +3063,19 @@ namespace {
                 }
             }
         }
+        // A keyboard twin's blank slots are part of it (a cap is drawn in each): to the last slot's end.
+        for (const auto& k : aidyn::branding::kKeyed) {
+            if (std::strcmp(k.name, img.name) == 0) {
+                for (int n = 0; n < k.n; n++) w = std::max<uint32_t>(w, k.slots[n].x + k.slots[n].w);
+            }
+        }
         return w;
     }
 
     // One-cycle, filtered, blended; texture colour, texture alpha times the primitive colour's alpha.
+    uint8_t prompt_alpha_now = 255;  // the last prompt_state's alpha: the key caps drawn into a picture's slots use it
     gpr prompt_state(uint8_t* rdram, gpr g, uint8_t alpha) {
+        prompt_alpha_now = alpha;
         auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
         cmd(0xE7000000, 0);                  // gDPPipeSync
         cmd(0xE3000A01, 0x00000000);         // gDPSetCycleType(G_CYC_1CYCLE)
@@ -3161,12 +3184,6 @@ namespace {
     const Card kCombatCard = { { "ctl_move", "ctl_attack", "ctl_magic", "ctl_endturn", "ctl_combatcam", "ctl_ff",
                                  "ctl_hide", nullptr }, true };
 
-    struct CardRow {
-        std::string name;
-        float x, y, h;  // where its keys go (units of the 320x240 screen)
-    };
-    std::vector<CardRow> card_rows;  // the card's lines as drawn this frame
-
     gpr draw_card(uint8_t* rdram, gpr g, const Card& card) {
         constexpr float kMargin = 6.0f, kPad = 2.0f, kMessagePortraitX = 25.0f, kMessageTop = 178.0f;
         int rows[9], n = 0;
@@ -3206,8 +3223,6 @@ namespace {
         float y = y0 + kPad;
         for (int k = 0; k < n; k++) {
             g = draw_rgba16(rdram, g, rows[k], (x0 + kPad) * hs, y * vs, hs, vs);
-            card_rows.push_back({ aidyn::branding::kImages[rows[k]].name, x0 + kPad + (float)ink_width(rows[k]) + 3.0f, y,
-                                  (float)aidyn::branding::kImages[rows[k]].h });
             y += aidyn::branding::kImages[rows[k]].h;
         }
         return hud_end(rdram, g);
@@ -3592,7 +3607,6 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             g = hud_end(rdram, g);
         }
     }
-    card_rows.clear();
     const int mode = play_mode(rdram);
     aidyn::input::set_card_mode(mode);
     const uint8_t state_a = MEM_BU(0, (gpr)(int32_t)kGameStateA);
@@ -3707,6 +3721,13 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             }
             g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false);
             g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 204.0f, false);
+        }
+        // DETAILS and its X are painted into the page (art/pages, tools/hdui/labels.json: the button at texel 281, 205, 11 square):
+        // with the keyboard in use a cap covers it.
+        if (aidyn::input::keyboard_last()) {
+            const TitleSeen& o = inventory_page;
+            g = prompt_state(rdram, g, o.alpha);
+            g = draw_button_cap(rdram, g, "CD", o.x + 280.0f * o.sx, o.y + 205.0f * o.sy, o.sx, o.sy, 13.0f, 11.0f, true);
         }
         // The party switch beside the portraits (their frames span x 21..150, y 25..66).
         const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party
@@ -4844,7 +4865,7 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
         for (int k = 0; k < kCmdSize; k += 4) {
             MEM_W(k, to) = MEM_W(k, from);
         }
-        texts.push_back(help_words(text_of(from)));
+        texts.push_back(help_with_keys(help_words(text_of(from))));
     }
     // The topic: its choice in the topics (before Exit Help), its menu, each subject's choice and pages, Back.
     std::vector<HelpNode> added;
@@ -4894,7 +4915,7 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
         }
         MEM_B(0x30, c) = (int8_t)(first + k);
         MEM_B(0x31, c) = n.menu ? 0x8 : 0x1;
-        texts.push_back(n.text);
+        texts.push_back(help_with_keys(n.text));
     }
     // The topics menu (command 0): Standard Controls (next), Trek, Combat, ReChronicled, Exit Help.
     const gpr topics = kHelpCmds;
@@ -8048,6 +8069,8 @@ namespace {
         return r << 16 | g << 8 | b;
     }
 
+    std::string keys_of(aidyn::controls::Action a, bool all);  // "Keys on the prompts", below
+
     // One frame of the page: its input, its fade and its drawing. Returns true once it is closed (and input given back).
     bool controls_frame(uint8_t* rdram, recomp_context* ctx, gpr& g, CtlHost& h, uint32_t b, uint32_t pressed, uint32_t act) {
         const std::vector<CtlRow>& rows = ctl_rows();
@@ -8160,10 +8183,14 @@ namespace {
             }
         }
         const float hint_y = top - 2.0f + kCtlRowStep * kCtlVisible + 3.0f;
+        // The keys that do it while the keyboard or mouse is in use (the pad's buttons otherwise).
+        const bool kb = aidyn::input::keyboard_last();
+        const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", y_key = kb ? keys_of(aidyn::controls::kY, false) : "Y",
+                          b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
         const std::string hint = ctl.listening ? "Press a key, a mouse button or the wheel (Esc: cancel)"
                                  : ctl.note_frames > 0 && !ctl.note.empty() ? ctl.note
-                                 : rows[ctl.row].kind == CtlRow::kBinding ? "A: bind   Y: clear   B: back"
-                                                                          : "A / left / right: change   B: back";
+                                 : rows[ctl.row].kind == CtlRow::kBinding ? a_key + ": bind   " + y_key + ": clear   " + b_key + ": back"
+                                                                          : a_key + " / left / right: change   " + b_key + ": back";
         g = ctl_text(rdram, ctx, g, hint, centre, hint_y, kCtlScale, ink_normal, h.fade, false, true);
         g = ctl_text(rdram, ctx, g, std::to_string(ctl.row + 1) + " / " + std::to_string(n), right, top - (h.title ? 24.0f : 30.0f),
                      0.55f, ink_normal, h.fade, true);
@@ -8264,61 +8291,174 @@ namespace {
         return out;
     }
 
-    std::string card_row_keys(const std::string& row) {
-        using namespace aidyn::controls;
-        auto join = [&](std::initializer_list<Action> list) {
-            std::string out;
-            for (Action a : list) {
-                if (!out.empty()) out += ", ";
-                out += keys_of(a);
-            }
-            return out;
+    }
+
+// Key caps in a keyboard twin's slots (make_branding.py: KEYS; the header's kKeyed says where they are): each button the
+// picture stands for becomes the key (or the mouse button) bound to what that button does, as a cap with its name on it
+// or a mouse picture with the button lit. Placeholder art: spitzdano will have better made.
+namespace {
+    struct SlotFace {
+        std::string text;            // a cap's name
+        const char* mouse = nullptr; // or a mouse picture
+    };
+
+    std::string cap_name(aidyn::controls::Input in) {
+        static const struct { const char* from; const char* to; } kShort[] = {
+            { "Enter", "Ent" }, { "Space", "Spc" }, { "Backspace", "Bksp" }, { "Left Shift", "Shft" }, { "Right Shift", "Shft" },
+            { "Left Ctrl", "Ctrl" }, { "Right Ctrl", "Ctrl" }, { "Left Alt", "Alt" }, { "Right Alt", "Alt" },
+            { "Left Bracket", "[" }, { "Right Bracket", "]" }, { "Semicolon", ";" }, { "Apostrophe", "'" },
+            { "Keypad 0", "N0" }, { "Keypad 1", "N1" }, { "Keypad 2", "N2" }, { "Keypad 3", "N3" }, { "Keypad 4", "N4" },
+            { "Keypad 5", "N5" }, { "Keypad 6", "N6" }, { "Keypad 7", "N7" }, { "Keypad 8", "N8" }, { "Keypad 9", "N9" },
         };
-        if (row == "ctl_walk" || row == "ctl_move") return move_keys();
-        if (row == "ctl_camera") return (mouse_look() ? std::string("Mouse") : std::string("camera keys")) + ", " + keys_of(kCamReset);
-        if (row == "ctl_talk" || row == "ctl_attack") return keys_of(kA);
-        if (row == "ctl_party") return keys_of(kB);
-        if (row == "ctl_sneak" || row == "ctl_endturn") return keys_of(kLT);
-        if (row == "ctl_ff") return keys_of(kFastForward);
-        if (row == "ctl_quicksave") return keys_of(kView);
-        if (row == "ctl_menu") return join({ kMenu, kLB });
-        if (row == "ctl_magic") return join({ kX, kY });
-        if (row == "ctl_combatcam") return keys_of(kRB);
-        if (row == "ctl_hide") return keys_of(kLB);
-        return "";
+        const std::string n = aidyn::controls::input_name(in);
+        for (const auto& k : kShort) {
+            if (n == k.from) return k.to;
+        }
+        return n;
+    }
+
+    SlotFace face_of(aidyn::controls::Action a) {
+        using namespace aidyn::controls;
+        Input in = binding(a, 0);
+        if (in.empty()) in = binding(a, 1);
+        if (in.empty()) return { "-" };
+        if (in.kind == kMouse) {
+            static const char* kNames[] = { "", "key_mouse_left", "key_mouse_middle", "key_mouse_right", "key_mouse_back",
+                                            "key_mouse_forward" };
+            return { "", in.code >= 1 && in.code <= 5 ? kNames[in.code] : "key_mouse_move" };
+        }
+        if (in.kind == kWheel) return { "", in.code == 0 ? "key_mouse_wheelup" : "key_mouse_wheeldown" };
+        return { cap_name(in) };
+    }
+
+    // Several keys on one cap: their names, run together when each is one character ("WASD"), else spaced.
+    std::string keys_text(std::initializer_list<aidyn::controls::Action> list) {
+        std::vector<std::string> names;
+        bool single = true;
+        for (aidyn::controls::Action a : list) {
+            names.push_back(face_of(a).text.empty() ? "-" : face_of(a).text);
+            single = single && names.back().size() == 1;
+        }
+        std::string out;
+        for (const std::string& n : names) out += (single || out.empty() ? "" : " ") + n;
+        return out;
+    }
+
+    SlotFace slot_face(const std::string& button) {
+        using namespace aidyn::controls;
+        if (button == "A") return face_of(kA);
+        if (button == "B") return face_of(kB);
+        if (button == "CD") return face_of(kX);
+        if (button == "CU") return face_of(kY);
+        if (button == "CL") return face_of(kView);
+        if (button == "CR") return face_of(kRT);
+        if (button == "START") return face_of(kMenu);
+        if (button == "Z") return face_of(kLT);
+        if (button == "L") return face_of(kLB);
+        if (button == "R") return face_of(kRB);
+        if (button == "L3") return face_of(kFastForward);
+        if (button == "R3") return face_of(kCamReset);
+        if (button == "LS") return { keys_text({ kMoveUp, kMoveLeft, kMoveDown, kMoveRight }) };
+        if (button == "RS") {
+            if (mouse_look()) return { "", "key_mouse_move" };
+            return { keys_text({ kCamUp, kCamLeft, kCamDown, kCamRight }) };
+        }
+        if (button == "DPAD") return { keys_text({ kMoveLeft, kMoveRight }) };
+        return { "?" };
     }
 }
 
-gpr draw_card_keys(uint8_t* rdram, recomp_context* ctx, gpr g) {
-    if (card_rows.empty() || !aidyn::input::keyboard_last()) return g;
+// A cap (or a mouse picture) for `button` in a slot w x h texels at (x, y) on screen (pixels, like draw_rgba16's), a texel
+// being sx x sy pixels; cover: no narrower than the round icon it must hide (a page's painted button).
+gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover) {
+    recomp_context* ctx = frame_ctx;
     const gpr font = MEM_W(0, kFontPtr);
-    if (!heap_pointer(font)) return g;
-    constexpr float kScale = 0.5f;
-    g = hud_begin(rdram, g, false);
+    if (ctx == nullptr || !heap_pointer(font)) return g;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    const uint8_t alpha = prompt_alpha_now;
+    const float hu = h * sy / vs;  // a slot and the cap in it, in units of the 320x240 screen
+    auto piece = [&](const char* piece_name, float ux, float uy, float uw, float uh) {
+        const int i = find_image(piece_name);
+        if (i < 0) return;
+        const auto& img = aidyn::branding::kImages[i];
+        g = draw_rgba16(rdram, g, (size_t)i, ux * hs, uy * vs, uw * hs / img.w, uh * vs / img.h);
+    };
+    const SlotFace face = slot_face(button);
+    const float slot_x = x / hs, slot_w = w * sx / hs, top = y / vs;
+    if (face.mouse != nullptr) {
+        piece(face.mouse, slot_x + (slot_w - hu) / 2.0f, top, hu, hu);
+        return g;
+    }
+    float scale = 0.07f * hu;
+    float text_w = 0.0f;
+    for (char c : face.text) text_w += letter_advance(rdram, ctx, font, c, scale);
+    if (text_w > slot_w - 3.0f) {  // a long name: smaller letters, to fit the slot
+        scale *= (slot_w - 3.0f) / text_w;
+        text_w = 0.0f;
+        for (char c : face.text) text_w += letter_advance(rdram, ctx, font, c, scale);
+    }
+    const float cap_w = std::clamp(text_w + 3.0f, hu * (cover ? 1.15f : 0.9f), std::max(slot_w, hu * 1.15f));
+    const float cap_x = slot_x + (slot_w - cap_w) / 2.0f;
+    const float end = 4.0f * hu / 12.0f;  // the cap's ends are 4 of its 12 texels
+    piece("key_cap_l", cap_x, top, end, hu);
+    piece("key_cap_m", cap_x + end, top, std::max(0.0f, cap_w - 2.0f * end), hu);
+    piece("key_cap_r", cap_x + cap_w - end, top, end, hu);
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
     const FontState st = font_save(rdram, font);
     call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
-    for (const CardRow& row : card_rows) {
-        const std::string keys = card_row_keys(row.name);
-        if (keys.empty()) continue;
-        const float y = row.y + (row.h - 9.0f * kScale) / 2.0f - 0.5f;
-        MEM_W(0x1C, font) = (int32_t)0x101830C8u;  // the soft shadow, a little down and right
-        print_text(rdram, ctx, font, g, keys, row.x + 0.6f, y + 0.6f, kScale);
-        MEM_W(0x1C, font) = (int32_t)0xE8C060FFu;  // gold
-        print_text(rdram, ctx, font, g, keys, row.x, y, kScale);
-    }
+    MEM_W(0x1C, font) = (int32_t)(0xF2E6C800u | alpha);
+    print_text(rdram, ctx, font, g, face.text, cap_x + (cap_w - text_w) / 2.0f, top + (hu - 9.0f * scale) / 2.0f - 0.3f, scale);
     font_restore(rdram, font, st);
-    return hud_end(rdram, g);
+    return prompt_state(rdram, g, alpha);  // the next picture draw wants the prompts' state again
+}
+
+gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy) {
+    const char* name = aidyn::branding::kImages[index].name;
+    const aidyn::branding::KeyedImage* keyed = nullptr;
+    for (const auto& k : aidyn::branding::kKeyed) {
+        if (std::strcmp(k.name, name) == 0) keyed = &k;
+    }
+    if (keyed == nullptr) return g;
+    for (int n = 0; n < keyed->n; n++) {
+        const auto& slot = keyed->slots[n];
+        g = draw_button_cap(rdram, g, slot.button, x + slot.x * sx, y, sx, sy, (float)slot.w, (float)keyed->h, false);
+    }
+    return g;
+}
+
+// The book's button symbols (\x7F..\x89, the font's icons) as the keys bound to them while the keyboard or mouse is in use.
+std::string help_with_keys(std::string text) {
+    if (!aidyn::input::keyboard_last()) return text;
+    using namespace aidyn::controls;
+    static const struct { const char* code; Action action; } kCodes[] = {
+        { "7F", kA }, { "80", kB }, { "81", kRT }, { "82", kView }, { "83", kY }, { "84", kX }, { "85", kMenu },
+        { "87", kLT }, { "88", kLB }, { "89", kRB },
+    };
+    for (const auto& c : kCodes) {
+        const std::string from = std::string("\\x") + c.code;
+        for (size_t at = text.find(from); at != std::string::npos; at = text.find(from, at)) {
+            const std::string to = keys_of(c.action, false);
+            text.replace(at, from.size(), to);
+            at += to.size();
+        }
+    }
+    size_t at = 0;
+    const std::string dpad = "\\x86";
+    while ((at = text.find(dpad, at)) != std::string::npos) text.replace(at, dpad.size(), "the D-pad keys");
+    return text;
 }
 
 std::string help_keys_text() {
     using namespace aidyn::controls;
     auto k = [](Action a) { return keys_of(a, false); };
-    std::string t = "On a keyboard, " + move_keys() + " move; " + k(kA) + " and " + k(kB) + " are \\x7F and \\x80; " +
-                    k(kX) + " and " + k(kY) + " are \\x84 and \\x83; " + k(kView) + " and " + k(kRT) +
-                    " are \\x82 and \\x81; " + k(kLT) + ", " + k(kLB) + " and " + k(kRB) + " are \\x87, LB and RB; " +
-                    k(kMenu) + " is \\x85. Hold " + k(kFastForward) + " to fast-forward.";
+    // With the keyboard in use the buttons are named (the symbols would turn into the keys again): "Z and X are A and B".
+    const bool kb = aidyn::input::keyboard_last();
+    auto sym = [&](const char* code, const char* name) { return kb ? std::string(name) : std::string("\\x") + code; };
+    std::string t = "On a keyboard, " + move_keys() + " move; " + k(kA) + " and " + k(kB) + " are " + sym("7F", "A") + " and " + sym("80", "B") + "; " +
+                    k(kX) + " and " + k(kY) + " are " + sym("84", "X") + " and " + sym("83", "Y") + "; " + k(kView) + " and " + k(kRT) +
+                    " are " + sym("82", "View") + " and " + sym("81", "RT") + "; " + k(kLT) + ", " + k(kLB) + " and " + k(kRB) + " are " +
+                    sym("87", "LT") + ", LB and RB; " + k(kMenu) + " is " + sym("85", "Menu") + ". Hold " + k(kFastForward) + " to fast-forward.";
     if (mouse_look()) {
         t += " The mouse turns the camera; " + k(kCamReset) + " puts it behind the party.";
     }
@@ -8327,8 +8467,8 @@ std::string help_keys_text() {
 
 // ---- Conversation hint ----
 // A conversation (gameStateA 12) says nothing about how to move it on. While one is up, the bottom right of its dark
-// band shows "Continue [A]", or "Choose [A]" when it offers answers: the A button's picture, or the key bound to A
-// ("Continue  Z") while the keyboard or mouse was used last. gGlobals.diaClass (0x800D964C) -> its menu (+4, substruct
+// band shows "Continue [A]", or "Choose [A]" when it offers answers: the A button's picture, or a cap with the key bound
+// to A while the keyboard or mouse was used last (the picture's keyboard twin). gGlobals.diaClass (0x800D964C) -> its menu (+4, substruct
 // +0x40: DiaMenuSub, Background +0xC, the answers' scroll menu +0x28). AIDYN_DIALOGUE_LOG=1 prints what it finds.
 gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (MEM_BU(0, kTrekState) != 12 || heap_pointer(MEM_W(0, kTitleScreen)) || aidyn::input::start_held() ||
@@ -8355,33 +8495,17 @@ gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
         }
     }
     if (alpha < 128) return g;
-    const gpr font = MEM_W(0, kFontPtr);
-    const bool keys = aidyn::input::keyboard_last();
-    const int image = branding_index(answers > 0 ? "dlg_choose" : "dlg_continue");
-    if (image < 0 || (keys && !heap_pointer(font))) return g;
+    const int image = branding_index(answers > 0 ? "dlg_choose" : "dlg_continue");  // the keyboard twin while keys are shown
+    if (image < 0) return g;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     const float w = (float)ink_width(image);
-    const std::string key = keys_of(aidyn::controls::kA, false);
-    constexpr float kScale = 0.62f;
-    const float key_w = keys ? ctl_width(rdram, ctx, font, key, kScale) + 4.0f : 0.0f;
     copy_branding(rdram);
     g = hud_begin(rdram, g, false);
     GfxCommand a[2];
     gEXSetRectAlign(&a[0], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, -160 * 4, 0, -160 * 4, 0);  // the 4:3 picture's own units
     g = put_cmds(rdram, g, a, 2);
-    const float x = x1 - 8.0f - (keys ? ctl_width(rdram, ctx, font, std::string(answers > 0 ? "Choose" : "Continue"), kScale) + key_w : w);
-    const float y = y1 - 13.0f;
-    if (!keys) {
-        g = prompt_state(rdram, g, (uint8_t)alpha);
-        g = draw_rgba16(rdram, g, image, (x1 - 8.0f - w) * hs, y * vs, hs, vs);
-    } else {
-        g = ctl_state(rdram, ctx, g);
-        g = ctl_text(rdram, ctx, g, answers > 0 ? "Choose" : "Continue", x + 0.6f, y + 1.6f, kScale, 0x101830, (int)alpha);
-        g = ctl_text(rdram, ctx, g, answers > 0 ? "Choose" : "Continue", x, y + 1.0f, kScale, 0xF2E6C8, (int)alpha);
-        const float kx = x + ctl_width(rdram, ctx, font, std::string(answers > 0 ? "Choose" : "Continue"), kScale) + 4.0f;
-        g = ctl_text(rdram, ctx, g, key, kx + 0.6f, y + 1.6f, kScale, 0x101830, (int)alpha);
-        g = ctl_text(rdram, ctx, g, key, kx, y + 1.0f, kScale, 0xE8C060, (int)alpha);
-    }
+    g = prompt_state(rdram, g, (uint8_t)alpha);
+    g = draw_rgba16(rdram, g, image, (x1 - 8.0f - w) * hs, (y1 - 13.0f) * vs, hs, vs);
     return hud_end(rdram, g);
 }
 

@@ -263,8 +263,14 @@ The keyboard and mouse column is the default: every key and mouse button (left, 
 wheel) can be changed, two to an action, on the Controls page (the title menu's Controls, or the pause menu's
 ReChronicled page, last row; `src/main/controls.cpp`, kept in settings.json's `controls` section: `bindings` by action
 id, `mouse_look`, `mouse_sensitivity`, `mouse_invert_y`). The mouse turns and tilts the camera in the field (SDL's
-relative mouse mode, captured only while walking about and the window has the focus). The controls card shows the keys
-beside its lines, and the Help book's keyboard page names them, while the keyboard or mouse was used last.
+relative mouse mode, captured only while walking about and the window has the focus). While the keyboard or mouse was
+used last (`aidyn::input::keyboard_last`) every picture prompt shows your keys instead of the Xbox icons: each picture
+with an icon in it has a keyboard twin (`<name>_k`, `tools/branding/make_branding.py`: the icon left as a blank slot and
+the header's `kKeyed` saying where) and `draw_rgba16` puts a key cap (or a mouse picture) in each slot
+(`draw_key_slots`); the Help book's button symbols and the Controls page's hints become the keys too, and a cap covers
+the DETAILS button painted into the inventory page. The caps and mouse pictures are placeholders (`key_cap_*`,
+`key_mouse_*`); the game's own text still shows its button symbols elsewhere (dialogue, item descriptions). No two
+pictures may have the same pixels (the renderer stops on equal texture hashes: make_branding.py checks).
 While a conversation is up, "Continue [A]" ("Choose" when it offers answers; the key bound to A while the keyboard
 was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AIDYN_DIALOGUE_LOG=1`).
 `AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with
