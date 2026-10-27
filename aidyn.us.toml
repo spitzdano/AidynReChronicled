@@ -114,7 +114,7 @@ text = "extern void aidyn_park_boot_thread(void); aidyn_park_boot_thread();"
 [[patches.hook]]
 func = "N64BorgImageDraw"
 before_vram = 0x8009AA80
-text = "extern void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx); aidyn_ui_image_seen(rdram, ctx);"
+text = "extern int aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx); if (aidyn_ui_image_seen(rdram, ctx)) return;"
 
 # ... and before its return (jr $ra; v0 = end of the display list, sp + 0xE0 = the caller's stack): big pictures are
 # drawn as fixed full-width strips clipped to the requested area (src/game/patches.cpp, "Big pictures").

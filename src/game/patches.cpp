@@ -33,9 +33,8 @@ namespace {
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
 std::string help_keys_text();               // "Keys on the prompts", below
-std::string help_with_keys(std::string text);  // the same
 gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy);  // "Keys on the prompts", below
-gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover);
+gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover, bool text_state = false);
 gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Conversation hint", below
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g);  // "ReChronicled page", below
 gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, bool menu_open);  // "Combat log"
@@ -74,10 +73,12 @@ extern "C" void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx) {
     ctx->r7 = kDisplayListBytes / 8;
 }
 
+void update_glyph_widths(uint8_t* rdram, recomp_context* ctx);  // "Keys in the game's text", below
 recomp_context* frame_ctx = nullptr;  // this frame's context, for the key caps drawn inside picture draws
 
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     frame_ctx = ctx;
+    update_glyph_widths(rdram, ctx);
     aidyn::set_gap_fill_horizon(aidyn_sky_horizon);
     aidyn_sky_horizon = -1;
     gpr g = ctx->r4;
@@ -198,7 +199,12 @@ void aidyn_page_words_drawn(uint8_t* rdram, gpr img);    // src/game/page_words.
 
 void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx);  // "Portrait frames", near the end
 
-extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
+bool glyph_as_key(uint8_t* rdram, recomp_context* ctx);  // "Keys in the game's text", below
+
+extern "C" int aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
+    if (glyph_as_key(rdram, ctx)) {
+        return 1;  // a button symbol in the game's text, drawn as a key cap: the font's own is skipped
+    }
     aidyn_hud_frames_image(rdram, ctx);
     note_page_arrow(rdram, ctx);
     if (ctx->r5 != 0) {
@@ -213,7 +219,7 @@ extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
     const gpr img = ctx->r5;
     static const char* dir = std::getenv("AIDYN_UI_LOG");
     if (dir == nullptr || *dir == '\0' || img == 0) {
-        return;
+        return 0;
     }
     static std::mutex mutex;
     static std::set<uint64_t> seen;
@@ -225,7 +231,7 @@ extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
     // Bits per pixel for Borg8Format 1..9: RGBA32 RGBA16 IA16 CI8 IA8 I8 CI4 IA4 I4.
     static const uint32_t bpp[] = { 0, 32, 16, 16, 8, 8, 8, 4, 4, 4 };
     if (format < 1 || format > 9 || width == 0 || height == 0 || width > 1024 || height > 1024) {
-        return;
+        return 0;
     }
     // The game reuses memory: a page's background can later load where another picture used to be. Images are told
     // apart by address and content (FNV-1a over pixels and palette), so each distinct picture is saved once.
@@ -243,7 +249,7 @@ extern "C" void aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
     }
     std::lock_guard lock(mutex);
     if (!seen.insert(hash ^ pixels).second) {
-        return;
+        return 0;
     }
     std::filesystem::create_directories(dir);
     char name[48];
@@ -4865,7 +4871,7 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
         for (int k = 0; k < kCmdSize; k += 4) {
             MEM_W(k, to) = MEM_W(k, from);
         }
-        texts.push_back(help_with_keys(help_words(text_of(from))));
+        texts.push_back(help_words(text_of(from)));
     }
     // The topic: its choice in the topics (before Exit Help), its menu, each subject's choice and pages, Back.
     std::vector<HelpNode> added;
@@ -4915,7 +4921,7 @@ extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
         }
         MEM_B(0x30, c) = (int8_t)(first + k);
         MEM_B(0x31, c) = n.menu ? 0x8 : 0x1;
-        texts.push_back(help_with_keys(n.text));
+        texts.push_back(n.text);
     }
     // The topics menu (command 0): Standard Controls (next), Trek, Combat, ReChronicled, Exit Help.
     const gpr topics = kHelpCmds;
@@ -7424,11 +7430,19 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t alpha = MEM_BU(0x5B, w);  // the box's colour: its alpha fades it in and out
     gpr g = ctx->r5;
     if (alpha != 0) {
-        const float x0 = (int16_t)MEM_HU(kWidgetPosX, w), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, w);
+        float x0 = (int16_t)MEM_HU(kWidgetPosX, w), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, w);
         float x1 = x0 + MEM_HU(0x74, w), y1 = y0 + MEM_HU(0x72, w);
         // The Options page's box is sized down to its Game row (Rename Character), which the title screen hides: it
         // ran off the bottom of the screen. A box that would leave the screen ends just under the Music slider
         // instead (the page's fixed layout: 116 units from the box's top, and room for the closing bar).
+        // The Load Game page (a box of 51,24 to 270,216) has its picture and portrait up against the top bar and its
+        // Load, Delete and Exit row on the closing one: the panel takes a little more room, up and down and at the sides.
+        if (x0 == 51.0f && y0 == 24.0f && x1 == 270.0f && y1 == 216.0f) {
+            x0 = 45.0f;
+            y0 = 11.0f;
+            x1 = 276.0f;
+            y1 = 232.0f;
+        }
         if (y1 > 232.0f) y1 = std::min(y1, y0 + 140.0f);
         g = title_panel(rdram, ctx, g, x0, y0, x1, y1, alpha);
     }
@@ -8370,7 +8384,7 @@ namespace {
 
 // A cap (or a mouse picture) for `button` in a slot w x h texels at (x, y) on screen (pixels, like draw_rgba16's), a texel
 // being sx x sy pixels; cover: no narrower than the round icon it must hide (a page's painted button).
-gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover) {
+gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover, bool text_state) {
     recomp_context* ctx = frame_ctx;
     const gpr font = MEM_W(0, kFontPtr);
     if (ctx == nullptr || !heap_pointer(font)) return g;
@@ -8387,6 +8401,9 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     const float slot_x = x / hs, slot_w = w * sx / hs, top = y / vs;
     if (face.mouse != nullptr) {
         piece(face.mouse, slot_x + (slot_w - hu) / 2.0f, top, hu, hu);
+        if (text_state) {
+            return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
+        }
         return g;
     }
     float scale = 0.07f * hu;
@@ -8410,6 +8427,9 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     MEM_W(0x1C, font) = (int32_t)(0xF2E6C800u | alpha);
     print_text(rdram, ctx, font, g, face.text, cap_x + (cap_w - text_w) / 2.0f, top + (hu - 9.0f * scale) / 2.0f - 0.3f, scale);
     font_restore(rdram, font, st);
+    if (text_state) {  // inside the game's own text: its next letter wants the textured state again
+        return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
+    }
     return prompt_state(rdram, g, alpha);  // the next picture draw wants the prompts' state again
 }
 
@@ -8427,26 +8447,90 @@ gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float 
     return g;
 }
 
-// The book's button symbols (\x7F..\x89, the font's icons) as the keys bound to them while the keyboard or mouse is in use.
-std::string help_with_keys(std::string text) {
-    if (!aidyn::input::keyboard_last()) return text;
-    using namespace aidyn::controls;
-    static const struct { const char* code; Action action; } kCodes[] = {
-        { "7F", kA }, { "80", kB }, { "81", kRT }, { "82", kView }, { "83", kY }, { "84", kX }, { "85", kMenu },
-        { "87", kLT }, { "88", kLB }, { "89", kRB },
-    };
-    for (const auto& c : kCodes) {
-        const std::string from = std::string("\\x") + c.code;
-        for (size_t at = text.find(from); at != std::string::npos; at = text.find(from, at)) {
-            const std::string to = keys_of(c.action, false);
-            text.replace(at, from.size(), to);
-            at += to.size();
+// ---- Keys in the game's text ----
+// The game's own text carries button symbols (\x7F..\x89: the font's cells 0x5C..0x66, redrawn as the Xbox icons by the
+// pack): menu words, the Help book, messages. While the keyboard or mouse was used last each one is drawn as a key cap
+// (or a mouse picture) instead: N64BorgImageDraw's entry sees the font's cell being drawn and draws the cap in its place,
+// and the cells' widths in the font's tables (kerning) are set to the caps' so the text lays out around them.
+namespace {
+    constexpr int kGlyphFirst = 0x5C, kGlyphCount = 11;
+    // The cells' buttons, in order: A B RT View Y X Menu D-pad LT LB RB.
+    constexpr const char* kGlyphButtons[kGlyphCount] = { "A", "B", "CR", "CL", "CU", "CD", "START", "DPAD", "Z", "L", "R" };
+    uint16_t glyph_original[3][kGlyphCount];
+    bool glyph_saved[3] = { false, false, false };
+
+    // Face f of the font (gGlobals.font) if it is the 36 x 414 sheet with the button cells.
+    gpr glyph_face(uint8_t* rdram, gpr font, uint32_t f) {
+        const gpr subs = MEM_W(0, font);
+        if (!heap_pointer(subs) || f >= MEM_BU(9, font) || f >= 3) return 0;
+        const gpr sub = subs + 0x18 * f, img = (gpr)(int32_t)MEM_W(4, sub);
+        if (!heap_pointer(img) || MEM_HU(0x0A, img) != 36 || MEM_HU(0x0C, img) != 414) return 0;
+        return sub;
+    }
+
+    // A cap's width at the font's own scale (the cells are 9 units tall): its name plus a little, 9 at least.
+    int glyph_cap_width(uint8_t* rdram, recomp_context* ctx, gpr font, const char* button) {
+        const SlotFace face = slot_face(button);
+        if (face.mouse != nullptr) return 9;
+        float w = 0.0f;
+        for (char c : face.text) w += letter_advance(rdram, ctx, font, c, 0.07f * 9.0f);
+        return std::max(9, (int)std::ceil(w + 3.0f));
+    }
+}
+
+// Each frame: the cells' widths for the device in use.
+void update_glyph_widths(uint8_t* rdram, recomp_context* ctx) {
+    const gpr font = MEM_W(0, kFontPtr);
+    if (!heap_pointer(font)) return;
+    const bool keys = aidyn::input::keyboard_last();
+    for (uint32_t f = 0; f < 3; f++) {
+        const gpr sub = glyph_face(rdram, font, f);
+        if (sub == 0) continue;
+        const gpr kern = (gpr)(int32_t)MEM_W(0x10, sub);
+        if (!heap_pointer(kern)) continue;
+        if (!glyph_saved[f]) {
+            for (int k = 0; k < kGlyphCount; k++) glyph_original[f][k] = MEM_HU(2 * (kGlyphFirst + k), kern);
+            glyph_saved[f] = true;
+        }
+        for (int k = 0; k < kGlyphCount; k++) {
+            MEM_H(2 * (kGlyphFirst + k), kern) = (int16_t)(keys ? glyph_cap_width(rdram, ctx, font, kGlyphButtons[k]) : glyph_original[f][k]);
         }
     }
-    size_t at = 0;
-    const std::string dpad = "\\x86";
-    while ((at = text.find(dpad, at)) != std::string::npos) text.replace(at, dpad.size(), "the D-pad keys");
-    return text;
+}
+
+// N64BorgImageDraw's entry (a0 the display list, a1 the picture, a2 and a3 the position as floats, the stack the part of
+// the picture, its scale at +0x20 and +0x24): a button cell of the font's sheet, while keys are shown, is drawn as a cap.
+bool glyph_as_key(uint8_t* rdram, recomp_context* ctx) {
+    if (!aidyn::input::keyboard_last()) return false;
+    const gpr font = MEM_W(0, (gpr)(int32_t)0x800D968C);
+    if (font == 0 || (uint32_t)ctx->r5 == 0) return false;
+    for (uint32_t f = 0; f < 3; f++) {
+        const gpr sub = glyph_face(rdram, font, f);
+        if (sub == 0 || (uint32_t)MEM_W(4, sub) != (uint32_t)ctx->r5) continue;
+        const gpr sp = ctx->r29;
+        const uint32_t cw = MEM_HU(8, sub), ch = MEM_HU(0xA, sub), rows = MEM_BU(0x14, sub);
+        if (cw == 0 || ch == 0 || rows == 0) return false;
+        const uint16_t xoff = MEM_HU(0x12, sp), yoff = MEM_HU(0x16, sp), right = MEM_HU(0x1A, sp), bottom = MEM_HU(0x1E, sp);
+        // a whole cell (a clipped one is left to the font)
+        if (xoff % cw != 0 || yoff % ch != 0 || right - xoff < (int)cw - 4 || bottom - yoff != (int)ch) return false;
+        const int cell = (int)((xoff / cw) * rows + yoff / ch) - kGlyphFirst;
+        if (cell < 0 || cell >= kGlyphCount) return false;
+        const gpr kern = (gpr)(int32_t)MEM_W(0x10, sub);
+        const float width = (float)MEM_HU(2 * (kGlyphFirst + cell), kern);
+        uint32_t xb = (uint32_t)ctx->r6, yb = (uint32_t)ctx->r7, xsb = (uint32_t)MEM_W(0x20, sp), ysb = (uint32_t)MEM_W(0x24, sp);
+        float x, y, xs, ys;
+        std::memcpy(&x, &xb, 4);
+        std::memcpy(&y, &yb, 4);
+        std::memcpy(&xs, &xsb, 4);
+        std::memcpy(&ys, &ysb, 4);
+        const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
+        gpr g = (gpr)(int32_t)ctx->r4;
+        // The pack's picture is the same place: x, y in the game's units, the cell `width` and 9 units wide and tall, scaled.
+        g = draw_button_cap(rdram, g, kGlyphButtons[cell], x * hs, y * vs, xs * hs, ys * vs, width, 9.0f, false, true);
+        ctx->r2 = (int32_t)g;
+        return true;
+    }
+    return false;
 }
 
 std::string help_keys_text() {
