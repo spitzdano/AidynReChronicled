@@ -929,3 +929,23 @@ text = "extern void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx); aid
 func = "Entity__DamageToLevel"
 before_vram = 0x8006EB8C
 text = "extern void aidyn_ach_damage(uint8_t* rdram, recomp_context* ctx); aidyn_ach_damage(rdram, ctx);"
+
+# The game keeps how many holders a Borg item has in a signed byte (gBorgBytes, *(0x800E4988)): at 128 it goes negative,
+# the release (func_80099274) then ignores it for ever, and further loads wrap through 0, where the item is loaded a
+# second time and the first copy's holders free the second under its users (a damaged texture, then a crash: the
+# first forest at a high draw distance, where far over 127 trees share one texture; src/game/patches.cpp, "Borg
+# holder counts"). The count stops at 127 and the rest are kept by the program.
+[[patches.hook]]
+func = "getBorgItem"
+before_vram = 0x80098ED0
+text = "extern int aidyn_borg_holder_up(uint8_t* rdram, uint32_t index, uint32_t old); if (aidyn_borg_holder_up(rdram, ctx->r19, ctx->r6)) goto L_80098ED8;"
+
+[[patches.hook]]
+func = "getBorgItem"
+before_vram = 0x800991E4
+text = "extern int aidyn_borg_holder_up(uint8_t* rdram, uint32_t index, uint32_t old); if (aidyn_borg_holder_up(rdram, ctx->r19, ctx->r5)) goto L_800991EC;"
+
+[[patches.hook]]
+func = "func_80099274"
+before_vram = 0x80099274
+text = "extern int aidyn_borg_holder_down(uint8_t* rdram, recomp_context* ctx); if (aidyn_borg_holder_down(rdram, ctx)) return;"

@@ -6339,6 +6339,53 @@ static void heap_queued(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// ---- Borg holder counts ----
+// A Borg item's holders are counted in a signed byte per item (*(0x800E4988) + index). The game loads at most a few
+// dozen copies of any prop on a console; with draw_distance above 1 a forest has well over 127 trees sharing one
+// texture. At 128 the byte goes negative, the release (func_80099274) ignores a count that isn't above 0, and later
+// loads count up through 0, where the item reads as not loaded: a second copy is made, and when the holders of the
+// first copy are released they free the second under the trees still using it ("Skipped a damaged texture", then a
+// crash in the renderer; the first forest after changing the draw distance, 2026-10-27). So the byte stops at 127 and
+// the holders past it are counted here.
+namespace {
+    std::unordered_map<uint32_t, uint32_t> borg_extra_holders;
+}
+
+// getBorgItem is about to add a holder to an item loaded `old` times: true when it's counted here instead.
+extern "C" int aidyn_borg_holder_up(uint8_t* rdram, uint32_t index, uint32_t old) {
+    if ((old & 0xFF) != 127) {
+        return 0;
+    }
+    if (borg_extra_holders[index]++ == 0) {
+        static int told = 0;
+        if (told++ < 5) {
+            std::fprintf(stdout, "Borg item %u has over 127 holders (counted past the game's byte)\n", index);
+            std::fflush(stdout);
+        }
+    }
+    return 1;
+}
+
+// func_80099274(index) releases one: true when it's one of the extra holders (the item stays loaded; v0 = 0, as for
+// any release that doesn't free it).
+extern "C" int aidyn_borg_holder_down(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t index = (uint32_t)ctx->r4;
+    const auto it = borg_extra_holders.find(index);
+    if (it == borg_extra_holders.end()) {
+        return 0;
+    }
+    const gpr table = MEM_W(0, (gpr)(int32_t)0x800E4988);
+    if ((int8_t)MEM_B(0, table + index) != 127) {
+        borg_extra_holders.erase(it);  // the count was reset (an unshared load): the extras went with it
+        return 0;
+    }
+    if (--it->second == 0) {
+        borg_extra_holders.erase(it);
+    }
+    ctx->r2 = 0;
+    return 1;
+}
+
 // ---- Free queue overflow ----
 // The game frees models through a queue of 256 entries (QueueA, its count at +0x800), a few frames late so a display
 // list still in flight can use them; one more is a crash (AllocFreeQueueItem calls Crash::ManualCrash: the black,
