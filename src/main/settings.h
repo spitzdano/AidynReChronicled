@@ -16,6 +16,7 @@ namespace aidyn::settings {
         None,        // "none": the NTSC-U 1.0 ROM as released
         AidynPatch,  // "aidyn-patch": the community Aidyn Patch (u/halibabica), applied to a 1.0 ROM by the player
         AidynPlus,   // "aidyn-plus": Aidyn Plus (u/halibabica, a bigger rebalance), applied to a 1.0 ROM by the player
+        ActionEdition,  // "action-edition": Aidyn Chronicles: Action Edition (a data mod, a whole ROM the player has)
     };
 
     struct Game {

@@ -13,12 +13,12 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 - **A native game for Linux and Windows**, not an emulator. Linux: one download for any current distribution, with an
   installer that adds it to the app menu and to Steam (Steam Deck and ROG Ally friendly). Windows: a folder to unpack
   and play (Windows 10 or 11, nothing to install), with an Add to Steam button.
-- **Your ROMs in one folder**: put the 1.0 ROM, and the Aidyn Patch and Aidyn Plus ones if you have them, in the
+- **Your ROMs in one folder**: put the 1.0 ROM, and the Aidyn Patch, Aidyn Plus and Action Edition ones if you have them, in the
   download's `ROMs` folder under any names; the game tells them apart by their contents and lists what it found on the
   title screen.
-- **Aidyn Patch and Aidyn Plus**: halibabica's community rebalances play as two more versions next to the original.
-  Bring your own patched ROM (checked by its hash; nothing of either patch ships here), switch on the title screen, and
-  each version keeps its own saves.
+- **Aidyn Patch, Aidyn Plus and Action Edition**: community rebalances play as more versions next to the original.
+  Bring your own ROM (checked by its hash; nothing of them ships here), pick one in the list Y opens on the title screen,
+  and each version keeps its own saves.
 - **Sharp at any resolution**: drawn at 1080 lines or more, supersampled, with anti-aliasing.
 - **Widescreen**: 16:9, 21:9 or any width, with the HUD at the screen edges; the menus stay 4:3, as they were made.
 - **Smooth**: the game runs at 60 frames a second (the N64 managed 15 to 20), with frames drawn in between up to your
@@ -218,25 +218,32 @@ to the original ROM:
 | Original (NTSC-U 1.0) | `79127d0e9caf38bc` | `47ae795a2b12783a13e2b8d03439ce9a39fc826c` |
 | Aidyn Patch | `aee228c7fb42f968` | `1f95ad78824f491ea3d94e3ac5d36901cef09e4e` |
 | Aidyn Plus | `a72109e848aff75e` | `d57f9459a77c66490ff09b3d9d97545c7a65fad2` |
+| Action Edition (`AidynActionFeb072026.z64`) | `802056dbbadc0fc0` | `4bbb9fcd0f3124b145b8b54e7be927baae4e262e` |
 
-Both change only game data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell,
+**Action Edition** is a data mod of its own (faster combat, a rebalanced economy and items, shops stocked to their themes,
+spell schools redistributed among the party; see its page): a whole ROM, not a patch, so it is used as it is, and a new
+release of it has another hash and needs a new release of the port. Like the others it changes only game data (its
+differences from the 1.0 ROM are in the same places as the other two's), so it runs on the same recompiled code.
+
+All of them change only game data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell,
 item and chest databases; compared byte by byte with the 1.0 ROM), no code, so they run on the same recompiled code.
-You can have none, one or both. Each game keeps its own Controller Pak: `aidyn-patch.mpk`, `aidyn-plus.mpk`; copy
+You can have any of them. Each game keeps its own Controller Pak: `aidyn-patch.mpk`, `aidyn-plus.mpk`, `action-edition.mpk`; copy
 `aidyn.mpk` over one to carry a save across (not into Aidyn Plus: its databases differ enough that such a save can
 crash it, #31). Aidyn Plus's own FAQ warns that some of its items and spells freeze the
 game when you look at their description; that is the romhack, not the port.
 
 Switching versions:
-- **Title screen**: the bottom left lists *Original*, *Aidyn Patch* and *Aidyn Plus*, the running one lit with a copper
-  marker. The other two show X (keyboard K) and Y (keyboard I), the upper one X: pressing it saves the choice in
-  `settings.json` and restarts the program in place into that version, back at the title. A version whose ROM isn't
-  stored is grey and marked *not found*; if the version in `settings.json` is one of those, the game plays one whose
-ROM is there instead, for that run, and lights that one. The list is on the title card: from the menu Start opens (New Game, Load Game,
+- **Title screen**: the bottom left names the running version with a copper marker, and under it *Versions* with Y
+  (keyboard I). Y opens a list: *Original* first, then *Aidyn Patch*, *Aidyn Plus* and *Action Edition*, the running one
+  marked *playing*. Up and Down choose, A plays the chosen one (saved in `settings.json`; the program restarts in place
+  into that version, back at the title), B, Start or Y close it (`title_versions_panel` in `src/game/patches.cpp`; the
+  game gets no input meanwhile). A version whose ROM isn't stored says *not found* and can't be chosen; if the version
+  in `settings.json` is one of those, the game plays one whose ROM is there instead, for that run, and names that one. The list is on the title card: from the menu Start opens (New Game, Load Game,
   Options), B goes back to it (the game had no way back; `aidyn_title_back` calls its own `IntroMenu::InitTitleCard`).
 - **Version number**: the bottom right of the title screen shows the build's version above the credit: "v0.4.0" for a
   release (`make_release.sh` passes it to the build as `AIDYN_VERSION`), "v0.4.0 dev" for a build after that tag (from
   `git describe`, `tools/version.cmake`, on every build).
-- **Launch options**: `--original`, `--patch` or `--plus` picks the version for that run (otherwise `game.rom_patch`).
+- **Launch options**: `--original`, `--patch`, `--plus` or `--action` picks the version for that run (otherwise `game.rom_patch`).
 - **App launcher**: `tools/install-launchers.sh` adds "Aidyn ReChronicled" (`--original`), "Aidyn ReChronicled (Aidyn
   Patch)" (`--patch`) and "Aidyn ReChronicled (Aidyn Plus)" (`--plus`) to `~/.local/share/applications` (`--remove` takes
   them out).
@@ -340,7 +347,7 @@ these defaults on the first run:
 
 | Key | Values |
 |---|---|
-| `rom_patch` | `"none"` (the 1.0 ROM), `"aidyn-patch"` or `"aidyn-plus"` (see Aidyn Patch and Aidyn Plus above); the title screen's version list writes it |
+| `rom_patch` | `"none"` (the 1.0 ROM), `"aidyn-patch"`, `"aidyn-plus"` or `"action-edition"` (see Aidyn Patch and Aidyn Plus above); the title screen's version list writes it |
 | `skip_intro` | `false` puts back the start-up screens: Expansion Pak notice, copyright, Nintendo, THQ and H2O logos |
 | `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on |
 | `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own (the ReChronicled page's Enemy turns: Original, 2x, 3x, 4x) |

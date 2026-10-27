@@ -1,4 +1,4 @@
-// The playable versions (src/main/main.cpp): the 1.0 release, Aidyn Patch and Aidyn Plus; and the window.
+// The playable versions (src/main/main.cpp): the 1.0 release, Aidyn Patch, Aidyn Plus and Action Edition; and the window.
 #pragma once
 
 #include "settings.h"

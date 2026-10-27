@@ -111,7 +111,9 @@ entry aidyn-rechronicled-patch.desktop "Aidyn ReChronicled (Aidyn Patch)" --patc
     "Aidyn Chronicles: The First Mage, enhanced, with the community Aidyn Patch"
 entry aidyn-rechronicled-plus.desktop "Aidyn ReChronicled (Aidyn Plus)" --plus \
     "Aidyn Chronicles: The First Mage, enhanced, with the Aidyn Plus rebalance"
-echo "Aidyn ReChronicled, Aidyn ReChronicled (Aidyn Patch), Aidyn ReChronicled (Aidyn Plus)"
+entry aidyn-rechronicled-action.desktop "Aidyn ReChronicled (Action Edition)" --action \
+    "Aidyn Chronicles: The First Mage, enhanced, with the Action Edition mod"
+echo "Aidyn ReChronicled, Aidyn ReChronicled (Aidyn Patch), Aidyn ReChronicled (Aidyn Plus), Aidyn ReChronicled (Action Edition)"
 
 if (( steam )); then
     if [[ ! -d $HOME/.local/share/Steam/userdata && ! -d $HOME/.steam/steam/userdata
@@ -138,7 +140,7 @@ cat <<EOF
 Game:   $game  (start it from the app menu, Steam, or $game/aidyn-rechronicled.sh)
 Data:   $data  (settings.json, saves, the stored ROM, texture packs)
 Logs:   $data/logs/last-run.log
-ROMs:   $game/ROMs  (put your 1.0 ROM there, and the Aidyn Patch / Aidyn Plus ones if you have them: they're
+ROMs:   $game/ROMs  (put your 1.0 ROM there, and the Aidyn Patch / Aidyn Plus / Action Edition ones if you have them: they're
         found at the next start; without one the first start asks for it)
 This folder ($src) isn't needed any more and can be deleted.
 EOF

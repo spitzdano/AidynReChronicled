@@ -112,17 +112,22 @@ Please report it: a crash, a freeze, a glitch, a wrong picture, anything that lo
 A report holds the game's logs, your settings and your saves, nothing from the game's ROM, and your home folder's
 name is left out of it.
 
-## Aidyn Patch and Aidyn Plus
+## Aidyn Patch, Aidyn Plus and Action Edition
 
 Two community rebalances by halibabica (u/halibabica) can be played instead of the original: Aidyn Patch and the bigger
 Aidyn Plus (read its FAQ). Neither is in this download: get the patch yourself and apply it to your own 1.0 dump (Aidyn Plus is
 a `.bps` patch: apply it with Flips or another BPS patcher), then put the patched file in the `ROMs` folder and
 switch to it on the title screen (on Linux, the app menu's "Aidyn ReChronicled (Aidyn Patch)" and "(Aidyn Plus)"
 entries, or `--patch` / `--plus`, also ask for it when it's missing). It is checked by its hash (SHA-1 Aidyn Patch `1f95ad78824f491ea3d94e3ac5d36901cef09e4e`, Aidyn Plus
-`d57f9459a77c66490ff09b3d9d97545c7a65fad2`) and kept. You can have none, one or both.
+`d57f9459a77c66490ff09b3d9d97545c7a65fad2`) and kept. You can have any of them.
 
-On the title screen the bottom left lists Original, Aidyn Patch and Aidyn Plus, the one you're playing lit; X and Y
-(keyboard K and I) switch to the other two, as marked. One you haven't added is grey and marked *not found*: put its
+The **Action Edition** mod (faster combat, a rebalanced economy and items, shops stocked to their themes; see its page) is
+a whole ROM, not a patch: put its `.z64` in the `ROMs` folder as it is (SHA-1 `4bbb9fcd0f3124b145b8b54e7be927baae4e262e`,
+the `AidynActionFeb072026.z64` release; a newer release of it needs a newer release of this game).
+
+On the title screen the bottom left names the version you're playing, and under it Versions with Y (keyboard I): Y opens
+a list (Original, Aidyn Patch, Aidyn Plus, Action Edition); Up and Down choose, A plays the chosen one, B goes back. One
+you haven't added says *not found* and can't be chosen: put its
 ROM in the `ROMs` folder and start the game again. If the version you played last has no ROM (you only have Aidyn
 Plus, say), the game plays one that has. From the
 menu (Continue, New Game, Load Game, Options, Quit Game), B goes back to the title. Each version keeps its own saves.

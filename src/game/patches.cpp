@@ -532,6 +532,7 @@ void normalize_big_draw(uint8_t* rdram, recomp_context* ctx) {
 }
 
 gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba);  // "Title screen"
+gpr title_versions_panel(uint8_t* rdram, gpr g);  // the list of versions Y opens (the title screen)
 
 extern "C" void aidyn_image_draw_done(uint8_t* rdram, recomp_context* ctx) {
     if (!big_draw.active) {
@@ -1896,20 +1897,22 @@ namespace {
     }
 }
 
-// The version list, bottom left of the title screen: Original, Aidyn Patch and Aidyn Plus, one a line. The running one
-// (aidyn::settings::game().rom_patch) has a copper marker and full brightness. Of the other two the upper one gets X
-// (N64 C-down; keyboard K) and the lower one Y (C-up; keyboard I): pressing it restarts into that version
-// (src/main/main.cpp aidyn::switch_version). One whose ROM isn't stored (each is the player's own, checked by its
-// hash) is grey with "not found" and no button. The pictures are make_branding.py's ver_*, tinted with the
-// primitive colour and faded with the card.
+// The version, bottom left of the title screen: the one running (aidyn::settings::game().rom_patch) with a copper
+// marker, and under it "Versions" with Y (N64 C-up; keyboard I): Y opens the list of versions (title_versions_panel,
+// further down: Original first, then the mods), where the player picks one and the game restarts into it
+// (src/main/main.cpp aidyn::switch_version). A version whose ROM isn't stored (each is the player's own, checked by its
+// hash) is dimmed and says "not found". The pictures are make_branding.py's ver_*, tinted with the primitive colour
+// and faded with the card.
 #include "version.h"
 
 namespace {
     uint32_t ink_width(int index);  // "Button prompts", below
 
     using aidyn::settings::RomPatch;
-    constexpr RomPatch kVersions[3] = { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus };
-    constexpr const char* kVersionImages[3] = { "ver_original", "ver_patch", "ver_plus" };
+    constexpr int kVersionCount = 4;
+    constexpr RomPatch kVersions[kVersionCount] = { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus,
+                                                    RomPatch::ActionEdition };
+    constexpr const char* kVersionImages[kVersionCount] = { "ver_original", "ver_patch", "ver_plus", "ver_action" };
 
     // A picture by its name, from a table made once.
     int find_image(const std::string& name) {
@@ -1934,73 +1937,60 @@ namespace {
 
     // Stored ROMs don't change while the game runs: looked up once.
     bool version_here(int i) {
-        static const std::array<bool, 3> here = { aidyn::version_available(kVersions[0]),
-                                                  aidyn::version_available(kVersions[1]),
-                                                  aidyn::version_available(kVersions[2]) };
+        static const std::array<bool, kVersionCount> here = [] {
+            std::array<bool, kVersionCount> h{};
+            for (int k = 0; k < kVersionCount; k++) h[k] = aidyn::version_available(kVersions[k]);
+            return h;
+        }();
         return here[i];
     }
 
-    // The two versions not running, top to bottom (X, Y), as indices into kVersions.
-    std::array<int, 2> other_versions() {
-        std::array<int, 2> o{};
-        int n = 0;
-        for (int i = 0; i < 3; i++) {
-            if (kVersions[i] != aidyn::settings::game().rom_patch) {
-                o[n++] = i;
-            }
+    int running_version() {
+        for (int i = 0; i < kVersionCount; i++) {
+            if (kVersions[i] == aidyn::settings::game().rom_patch) return i;
         }
-        return o;
+        return 0;
     }
 
+    // Y on the card: opens the list (title_versions_panel, below).
+    void title_versions_open();
+
     void title_version_switch() {
-        static bool first = true, x_was = false, y_was = false;
-        const bool x = aidyn::input::c_down_held(), y = aidyn::input::c_up_held();
+        static bool first = true, y_was = false;
+        const bool y = aidyn::input::c_up_held();
         if (first) {
-            first = false;  // still held from the press that switched: wait for the next one
-            x_was = x;
+            first = false;  // still held from the press that got us here: wait for the next one
             y_was = y;
         }
-        const std::array<int, 2> o = other_versions();
-        if (x && !x_was && version_here(o[0])) {
-            aidyn::switch_version(kVersions[o[0]]);
+        if (y && !y_was) {
+            title_versions_open();
         }
-        if (y && !y_was && version_here(o[1])) {
-            aidyn::switch_version(kVersions[o[1]]);
-        }
-        x_was = x;
         y_was = y;
     }
 
-    // The three lines from (10, 194), 12 texels apart; hs, vs pixels a texel; card_rgba the card's colour (its alpha
+    // The two lines from (10, 194), 12 texels apart; hs, vs pixels a texel; card_rgba the card's colour (its alpha
     // fades them in with it).
     gpr version_list(uint8_t* rdram, gpr g, float hs, float vs, uint32_t card_rgba) {
         const float fade = (card_rgba & 0xFF) / 255.0f;
         auto tint = [&](uint32_t rgb, float alpha) {
             put(rdram, g, 0xFA000000, rgb << 8 | (uint32_t)std::lround(255.0f * alpha * fade));  // gDPSetPrimColor
         };
-        const std::array<int, 2> o = other_versions();
-        const int note = title_image("ver_missing");
-        for (int i = 0; i < 3; i++) {
-            const float y = 194.0f + 12.0f * i;
-            const bool running = kVersions[i] == aidyn::settings::game().rom_patch, here = version_here(i);
-            const int label = title_image(kVersionImages[i]);
-            const int icon = running ? title_image("ver_mark") : here ? title_image(i == o[0] ? "ver_x" : "ver_y") : -1;
-            if (running) {
-                tint(0xFFFFFF, 1.0f);
-            } else if (here) {
-                tint(0xD2CDC3, 0.95f);
-            } else {
-                tint(0x7D7870, 0.8f);
-            }
-            if (icon >= 0) {
-                g = draw_rgba16(rdram, g, icon, 10.0f * hs, y * vs, hs, vs);
-            }
-            if (label >= 0) {
-                g = draw_rgba16(rdram, g, label, 22.0f * hs, y * vs, hs, vs);
-                if (!here && note >= 0) {
-                    g = draw_rgba16(rdram, g, note, (22.0f + ink_width(label) + 4.0f) * hs, y * vs, hs, vs);
-                }
-            }
+        const int run = running_version();
+        const int mark = title_image("ver_mark"), label = title_image(kVersionImages[run]);
+        tint(0xFFFFFF, 1.0f);
+        if (mark >= 0) {
+            g = draw_rgba16(rdram, g, mark, 10.0f * hs, 194.0f * vs, hs, vs);
+        }
+        if (label >= 0) {
+            g = draw_rgba16(rdram, g, label, 22.0f * hs, 194.0f * vs, hs, vs);
+        }
+        tint(0xD2CDC3, 0.95f);
+        const int icon = title_image("ver_y"), word = title_image("ver_versions");
+        if (icon >= 0) {
+            g = draw_rgba16(rdram, g, icon, 10.0f * hs, 206.0f * vs, hs, vs);
+        }
+        if (word >= 0) {
+            g = draw_rgba16(rdram, g, word, 22.0f * hs, 206.0f * vs, hs, vs);
         }
         put(rdram, g, 0xFA000000, card_rgba);  // the card's own again
         return g;
@@ -2104,7 +2094,8 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Original) {
         g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
         g = version_number(rdram, g, hs, vs, rgba);
-        return version_list(rdram, g, hs, vs, rgba);
+        g = version_list(rdram, g, hs, vs, rgba);
+        return title_versions_panel(rdram, g);
     }
     GfxCommand c[5];  // gEXEnable: 1 command; gEXSetScissor, gEXSetRectAlign: 2 each
     gEXEnable(&c[0]);
@@ -2122,7 +2113,7 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     c[2].values.word0 = 0xED000000;                                   // gDPSetScissor(G_SC_NON_INTERLACE, 0, 0, h, v)
     c[2].values.word1 = ((h * 4) & 0xFFF) << 12 | ((v * 4) & 0xFFF);
     g = put_cmds(rdram, g, c, 3);
-    return g;
+    return title_versions_panel(rdram, g);
 }
 
 // Field HUD at the screen edges. draw_hud_elements draws the time-of-day dial (Sundial::Draw) at the bottom left, the
@@ -6812,15 +6803,17 @@ namespace {
     // crashes. A save says nothing of its version, so the port keeps a record beside the saves (save-versions.txt:
     // FNV-1a of the 7 KB save, the version that wrote it): every save it writes (quick, auto, and each pak save's
     // -lastsave copy) is added, and on the first start the existing quick and auto saves by their file names (in the
-    // order original, Aidyn Patch, Aidyn Plus, so a copy made under another version's name keeps its first). A save
+    // order original, Aidyn Patch, Aidyn Plus, Action Edition, so a copy made under another version's name keeps its first). A save
     // recorded as another version's is refused (Continue and Quick Load pass over it, the Load screen says so); one
     // not in the record (older pak saves) loads as before.
     const char* version_name(aidyn::settings::RomPatch v) {
         return v == aidyn::settings::RomPatch::AidynPatch ? "aidyn-patch"
-             : v == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus" : "original";
+             : v == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus"
+             : v == aidyn::settings::RomPatch::ActionEdition ? "action-edition" : "original";
     }
     const char* version_title(const std::string& v) {
-        return v == "aidyn-patch" ? "Aidyn Patch" : v == "aidyn-plus" ? "Aidyn Plus" : "the original game";
+        return v == "aidyn-patch" ? "Aidyn Patch" : v == "aidyn-plus" ? "Aidyn Plus"
+               : v == "action-edition" ? "Action Edition" : "the original game";
     }
     std::map<uint64_t, std::string> save_versions;
     bool save_versions_loaded = false;
@@ -6854,7 +6847,7 @@ namespace {
         std::string hex, v;
         while (in >> hex >> v) save_versions[std::stoull(hex, nullptr, 16)] = v;  // later lines win
         if (std::filesystem::exists(save_versions_path())) return;
-        for (const char* stem : { "aidyn", "aidyn-patch", "aidyn-plus" }) {  // the first start: what's there now
+        for (const char* stem : { "aidyn", "aidyn-patch", "aidyn-plus", "action-edition" }) {  // the first start: what's there now
             const std::string v = std::string(stem) == "aidyn" ? "original" : stem;
             for (const char* suffix : { "-quicksave.sav", "-autosave-1.sav", "-autosave-2.sav", "-lastsave.sav" }) {
                 std::ifstream f(save_dir / (std::string(stem) + suffix), std::ios::binary);
@@ -8277,6 +8270,134 @@ gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     return g;
 }
 
+// ---- The versions list (title screen) ----
+// Y on the title card opens a panel listing the versions: Original first, then the mods (Aidyn Patch, Aidyn Plus, Action
+// Edition). Up and Down choose (the pad's D-pad or stick, or the keyboard's movement keys), A plays the chosen one (the
+// game restarts into it: aidyn::switch_version; the running one just closes the list), B, Start or Y again close it.
+// One whose ROM isn't stored says "not found" and can't be chosen. The game gets no input meanwhile
+// (aidyn::input::set_capture), as under the Controls page. draw_title_branding calls the panel each frame the card is
+// drawn; if that stops (the card goes away), the watchdog below lets the input go.
+namespace {
+    struct VersionsPanel {
+        bool open = false, closing = false, locked = true;  // locked: the press that opened it is still down
+        bool y_was = true;
+        int sel = 0, fade = 0, pulse = 0, repeat = 0;
+        uint32_t held = 0;
+        std::chrono::steady_clock::time_point last{};
+    } vers;
+
+    void title_versions_open() {
+        if (vers.open) return;
+        vers = VersionsPanel{};
+        vers.open = true;
+        vers.sel = running_version();
+        vers.last = std::chrono::steady_clock::now();
+        aidyn::input::set_capture(true);
+    }
+
+    void versions_close_now() {
+        vers = VersionsPanel{};
+        aidyn::input::set_capture(false);
+    }
+
+    std::string first_key_of(aidyn::controls::Action a, const char* pad) {
+        if (!aidyn::input::keyboard_last()) return pad;
+        aidyn::controls::Input in = aidyn::controls::binding(a, 0);
+        if (in.empty()) in = aidyn::controls::binding(a, 1);
+        return in.empty() ? pad : aidyn::controls::input_name(in);
+    }
+}
+
+gpr title_versions_panel(uint8_t* rdram, gpr g) {
+    recomp_context* ctx = frame_ctx;
+    if (!vers.open || ctx == nullptr) return g;
+    const auto now = std::chrono::steady_clock::now();
+    const bool step = now - vers.last >= std::chrono::milliseconds(8);  // the card may draw more than once a frame
+    if (step) {
+        vers.last = now;
+        uint32_t b = 0;
+        float sx = 0.0f, sy = 0.0f;
+        aidyn::input::captured(&b, &sx, &sy);
+        if (sy > 0.5f) b |= 0x0800;
+        if (sy < -0.5f) b |= 0x0400;
+        const bool y = aidyn::input::c_up_held();
+        const bool y_pressed = y && !vers.y_was;
+        vers.y_was = y;
+        if (vers.locked && !y && !(b & 0x8000)) vers.locked = false;
+        const uint32_t pressed = vers.locked ? 0 : (b & ~vers.held);
+        vers.held = b;
+        const uint32_t dirs = b & 0x0C00;
+        vers.repeat = dirs != 0 ? vers.repeat + 1 : 0;
+        const uint32_t act = pressed | ((vers.repeat > 24 && vers.repeat % 6 == 0) ? dirs : 0);
+        if (!vers.closing) {
+            if (act & 0x0800) {
+                vers.sel = (vers.sel + kVersionCount - 1) % kVersionCount;
+                rc_sound(rdram, ctx, 0x740, 60);
+            } else if (act & 0x0400) {
+                vers.sel = (vers.sel + 1) % kVersionCount;
+                rc_sound(rdram, ctx, 0x740, 60);
+            } else if (pressed & 0x8000) {  // A
+                if (version_here(vers.sel)) {
+                    rc_sound(rdram, ctx, 0x740, 60);
+                    vers.closing = true;
+                    if (vers.sel != running_version()) {
+                        aidyn::switch_version(kVersions[vers.sel]);  // restarts: returns only if that fails
+                    }
+                }
+            } else if ((pressed & (0x4000 | 0x1000)) || y_pressed) {  // B, Start, Y: back
+                rc_sound(rdram, ctx, 0x741, 60);
+                vers.closing = true;
+            }
+        }
+        vers.fade = std::clamp(vers.fade + (vers.closing ? -60 : 60), 0, 255);
+        vers.pulse++;
+        if (vers.closing && vers.fade == 0) {
+            versions_close_now();
+            return g;
+        }
+    }
+    const int fade = vers.fade;
+    constexpr float kLeft = 70.0f, kRight = 250.0f, kTop = 52.0f, kBottom = 170.0f;
+    g = title_panel(rdram, ctx, g, kLeft, kTop, kRight, kBottom, (uint32_t)fade);
+    g = ctl_state(rdram, ctx, g);
+    const CtlHost h{ true, fade, vers.closing, vers.pulse, 0 };
+    g = ctl_text(rdram, ctx, g, "Versions", (kLeft + kRight) / 2.0f, kTop + 13.0f, 0.9f, 0xE8C060, fade, false, true);
+    const int run = running_version();
+    for (int i = 0; i < kVersionCount; i++) {
+        const float y = kTop + 40.0f + 13.0f * i;
+        const bool here = version_here(i);
+        const uint32_t ink = i == vers.sel ? ctl_highlight(h) : here ? 0xF2E6C8 : 0x8C8470;
+        static const char* kNames[kVersionCount] = { "Original", "Aidyn Patch", "Aidyn Plus", "Action Edition" };
+        if (i == vers.sel) {  // the title's copper marker (a picture: the text state is left and taken up again)
+            const int mark = find_image("ver_mark");
+            const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+            if (mark >= 0) {
+                g = prompt_state(rdram, g, (uint8_t)fade);
+                g = draw_rgba16(rdram, g, mark, (kLeft + 8.0f) * hs, (y - 1.5f) * vs, hs, vs);
+                g = ctl_state(rdram, ctx, g);
+            }
+        }
+        g = ctl_text(rdram, ctx, g, kNames[i], kLeft + 22.0f, y, 0.7f, ink, fade);
+        if (i == run) {
+            g = ctl_text(rdram, ctx, g, "playing", kRight - 22.0f, y, 0.6f, 0xE8C060, fade, true);
+        } else if (!here) {
+            g = ctl_text(rdram, ctx, g, "not found", kRight - 22.0f, y, 0.6f, 0x8C8470, fade, true);
+        }
+    }
+    using aidyn::controls::kA;
+    using aidyn::controls::kB;
+    g = ctl_text(rdram, ctx, g, first_key_of(kA, "A") + "  choose      " + first_key_of(kB, "B") + "  back",
+                 (kLeft + kRight) / 2.0f, kBottom - 13.0f, 0.55f, 0xC8BFA8, fade, false, true);
+    return g;
+}
+
+// Each frame: lets the game have its input again if the card stopped drawing the panel (a state change under it).
+void title_versions_watchdog() {
+    if (vers.open && std::chrono::steady_clock::now() - vers.last > std::chrono::milliseconds(300)) {
+        versions_close_now();
+    }
+}
+
 // ---- Keys on the prompts (#44) ----
 // The controls card shows the keys and mouse buttons bound to each of its lines, in gold after the line, while the
 // keyboard or the mouse is what was used last (aidyn::input::keyboard_last: a pad player sees the card as before);
@@ -8515,6 +8636,7 @@ namespace {
 
 // Each frame: the cells' widths for the device in use.
 void update_glyph_widths(uint8_t* rdram, recomp_context* ctx) {
+    title_versions_watchdog();
     const gpr font = MEM_W(0, kFontPtr);
     if (!heap_pointer(font)) return;
     const bool keys = aidyn::input::keyboard_last();

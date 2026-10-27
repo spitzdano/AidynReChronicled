@@ -75,6 +75,7 @@ namespace {
         switch (aidyn::settings::game().rom_patch) {
             case aidyn::settings::RomPatch::AidynPatch: return "Aidyn Patch";
             case aidyn::settings::RomPatch::AidynPlus: return "Aidyn Plus";
+            case aidyn::settings::RomPatch::ActionEdition: return "Action Edition";
             default: return "the original";
         }
     }

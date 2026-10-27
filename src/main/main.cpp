@@ -220,20 +220,23 @@ void aidyn_pak_set_path(const std::filesystem::path& path); // src/game/pak.cpp
 void aidyn_save_pictures_set_dir(const std::filesystem::path& dir); // src/game/save_pictures.cpp
 void aidyn_quick_saves_set_pak(const std::filesystem::path& pak); // src/game/patches.cpp
 
-// The three ROMs the port runs, each the player's own: the 1.0 release, or it with halibabica's (u/halibabica) community
-// Aidyn Patch or Aidyn Plus applied by the player. Nothing of either is in this project: a ROM given with
-// --rom (or chosen at the first start) is checked by its XXH3-64 against the three below and stored. Both patches change
-// only data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell, item and chest
-// databases; measured byte by byte against the 1.0 ROM), no code, so the same recompiled code runs all three.
+// The four ROMs the port runs, each the player's own: the 1.0 release, or it with halibabica's (u/halibabica) community
+// Aidyn Patch or Aidyn Plus applied by the player, or the Action Edition mod's ROM. Nothing of them is in this project: a
+// ROM given with --rom (or chosen at the first start) is checked by its XXH3-64 against the four below and stored. The
+// three mods change only data (potion recipes and prices, skill and weapon XP rates, the entity, weapon, armour, spell,
+// item and chest databases, the shops; measured byte by byte against the 1.0 ROM), no code, so the same recompiled code
+// runs all four.
 // settings.json "game.rom_patch" picks one; each keeps its own Controller Pak.
 static const char8_t game_id[] = u8"aidyn.n64.us.1.0";
 static const char8_t game_id_aidyn_patch[] = u8"aidyn.n64.us.1.0.aidyn-patch";
 static const char8_t game_id_aidyn_plus[] = u8"aidyn.n64.us.1.0.aidyn-plus";
+static const char8_t game_id_action_edition[] = u8"aidyn.n64.us.1.0.action-edition";
 
 static const char8_t* game_id_for(aidyn::settings::RomPatch version) {
     switch (version) {
         case aidyn::settings::RomPatch::AidynPatch: return game_id_aidyn_patch;
         case aidyn::settings::RomPatch::AidynPlus: return game_id_aidyn_plus;
+        case aidyn::settings::RomPatch::ActionEdition: return game_id_action_edition;
         default: return game_id;
     }
 }
@@ -242,6 +245,7 @@ static const char* version_name(aidyn::settings::RomPatch version) {
     switch (version) {
         case aidyn::settings::RomPatch::AidynPatch: return "Aidyn Patch";
         case aidyn::settings::RomPatch::AidynPlus: return "Aidyn Plus";
+        case aidyn::settings::RomPatch::ActionEdition: return "Action Edition";
         default: return "the original";
     }
 }
@@ -250,6 +254,7 @@ static const char* version_flag_arg(aidyn::settings::RomPatch version) {
     switch (version) {
         case aidyn::settings::RomPatch::AidynPatch: return "--patch";
         case aidyn::settings::RomPatch::AidynPlus: return "--plus";
+        case aidyn::settings::RomPatch::ActionEdition: return "--action";
         default: return "--original";
     }
 }
@@ -315,7 +320,7 @@ void aidyn::switch_version(aidyn::settings::RomPatch version) {
     aidyn::settings::save_rom_patch(version);
     std::vector<std::string> args;
     for (size_t i = 0; i < g_args.size(); i++) {
-        if (g_args[i] == "--patch" || g_args[i] == "--plus" || g_args[i] == "--original") {
+        if (g_args[i] == "--patch" || g_args[i] == "--plus" || g_args[i] == "--action" || g_args[i] == "--original") {
             continue;
         }
         if (g_args[i] == "--rom" && i + 1 < g_args.size()) {
@@ -339,7 +344,8 @@ void aidyn::switch_version(aidyn::settings::RomPatch version) {
 static void store_roms_from_folders() {
     const std::pair<const char8_t*, const char*> versions[] = { { game_id, "the NTSC-U 1.0 ROM" },
                                                                { game_id_aidyn_patch, "the Aidyn Patch ROM" },
-                                                               { game_id_aidyn_plus, "the Aidyn Plus ROM" } };
+                                                               { game_id_aidyn_plus, "the Aidyn Plus ROM" },
+                                                               { game_id_action_edition, "the Action Edition ROM" } };
     const auto missing = [&] {
         for (const auto& [id, name] : versions) {
             if (!recomp::is_rom_valid(id)) {
@@ -402,7 +408,8 @@ static void store_rom(const std::filesystem::path& rom_path) {
     recomp::RomValidationError result = recomp::select_rom(rom_path, game_id);
     const char* stored = "the NTSC-U 1.0 ROM";
     for (auto [id, name] : { std::pair{ game_id_aidyn_patch, "the Aidyn Patch ROM" },
-                             std::pair{ game_id_aidyn_plus, "the Aidyn Plus ROM" } }) {
+                             std::pair{ game_id_aidyn_plus, "the Aidyn Plus ROM" },
+                             std::pair{ game_id_action_edition, "the Action Edition ROM" } }) {
         if (result == recomp::RomValidationError::IncorrectVersion || result == recomp::RomValidationError::OtherError) {
             if (recomp::select_rom(rom_path, id) == recomp::RomValidationError::Good) {
                 result = recomp::RomValidationError::Good;
@@ -421,7 +428,7 @@ static void store_rom(const std::filesystem::path& rom_path) {
         fatal("Not an N64 ROM (a zipped ROM must be unzipped first): %s", rom_path.string().c_str());
     case recomp::RomValidationError::IncorrectVersion:
         fatal("This is Aidyn Chronicles, but not the NTSC-U 1.0 release (version byte 0), nor it with Aidyn Patch or "
-              "Aidyn Plus applied (the patch must be applied to the 1.0 ROM, unchanged): %s", rom_path.string().c_str());
+              "Aidyn Plus applied (the patch must be applied to the 1.0 ROM, unchanged), nor the Action Edition ROM: %s", rom_path.string().c_str());
     default:
         fatal("This is not Aidyn Chronicles (NTSC-U 1.0): %s", rom_path.string().c_str());
     }
@@ -434,6 +441,8 @@ static std::filesystem::path pick_rom(aidyn::settings::RomPatch version) {
             ? "Choose your Aidyn Chronicles ROM with Aidyn Patch applied (.z64).\n\nIt is checked and kept, so this is only asked once."
         : version == aidyn::settings::RomPatch::AidynPlus
             ? "Choose your Aidyn Chronicles ROM with Aidyn Plus applied (.z64).\n\nIt is checked and kept, so this is only asked once."
+        : version == aidyn::settings::RomPatch::ActionEdition
+            ? "Choose your Aidyn Chronicles: Action Edition ROM (.z64).\n\nIt is checked and kept, so this is only asked once."
             : "Choose your Aidyn Chronicles ROM: the North American 1.0 cartridge (.z64).\n\nIt is checked and kept, so this is only asked once. (Or put your ROMs in the ROMs folder next to the game: they're found by themselves.)";
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Aidyn ReChronicled", text, nullptr);
     if (NFD_Init() != NFD_OKAY) {
@@ -459,7 +468,7 @@ static std::filesystem::path pick_rom(aidyn::settings::RomPatch version) {
 // --original / --patch / --plus's) when its ROM is there. If it isn't, and the version came from settings.json, any
 // version whose ROM is there (the original first), for this run only (the title screen lights the one playing); a
 // version asked for on the command line (the Linux app menu's entries) asks for its ROM first. With no ROM at all the
-// file dialog asks, and whichever of the three is chosen is played. Without a dialog (--report) the asked version.
+// file dialog asks, and whichever of the four is chosen is played. Without a dialog (--report) the asked version.
 static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
     using aidyn::settings::RomPatch;
     const RomPatch wanted = aidyn::settings::game().rom_patch;
@@ -467,7 +476,7 @@ static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
         return wanted;
     }
     const auto other = [wanted] {
-        for (RomPatch v : { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus }) {
+        for (RomPatch v : { RomPatch::None, RomPatch::AidynPatch, RomPatch::AidynPlus, RomPatch::ActionEdition }) {
             if (aidyn::version_available(v)) {
                 printf("No ROM for %s: playing %s this time\n", version_name(wanted), version_name(v));
                 fflush(stdout);
@@ -507,7 +516,7 @@ static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
 int main(int argc, char** argv) {
     g_args.assign(argv, argv + argc);
     std::filesystem::path rom_path;
-    int version_flag = -1;  // --original 0, --patch 1, --plus 2: this run only (a launcher can start any)
+    int version_flag = -1;  // --original 0, --patch 1, --plus 2, --action 3: this run only (a launcher can start any)
     std::string report_reason;  // --report <why>: make a problem report and stop (src/main/report.cpp)
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--rom") == 0 && i + 1 < argc) {
@@ -522,15 +531,18 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--plus") == 0) {
             version_flag = 2;
         }
+        else if (strcmp(argv[i], "--action") == 0) {
+            version_flag = 3;
+        }
         else if (strcmp(argv[i], "--original") == 0) {
             version_flag = 0;
         }
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("usage: %s [--rom <ROM>] [--original | --patch | --plus] [--report <why>]\n"
-                   "  --rom       your NTSC-U 1.0 Aidyn Chronicles ROM, or that ROM with Aidyn Patch or Aidyn Plus applied\n"
-                   "              (by you): checked by its hash and remembered; give each one once\n"
-                   "  --original, --patch, --plus   play that version this time (otherwise settings.json game.rom_patch;\n"
-                   "              on the title screen X and Y switch to the other two and remember)\n"
+            printf("usage: %s [--rom <ROM>] [--original | --patch | --plus | --action] [--report <why>]\n"
+                   "  --rom       your NTSC-U 1.0 Aidyn Chronicles ROM, or that ROM with Aidyn Patch or Aidyn Plus applied,\n"
+                   "              or the Action Edition ROM (by you): checked by its hash and remembered; give each one once\n"
+                   "  --original, --patch, --plus, --action   play that version this time (otherwise settings.json\n"
+                   "              game.rom_patch; on the title screen Y opens the list of versions and remembers the choice)\n"
                    "  --report    don't play: write a problem report (reports/ in the data folder) giving <why>, and\n"
                    "              print where (the launcher does this when the game ended without closing properly)\n"
                    "  F1: the manual   F2: redrawn art off / on   F11 or Alt+Enter: fullscreen   Shift+Esc: quit\n", argv[0]);
@@ -552,6 +564,7 @@ int main(int argc, char** argv) {
     if (version_flag >= 0) {
         aidyn::settings::use_rom_patch(version_flag == 1   ? aidyn::settings::RomPatch::AidynPatch
                                        : version_flag == 2 ? aidyn::settings::RomPatch::AidynPlus
+                                       : version_flag == 3 ? aidyn::settings::RomPatch::ActionEdition
                                                            : aidyn::settings::RomPatch::None);
     }
     recomp::GameEntry entry{
@@ -577,6 +590,11 @@ int main(int argc, char** argv) {
     plus.display_name = "Aidyn Chronicles: The First Mage (Aidyn Plus)";
     plus.game_id = game_id_aidyn_plus;
     recomp::register_game(plus);
+    recomp::GameEntry action = entry;
+    action.rom_hash = 0x802056DBBADC0FC0ULL; // XXH3-64 of the Action Edition ROM (AidynActionFeb072026.z64, SHA-1 4bbb9fcd...)
+    action.display_name = "Aidyn Chronicles: The First Mage (Action Edition)";
+    action.game_id = game_id_action_edition;
+    recomp::register_game(action);
     aidyn_register_overlays();
 
     if (!rom_path.empty()) {
@@ -592,6 +610,7 @@ int main(int argc, char** argv) {
     const std::filesystem::path pak = mpk != nullptr && *mpk != '\0' ? std::filesystem::path(mpk)
                                       : data_folder() / (version == aidyn::settings::RomPatch::AidynPatch  ? "aidyn-patch.mpk"
                                                          : version == aidyn::settings::RomPatch::AidynPlus ? "aidyn-plus.mpk"
+                                                         : version == aidyn::settings::RomPatch::ActionEdition ? "action-edition.mpk"
                                                                                                            : "aidyn.mpk");
     aidyn_pak_set_path(pak);
     aidyn_save_pictures_set_dir(pak.parent_path() / "save-pictures");

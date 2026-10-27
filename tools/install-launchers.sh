@@ -3,6 +3,7 @@
 #   Aidyn ReChronicled               --original (the NTSC-U 1.0 release)
 #   Aidyn ReChronicled (Aidyn Patch) --patch
 #   Aidyn ReChronicled (Aidyn Plus)  --plus
+#   Aidyn ReChronicled (Action Edition)  --action
 # Each starts the version it names (its ROM must be stored: the player's own, see README); X and Y on the title screen
 # still switch (and restart in place). Each has a "Manual" action that opens the manual tools/manual/build_manual.py
 # built (F1 in the game opens it too).
@@ -42,4 +43,5 @@ DESKTOP
 entry aidyn-rechronicled.desktop "Aidyn ReChronicled" --original "Aidyn Chronicles: The First Mage, enhanced (original 1.0 release)"
 entry aidyn-rechronicled-patch.desktop "Aidyn ReChronicled (Aidyn Patch)" --patch "Aidyn Chronicles: The First Mage, enhanced, with the community Aidyn Patch"
 entry aidyn-rechronicled-plus.desktop "Aidyn ReChronicled (Aidyn Plus)" --plus "Aidyn Chronicles: The First Mage, enhanced, with the Aidyn Plus rebalance"
-echo "install-launchers.sh: $D/aidyn-rechronicled.desktop, aidyn-rechronicled-patch.desktop, aidyn-rechronicled-plus.desktop"
+entry aidyn-rechronicled-action.desktop "Aidyn ReChronicled (Action Edition)" --action "Aidyn Chronicles: The First Mage, enhanced, with the Action Edition mod"
+echo "install-launchers.sh: $D/aidyn-rechronicled.desktop, aidyn-rechronicled-patch.desktop, aidyn-rechronicled-plus.desktop, aidyn-rechronicled-action.desktop"

@@ -296,7 +296,7 @@ trap 'rm -f "$notes"' EXIT
         echo "Windows 10 or 11 (64-bit) and a Vulkan driver; nothing to install (the Visual C++ runtime is included)."
         echo
     fi
-    echo "Put your own NTSC-U 1.0 ROM (\`.z64\`) in the download's \`ROMs\` folder, and the Aidyn Patch / Aidyn Plus ones if"
+    echo "Put your own NTSC-U 1.0 ROM (\`.z64\`) in the download's \`ROMs\` folder, and the Aidyn Patch / Aidyn Plus / Action Edition ones if"
     echo "you have them, under any names: the game finds them by their contents (without one, the first start asks for it)."
     echo "The README in the download has the rest: controls, Aidyn Patch, settings, adding it to Steam."
     echo

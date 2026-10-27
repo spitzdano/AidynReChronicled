@@ -495,7 +495,8 @@ import turn_order  # noqa: E402
 TURN_PIECES, TURN_PIECE_LINES = turn_order.images(SS)
 IMAGES += TURN_PIECES
 # The title screen's version list (bottom left): Aidyn Plus's name, "not found", the running one's marker, X and Y.
-IMAGES += [("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34, 12, version_label("not found", 52)),
+IMAGES += [("ver_action", 66, 12, version_label("Action Edition")), ("ver_versions", 44, 12, version_label("Versions")),
+           ("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34, 12, version_label("not found", 52)),
            ("ver_mark", 10, 12, version_mark), ("ver_x", 10, 12, version_button("CD")), ("ver_y", 10, 12, version_button("CU"))]
 # The title screen's version number (bottom right, above the credit): one picture per character, put together by the
 # game from its build's version (aidyn_version.h: "v0.4.0", or "v0.4.0 dev" for a build after the tag).
