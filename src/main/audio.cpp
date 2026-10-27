@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -125,6 +126,31 @@ namespace {
     Enhancer enhancer;
 }
 
+// Running dry. The game makes its sound a little at a time, on its own thread, topping the queue up to what
+// get_frames_remaining asks for; when that thread is held up longer than the queue lasts (a slow frame, a map loading)
+// the device plays silence until the next piece comes: a pop or a crackle. Each time the queue was found empty is
+// counted and logged (at most every 10 seconds) with the longest wait between two pieces, so a report shows it.
+static void note_dry() {
+    using clock = std::chrono::steady_clock;
+    static clock::time_point last_piece{}, last_log{};
+    static uint32_t dry = 0, dry_logged = 0;
+    static double longest_ms = 0.0;
+    const auto now = clock::now();
+    const bool started = last_piece != clock::time_point{};
+    if (started && SDL_GetQueuedAudioSize(audio_device) == 0) {
+        dry++;
+        longest_ms = std::max(longest_ms, std::chrono::duration<double, std::milli>(now - last_piece).count());
+    }
+    last_piece = now;
+    if (dry != dry_logged && now - last_log >= std::chrono::seconds(10)) {
+        printf("Sound: ran dry %u time%s so far (the longest wait for the game's sound %.0f ms)\n", dry,
+               dry == 1 ? "" : "s", longest_ms);
+        fflush(stdout);
+        dry_logged = dry;
+        last_log = now;
+    }
+}
+
 void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
     aidyn::watch::sound_tick();  // the freeze watchdog: the sound still going (src/main/watch.cpp)
     dump_samples(audio_data, sample_count);
@@ -208,13 +234,27 @@ void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
         }
     }
 
+    note_dry();
+
     // Queue the swapped audio data.
     // Offset the data start by only half the discarded frame count as the other half of the discarded frames are at the end of the buffer.
     SDL_QueueAudio(audio_device, samples_to_queue, num_bytes_to_queue);
 }
 
+// How far ahead the game keeps its sound, in VIs (60ths of a second) on top of the one it is about to make. Zelda64Recomp
+// (where this comes from) keeps one, so the queue held 18 to 35 ms and a hold-up of the game's thread longer than
+// that ran it dry (pops and crackles on slower PCs, maps loading at a high draw distance). Three keep 52 to 68 ms, still
+// below the 100 ms where queue_samples starts dropping audio. AIDYN_AUDIO_AHEAD=<VIs> (testing).
+static float buffer_offset_frames() {
+    static const float v = [] {
+        const char* e = std::getenv("AIDYN_AUDIO_AHEAD");
+        return e != nullptr ? std::clamp((float)std::atof(e), 0.0f, 4.0f) : 3.0f;
+    }();
+    return v;
+}
+
 size_t aidyn::audio::get_frames_remaining() {
-    constexpr float buffer_offset_frames = 1.0f;
+    const float buffer_offset_frames = ::buffer_offset_frames();
     // Get the number of remaining buffered audio bytes.
     uint64_t buffered_byte_count = SDL_GetQueuedAudioSize(audio_device);
 
