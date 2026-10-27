@@ -1982,7 +1982,7 @@ namespace {
 }
 
 // The version number, bottom right above the credit: the build's (aidyn_version.h, written by tools/version.cmake:
-// "v0.4.0" for a release, "v0.4.0 dev" for a build after its tag, "dev" without either) put together from
+// "v0.4.0" for a release, "v0.4.0 dev" for a build after its tag, "v0.8.2 beta.1" for a test build, "dev" without either) put together from
 // make_branding.py's verno_* pictures (a character each, and the word "dev"), right-aligned at x 309 (320x240), dimmed
 // and faded with the card like the version list.
 #include "aidyn_version.h"
@@ -1995,7 +1995,10 @@ namespace {
             if (text.compare(i, 3, "dev") == 0) {
                 pieces.push_back(title_image("verno_dev"));
                 i += 2;
-            } else if (text[i] == ' ') {
+            } else if (text.compare(i, 4, "beta") == 0) {  // a test build: "0.8.2-beta.1"
+                pieces.push_back(title_image("verno_beta"));
+                i += 3;
+            } else if (text[i] == ' ' || text[i] == '-') {
                 pieces.push_back(-1);
             } else {
                 const char name[] = { 'v', 'e', 'r', 'n', 'o', '_', text[i], '\0' };

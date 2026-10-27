@@ -461,7 +461,7 @@ IMAGES += [("ver_plus", 50, 12, version_label("Aidyn Plus")), ("ver_missing", 34
 # The title screen's version number (bottom right, above the credit): one picture per character, put together by the
 # game from its build's version (aidyn_version.h: "v0.4.0", or "v0.4.0 dev" for a build after the tag).
 IMAGES += [("verno_v", 6, 9, version_label("v", 44)), ("verno_dot", 4, 9, version_label(".", 44)),
-           ("verno_dev", 14, 9, version_label("dev", 44))]
+           ("verno_dev", 14, 9, version_label("dev", 44)), ("verno_beta", 17, 9, version_label("beta", 44))]
 IMAGES += [(f"verno_{d}", 6, 9, version_label(str(d), 44)) for d in range(10)]
 # The pause menu's ReChronicled page: its title, each row's name and the values (tinted by the game), and the hints.
 RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_vsync", "VSync"), ("rc_turn_order", "Turn order"),
