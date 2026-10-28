@@ -7670,9 +7670,10 @@ namespace {
     constexpr const char* kCatMedals[kCatCount] = { "story", "side", "boss", "boss", "companion", "explore", "growth", "feat" };
     AchCat ach_cat(const char* id) {
         const std::string s = id;
-        // The side quests: Trahern's sword (a favour, the journal's 85/19/87) and Pandara's amulet (234). The lighthouse
+        // The side quests: Trahern's sword (a favour, the journal's 85/19/87), Pandara's amulet (234) and the five
+        // "side_" ones the journal notes (a letter, a knight, Mago, a wild man, Elisheva's tomb). The lighthouse
         // (Captain Amann's boat needs the port open) and Yeraza's dinner (the Stormbreaker for the voyage) are the story's.
-        if (s == "story_sword" || s == "story_forest") return kCatSide;
+        if (s == "story_sword" || s == "story_forest" || s.rfind("side_", 0) == 0) return kCatSide;
         if (s.rfind("story_", 0) == 0) return kCatStory;
         // the three story bosses; the other eight (the journal doesn't mention them) are optional
         if (s == "boss_kitarak" || s == "boss_shamsuk" || s == "boss_lugash") return kCatBoss;
@@ -7708,6 +7709,13 @@ namespace {
             { "story_fate", "Fate", kAchAll, { 548 } },
             { "story_whole", "Whole Again", kAchAll, { 566 } },
             { "story_named", "Named", kAchAll, { 601 } },
+            // the side quests the journal notes (its entries' flags): the strange letter in the Saiid cave, the knight on
+            // the road into Saiid (a merchant's tale), Mago and Fyrsil's cure, the wild man of the bog, Elisheva's tomb
+            { "side_letter", "A Strange Letter", kAchAll, { 295 } },
+            { "side_knight", "The Knight on the Road", kAchAll, { 287 } },
+            { "side_mago", "A Cure for Mago", kAchAll, { 390 } },
+            { "side_wildman", "The Wild Man of the Bog", kAchAll, { 425 } },
+            { "side_tomb", "Elisheva's Tomb", kAchAll, { 429 } },
             // bosses (their killed flags)
             { "boss_kitarak", "The Goblin King", kAchAll, { 154 } },
             { "boss_shamsuk", "The Necromancer", kAchAll, { 458 } },
@@ -8539,11 +8547,22 @@ namespace {
         return out;
     }
 
-    int ach_earned(const AchMap& m) {
-        int n = 0;
-        for (const Achievement& a : achievements()) n += m.count(a.id) ? 1 : 0;
-        return n;
+    // The side quests are hidden achievements: nothing of one shows until it is earned (no ??? row, not in the group's
+    // header, not in the totals), so a player isn't told they exist.
+    bool ach_hidden(const Achievement& a) { return ach_cat(a.id) == kCatSide; }
+
+    // What a version has earned, and the total it is out of (every achievement but the hidden ones not yet earned).
+    struct AchCount { int earned, total; };
+    AchCount ach_count(const AchMap& m) {
+        AchCount c{ 0, 0 };
+        for (const Achievement& a : achievements()) {
+            const bool got = m.count(a.id) != 0;
+            c.earned += got ? 1 : 0;
+            c.total += (got || !ach_hidden(a)) ? 1 : 0;
+        }
+        return c;
     }
+    int ach_earned(const AchMap& m) { return ach_count(m).earned; }
 
     // The list's rows: each group's header (a == nullptr) and its achievements.
     struct AchRow { const Achievement* a; int cat, earned, total; };
@@ -8552,12 +8571,15 @@ namespace {
         for (int c = 0; c < kCatCount; c++) {
             int total = 0, earned = 0;
             for (const Achievement& a : achievements()) {
-                if (ach_cat(a.id) == c) { total++; earned += unlocked.count(a.id) ? 1 : 0; }
+                if (ach_cat(a.id) != c) continue;
+                const bool got = unlocked.count(a.id) != 0;
+                earned += got ? 1 : 0;
+                total += (got || !ach_hidden(a)) ? 1 : 0;
             }
-            if (total == 0) continue;
+            if (total == 0) continue;  // a hidden group with nothing found yet isn't there
             rows.push_back({ nullptr, c, earned, total });
             for (const Achievement& a : achievements()) {
-                if (ach_cat(a.id) == c) rows.push_back({ &a, c, 0, 0 });
+                if (ach_cat(a.id) == c && (unlocked.count(a.id) || !ach_hidden(a))) rows.push_back({ &a, c, 0, 0 });
             }
         }
         return rows;
@@ -8602,7 +8624,9 @@ namespace {
             const float y = y0 + kCtlRowStep * i;
             if (r.a == nullptr) {
                 g = ctl_text(rdram, ctx, g, kCatNames[r.cat], left, y, kCtlScale, top + i == row ? highlight : ink.head, fade);
-                g = ctl_text(rdram, ctx, g, std::to_string(r.earned) + " / " + std::to_string(r.total), right, y, 0.5f, ink.head, fade, true);
+                g = ctl_text(rdram, ctx, g, r.cat == kCatSide ? std::to_string(r.earned) + " found"
+                                                              : std::to_string(r.earned) + " / " + std::to_string(r.total),
+                             right, y, 0.5f, ink.head, fade, true);
                 continue;
             }
             const auto it = unlocked.find(r.a->id);
@@ -8673,7 +8697,8 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
             g = draw_rgba16(rdram, g, tr, centre * hs, (top - 31.0f) * vs, hs, vs);
         }
     }
-    const int earned = ach_earned(ach.unlocked), total = (int)achievements().size();
+    const AchCount counts = ach_count(ach.unlocked);
+    const int earned = counts.earned, total = counts.total;
     g = ach_bar(rdram, g, left, top - 6.0f, right - left, 3.0f, (float)earned / (float)total, 0x9A5A2A, 0xC8B494, rc.fade);
     g = ctl_state(rdram, ctx, g);
     g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), right, top - 14.0f, 0.55f, kMenuInk,
@@ -8774,11 +8799,10 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             g = draw_rgba16(rdram, g, tr, centre * hs, 28.5f * vs, hs, vs);
         }
     }
-    const int total = (int)achievements().size();
     if (ta.level == 0) {
         for (int i = 0; i < 4; i++) {
             const float y = kBodyTop + kVersionStep * i;
-            const int earned = ach_earned(ta.views[i]);
+            const int earned = ach_count(ta.views[i]).earned, total = ach_count(ta.views[i]).total;
             if (i == ta.sel) {  // the title's copper marker
                 const int mark = branding_index("ver_mark");
                 if (mark >= 0) {
@@ -8791,7 +8815,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = ctl_state(rdram, ctx, g);
         for (int i = 0; i < 4; i++) {
             const float y = kBodyTop + kVersionStep * i;
-            const int earned = ach_earned(ta.views[i]);
+            const int earned = ach_count(ta.views[i]).earned, total = ach_count(ta.views[i]).total;
             const uint32_t ink = i == ta.sel ? ctl_highlight(h) : 0xF2E6C8;
             g = ctl_text(rdram, ctx, g, kAchVersions[i], kLeft + 4.0f, y, 0.8f, ink, fade);
             if (i == running_version_index()) {
@@ -8801,7 +8825,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), kRight, y, 0.8f, 0xE8C060, fade, true);
         }
     } else {
-        const int earned = ach_earned(view);
+        const int earned = ach_count(view).earned, total = ach_count(view).total;
         g = ach_bar(rdram, g, kLeft, kBodyTop + 10.0f, kRight - kLeft, 3.0f, (float)earned / (float)total, 0xE8B850, 0x20282E, fade);
         g = ctl_state(rdram, ctx, g);
         g = ctl_text(rdram, ctx, g, kAchVersions[ta.sel], kLeft, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade);

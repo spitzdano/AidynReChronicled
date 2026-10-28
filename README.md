@@ -405,8 +405,9 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 61 milestones in eight groups: Story (20), Side quests (2: Trahern's sword, Pandara's
-  amulet), Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (5). Most are read from the event flags the game
+- **Achievements (#42).** 66 milestones in eight groups: Story (20), Side quests (7, **fully hidden** until found: no ??? row, not in the counts until
+  earned: Trahern's sword, Pandara's amulet, a strange letter, the knight on the road, a cure for Mago, the wild man of
+  the bog, Elisheva's tomb), Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (5). Most are read from the event flags the game
   keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, stats and skills), a few
   counted by the port (fights won, a flawless fight, a camp ambush survived, a fight fled, gold, levels, a full party).
   **Only what is done in play counts**: when a game starts or a save is loaded, what it already holds (flags, level,
