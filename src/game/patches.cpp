@@ -4309,9 +4309,9 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // a white glow frame at x 84, 122, 160, 198 and each portrait 30 units square 6 inside it, half see-through; the row
 // slides up into place, screen_bottom 0x800DB180 going from 240 to 185 by 4 a frame, and fades with the screen,
 // gGlobals.brightness +0x2040). With the redrawn art (spitzdano: like the turn order bar) the row is drawn here instead:
-// the turn bar's pieces at field size (tools/branding/turn_order.py pr_*: the ends and a bronze slot per member, 38
-// units each, so each portrait keeps its place), the portraits opaque in their windows on a dark backing, an empty
-// place an empty slot. gGlobals.party (0x800D9684) Members[0..3], each CharSheet's portrait at +0x44.
+// the turn bar's style at field size (tools/branding/turn_order.py pr_*: Codex's painted ends and slots, art/hud/source/
+// party-row, else the bar's own pieces cut larger; a slot per member, 38 units each, so each portrait keeps its place,
+// the leader's gold), the portraits opaque in their windows on a dark backing, an empty place an empty slot. gGlobals.party (0x800D9684) Members[0..3], each CharSheet's portrait at +0x44.
 namespace {
     constexpr gpr kScreenBottom = (gpr)(int32_t)0x800DB180;  // u16
 }
@@ -4363,8 +4363,9 @@ extern "C" int aidyn_party_row(uint8_t* rdram, recomp_context* ctx) {
     };
     const float bar_y = top + slot.mid;  // the bar's middle row, for the ends
     draw_piece(end_l, slot_x(0) - end_l.w, bar_y - end_l.mid);
+    const Piece& leader = piece("pr_slot_leader");  // the party's leader in gold, if painted (Codex)
     for (int i = 0; i < 4; i++) {
-        draw_piece(slot, slot_x(i), top);
+        draw_piece(i == 0 && leader.image >= 0 ? leader : slot, slot_x(i), top);
     }
     draw_piece(end_r, slot_x(3) + slot.w, bar_y - end_r.mid);
     ctx->r2 = g;

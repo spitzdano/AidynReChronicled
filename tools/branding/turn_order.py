@@ -41,6 +41,31 @@ PIECES = {
 # the turn bar's own left end carries the round's plate). Each under the 2048 texels one RGBA16 load can hold.
 FIELD_SCALE = 38 / 18
 FIELD_PIECES = {"pr_slot": ("to_slot", False), "pr_end_l": ("to_end_r", True), "pr_end_r": ("to_end_r", False)}
+# Codex painted the row's own pieces (art/hud/source/party-row, brief in ~/Work/aidyn-party-row-brief): at 8 pixels a
+# texel, the same sizes, the window x 28 to 275 and y 56 to 305, the bar's middle row at 181; with them a gold slot
+# for the party's leader. Used instead of the cut ones when they're there.
+PAINTED = PROJECT / "art/hud/source/party-row"
+PAINTED_FILES = {"pr_slot": "party_slot.png", "pr_slot_leader": "party_slot_leader.png", "pr_end_l": "party_end_left.png",
+                 "pr_end_r": "party_end_right.png"}
+PAINTED_PX = 8
+PAINTED_WINDOW = (28, 56, 276, 306)
+PAINTED_MID = 181
+
+
+def painted(name):
+    return name in PAINTED_FILES and (PAINTED / PAINTED_FILES[name]).exists()
+
+
+def draw_painted(name, SS):
+    def d(w, h):
+        from pngio import read_png
+        pw, ph, rgba = read_png(PAINTED / PAINTED_FILES[name])
+        if (pw, ph) != (w * SS, h * SS):
+            raise SystemExit(f"turn_order.py: {PAINTED_FILES[name]} is {pw}x{ph}, not {w * SS}x{h * SS}")
+        a = np.frombuffer(bytes(rgba), np.uint8).reshape(ph, pw, 4).astype(np.float32) / 255.0
+        a[..., :3] *= a[..., 3:]  # premultiplied
+        return a.copy()
+    return d
 
 
 def _load():
@@ -171,7 +196,17 @@ def draw(name, SS):
 def images(SS):
     """[(name, w, h, draw)] for make_branding's IMAGES, and the header lines for the pieces' bar middles and windows."""
     out, lines = [], []
-    for name in list(PIECES) + list(FIELD_PIECES):
+    for name in list(PIECES) + list(FIELD_PIECES) + ["pr_slot_leader"]:
+        if painted(name):
+            from pngio import read_png
+            pw, ph, _ = read_png(PAINTED / PAINTED_FILES[name])
+            w, h = pw // PAINTED_PX, ph // PAINTED_PX
+            out.append((name, w, h, draw_painted(name, SS)))
+            win = tuple(v / PAINTED_PX for v in PAINTED_WINDOW) if "slot" in name else (0, 0, 0, 0)
+            lines.append(f'        {{ "{name}", {PAINTED_MID / PAINTED_PX:.3f}f, {win[0]:.3f}f, {win[1]:.3f}f, {win[2]:.3f}f, {win[3]:.3f}f }},')
+            continue
+        if name not in PIECES and name not in FIELD_PIECES:
+            continue  # the leader's slot only comes painted
         w, h, img, info = cut(name)
         k = FIELD_SCALE if name in FIELD_PIECES else 1.0
         assert w * h <= 2048, f"turn_order.py: {name} is {w}x{h} texels, more than one load holds"

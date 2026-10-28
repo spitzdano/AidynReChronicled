@@ -602,9 +602,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   portraits at 21:9, 16 at 16:9), else the middle 4:3 (about 10). `turn_order` turns it off; `AIDYN_TURN_LOG=1`
   prints each round's list, the combat state, the targets and the next round shown, `AIDYN_TURN_TEST=n` repeats the
   shown turns up to n.
-- **Party portraits.** While walking about, the party's four portraits (`Portraits::DrawParty`) sit in the same bar:
-  its ends and a bronze slot per member, cut again at field size (`pr_*` in `turn_order.py`), the portraits opaque in
-  their windows and an empty place an empty slot, sliding and fading as the game's row did. With the redrawn art only
+- **Party portraits.** While walking about, the party's four portraits (`Portraits::DrawParty`) sit in a bar in the
+  same style: Codex's painted ends and slots (`art/hud/source/party-row`; `pr_*` in `turn_order.py`, which cuts the
+  turn bar's own pieces larger when they're missing), the leader's slot gold, the others bronze, the portraits opaque
+  in their windows and an empty place an empty slot, sliding and fading as the game's row did. With the redrawn art only
   (F2 shows the game's own row: white glow frames, portraits half see-through).
 - **Aiming.** Aiming a bow or thrown weapon, or an area spell, the stick moves a marker on the ground and whoever
   stands within 1 unit of it is the target. The marker moved a fixed 0.8 a frame, paced for the N64's 20 or so
