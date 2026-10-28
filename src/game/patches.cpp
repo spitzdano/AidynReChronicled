@@ -8690,7 +8690,41 @@ namespace {
     struct SlotFace {
         std::string text;            // a cap's name
         const char* mouse = nullptr; // or a mouse picture
+        std::string cap;             // Codex's finished cap for it (kc_<cap>), if there is one
     };
+
+    // The finished cap (make_branding.py kc_<name>, the header's kKeyCaps) for a key, by its name
+    // (aidyn::controls::input_name, SDL's scancode names), or "" for one the set hasn't.
+    std::string cap_for(const std::string& n) {
+        if (n.size() == 1 && std::isalnum((unsigned char)n[0])) return std::string(1, (char)std::toupper((unsigned char)n[0]));
+        if (n.size() >= 2 && n.size() <= 3 && n[0] == 'F' && std::isdigit((unsigned char)n[1])) return n;  // F1..F12
+        static const std::unordered_map<std::string, std::string> kNames = {
+            { "Up", "Up" }, { "Down", "Down" }, { "Left", "Left" }, { "Right", "Right" },
+            { "Esc", "Esc" }, { "Tab", "Tab" }, { "Left Alt", "Alt" }, { "Right Alt", "Alt" }, { "End", "End" },
+            { "Left GUI", "Win" }, { "Right GUI", "Win" }, { "CapsLock", "Caps" }, { "Left Ctrl", "Ctrl" },
+            { "Right Ctrl", "Ctrl" }, { "Home", "Home" }, { "Menu", "Menu" }, { "Application", "Menu" }, { "Pause", "Pause" },
+            { "Left Shift", "Shift" }, { "Right Shift", "Shift" }, { "Enter", "Enter" }, { "Insert", "Insert" },
+            { "PrintScreen", "PrtSc" }, { "ScrollLock", "ScrLk" }, { "Delete", "Delete" }, { "PageUp", "PageUp" },
+            { "PageDown", "PageDown" }, { "Space", "Space" }, { "Backspace", "Backspace" },
+            { "Minus", "minus" }, { "Equals", "equals" }, { "Left Bracket", "lbracket" }, { "Right Bracket", "rbracket" },
+            { "Semicolon", "semicolon" }, { "Apostrophe", "apostrophe" }, { "Comma", "comma" }, { "Period", "period" },
+            { "Slash", "slash" }, { "Backslash", "backslash" }, { "Grave", "grave" },
+            { "Keypad +", "NumAdd" }, { "Keypad -", "NumSub" }, { "Keypad *", "NumMul" }, { "Keypad /", "NumDiv" },
+            { "Keypad .", "NumDot" }, { "Keypad Enter", "NumEnter" }, { "Numlock", "NumLock" },
+        };
+        if (n.rfind("Keypad ", 0) == 0 && n.size() == 8 && std::isdigit((unsigned char)n[7])) return "Num" + n.substr(7);
+        const auto it = kNames.find(n);
+        return it == kNames.end() ? "" : it->second;
+    }
+
+    // A finished cap's painted width in texels (0: not in the set).
+    int cap_painted(const std::string& cap) {
+        if (cap.empty()) return 0;
+        for (const auto& k : aidyn::branding::kKeyCaps) {
+            if (cap == k.name) return k.painted;
+        }
+        return 0;
+    }
 
     std::string cap_name(aidyn::controls::Input in) {
         static const struct { const char* from; const char* to; } kShort[] = {
@@ -8718,7 +8752,7 @@ namespace {
             return { "", in.code >= 1 && in.code <= 5 ? kNames[in.code] : "key_mouse_move" };
         }
         if (in.kind == kWheel) return { "", in.code == 0 ? "key_mouse_wheelup" : "key_mouse_wheeldown" };
-        return { cap_name(in) };
+        return { cap_name(in), nullptr, cap_for(input_name(in)) };
     }
 
     // Several keys on one cap: their names, run together when each is one character ("WASD"), else spaced.
@@ -8748,7 +8782,13 @@ namespace {
         if (button == "R") return face_of(kRB);
         if (button == "L3") return face_of(kFastForward);
         if (button == "R3") return face_of(kCamReset);
-        if (button == "LS") return { keys_text({ kMoveUp, kMoveLeft, kMoveDown, kMoveRight }) };
+        if (button == "LS") {  // W A S D or the arrows: the finished combined caps
+            SlotFace f{ keys_text({ kMoveUp, kMoveLeft, kMoveDown, kMoveRight }) };
+            const std::string names = face_of(kMoveUp).cap + face_of(kMoveLeft).cap + face_of(kMoveDown).cap + face_of(kMoveRight).cap;
+            if (names == "WASD") f.cap = "WASD";
+            if (names == "UpLeftDownRight") f.cap = "Arrows";
+            return f;
+        }
         if (button == "RS") {
             if (mouse_look()) return { "", "key_mouse_move" };
             return { keys_text({ kCamUp, kCamLeft, kCamDown, kCamRight }) };
@@ -8800,6 +8840,23 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     constexpr float kPad = 2.0f;  // the cap pieces' and mice's transparent texels at the right (make_branding.py: KEY_PAD)
     if (face.mouse != nullptr) {
         piece(face.mouse, slot_x + (slot_w - hu) / 2.0f, top, hu * (12.0f + kPad) / 12.0f, hu);
+        if (text_state) {
+            return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
+        }
+        return g;
+    }
+    // Codex's finished cap, when the key has one: drawn whole, as tall as the slot and as wide as painted (shrunk as a
+    // whole if the slot can't hold it), centred in the slot.
+    if (const int painted = cap_painted(face.cap)) {
+        const float u = hu / 12.0f, room = std::max(slot_w, hu * (cover ? 1.4f : 1.15f));
+        const float k = std::min(1.0f, room / (painted * u));
+        const float cw = painted * u * k, ch = hu * k;
+        const std::string name = "kc_" + face.cap;
+        const int i = find_image(name);
+        if (i >= 0) {
+            const auto& img = aidyn::branding::kImages[i];
+            piece(name.c_str(), slot_x + (slot_w - cw) / 2.0f, top + (hu - ch) / 2.0f, img.w * u * k, ch);
+        }
         if (text_state) {
             return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager), MEM_HU(kVres1, (gpr)gGfxManager));
         }
@@ -8887,6 +8944,7 @@ namespace {
     int glyph_cap_width(uint8_t* rdram, recomp_context* ctx, gpr font, const char* button) {
         const SlotFace face = slot_face(button);
         if (face.mouse != nullptr) return 9;
+        if (const int painted = cap_painted(face.cap)) return (int)std::ceil(painted * 9.0f / 12.0f);
         return std::max(9, (int)std::ceil(key_text_width(face.text) * 9.0f / 12.0f + 0.55f * 9.0f));
     }
 }

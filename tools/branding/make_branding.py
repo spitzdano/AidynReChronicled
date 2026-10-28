@@ -768,6 +768,28 @@ for _ch, (_mask, _ink) in KEY_GLYPHS.items():
     IMAGES.append((f"key_g_{ord(_ch):02x}", _gw, 12, _draw))
     KEY_GLYPH_LINES.append(f"        {{ {ord(_ch)}, {_ink:.3f}f }},")
 
+# Codex's finished caps (art/hud/source/keys/caps: one per key, 96 px tall, the label painted in; brief in
+# ~/Work/aidyn-keys-brief/BRIEF-3.md): kc_<name>, 12 texels tall, as wide as painted plus KEY_PAD transparent texels
+# (more when two come out the same at the game's size: no two pictures may share a hash). kKeyCaps gives each painted
+# width; src/game/patches.cpp draw_button_cap uses one when the key has it, its own lettering otherwise.
+KEY_CAP_LINES = []
+_KEY_CAP_SEEN = set()
+for _f in sorted((KEYS_SOURCE / "caps").glob("cap_*.png")):
+    from pngio import read_png as _rp
+    _pw, _ph, _ = _rp(_f)
+    _painted = _pw // SS
+    _name = _f.stem[4:]
+    _pad = KEY_PAD
+    while True:
+        _draw = key_piece(f"caps/{_f.stem}", pad=_pad)
+        _key = to_rgba16(_draw(_painted + _pad, 12), _painted + _pad, 12).tobytes()
+        if _key not in _KEY_CAP_SEEN:
+            break
+        _pad += 1
+    _KEY_CAP_SEEN.add(_key)
+    IMAGES.append((f"kc_{_name}", _painted + _pad, 12, _draw))
+    KEY_CAP_LINES.append(f'        {{ "{_name}", {_painted} }},')
+
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],
@@ -817,6 +839,9 @@ def main():
               "    struct KeySlot {", "        uint16_t x, w;", "        const char* button;", "    };",
               "    struct KeyedImage {", "        const char* name;", "        uint16_t h;", "        uint8_t n;", "        KeySlot slots[4];",
               "    };", "    inline constexpr KeyedImage kKeyed[] = {"] + keyed_lines + ["    };", "",
+              "    // Codex's finished caps (kc_<name>): each one's painted width in texels (the picture has transparent ones after).",
+              "    struct KeyCap {", "        const char* name;", "        uint16_t painted;", "    };",
+              "    inline constexpr KeyCap kKeyCaps[] = {"] + KEY_CAP_LINES + ["    };", "",
               "    // The letters on the caps (key_g_<code>): each ink's width in texels; its picture is centred on the ink.",
               "    struct KeyGlyph {", "        int ch;", "        float ink;", "    };",
               "    inline constexpr KeyGlyph kKeyGlyphs[] = {"] + KEY_GLYPH_LINES + ["    };", "",
