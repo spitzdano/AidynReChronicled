@@ -790,6 +790,34 @@ for _f in sorted((KEYS_SOURCE / "caps").glob("cap_*.png")):
     IMAGES.append((f"kc_{_name}", _painted + _pad, 12, _draw))
     KEY_CAP_LINES.append(f'        {{ "{_name}", {_painted} }},')
 
+# The achievement medals (Codex: art/hud/source/achievements/medal_<kind>.png, 160 x 160, brief in
+# ~/Work/aidyn-achievements-brief): ach_medal_<kind>, 20 x 20 texels, in the toast's plate and beside the list's rows
+# (scaled to 9 there); and the progress bars' plain bar (ach_bar), tinted by the game.
+ACH_SOURCE = PROJECT / "art/hud/source/achievements"
+
+
+def medal_piece(kind):
+    def draw(w, h):
+        from pngio import read_png
+        pw, ph, rgba = read_png(ACH_SOURCE / f"medal_{kind}.png")
+        a = np.frombuffer(bytes(rgba), np.uint8).reshape(ph, pw, 4).astype(np.float32) / 255
+        a[..., :3] *= a[..., 3:]  # premultiplied
+        if a.shape[:2] != (h * SS, w * SS):
+            sys.exit(f"make_branding.py: medal_{kind}.png is {pw}x{ph}, not {w * SS}x{h * SS}")
+        return a.copy()
+    return draw
+
+
+def plain_bar(w, h):
+    img = np.ones((h * SS, w * SS, 4), np.float32)
+    return img
+
+
+if (ACH_SOURCE / "medal_story.png").exists():
+    for _kind in ("story", "boss", "companion", "explore", "growth", "feat", "locked"):
+        IMAGES.append((f"ach_medal_{_kind}", 20, 20, medal_piece(_kind)))
+IMAGES.append(("ach_bar", 8, 4, plain_bar))
+
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],

@@ -4332,6 +4332,8 @@ bool ach_shown();
 gpr controls_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act);
 void title_controls_open(uint8_t* rdram, recomp_context* ctx);
 gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g);
+void title_ach_open(uint8_t* rdram, recomp_context* ctx);      // "Achievements page and toast", below
+gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 
 namespace {
     // The mouse pointer over one of the port's own lists (#44): when it has moved since this list last looked
@@ -4606,6 +4608,7 @@ extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
 // Graphics__EndList: the page, over everything.
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = title_controls_page(rdram, ctx, g);
+    g = title_ach_page(rdram, ctx, g);
     if (!rc.open) {
         return g;
     }
@@ -7234,7 +7237,8 @@ bool quick_load_chosen(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
 namespace {
     constexpr uint16_t kQuitId = 0x7A14;
     constexpr uint16_t kLoadGameId = 0xA0;                     // the game's Load Game (OptionN_LoadGame)
-    constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0, kControlsText = kRcText + 0xC0;
+    constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0, kControlsText = kRcText + 0xC0,
+                  kAchText = kRcText + 0xE0;
     constexpr gpr kCombatNext = (gpr)(int32_t)0x800D9455;      // gGlobals.combatBytes[1]: the fight's state after the pause
     constexpr gpr kCommonStrings = (gpr)(int32_t)0x800DA0D8;   // gGlobals.CommonStrings
     constexpr const char* kQuitLabel = "Quit to Title";
@@ -7362,6 +7366,14 @@ extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
     const gpr controls = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory,
                                                  (uint32_t)put_menu_text(rdram, kControlsText, "Controls"), 400);
     call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)controls);
+    if (ach_shown()) {
+        const gpr memory_a = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+        if (heap_pointer(memory_a)) {
+            const gpr ach_entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory_a,
+                                                          (uint32_t)put_menu_text(rdram, kAchText, "Achievements"), 400);
+            call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)ach_entry);
+        }
+    }
     const gpr memory2 = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
     if (!heap_pointer(memory2)) {
         return;
@@ -7527,6 +7539,11 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
         title_controls_open(rdram, ctx);
         return 1;
     }
+    if (text == "Achievements") {
+        rc_sound(rdram, ctx, 0x740, 60);
+        title_ach_open(rdram, ctx);
+        return 1;
+    }
     if (text == "Quit Game") {
         rc_sound(rdram, ctx, 0x740, 60);
         aidyn::request_quit();
@@ -7626,9 +7643,11 @@ void watch_tick(uint8_t* rdram) {
 // per version (achievements-<pak stem>.txt beside the saves: not in a save), so they add up across playthroughs:
 // "Every Companion" needs all 13, which one playthrough can't recruit (the party holds four; at Gwernia only 2 of
 // Godric, Rheda and Abrecan go along). Every locked one is hidden (the page shows ???). Checked once a second while a
-// game is loaded (getEventFlag); nothing unlocks while the game's own Cheater flag (3693) is set. A save loaded late
-// unlocks what it holds with one notice ("7 achievements unlocked from this save"); otherwise each gets a notice,
-// shown while walking about (not in a fight, a conversation or a menu). Flawless: a fight won with a full party of
+// game is loaded (getEventFlag); nothing unlocks while the game's own Cheater flag (3693) is set.
+// Only what is done in play counts: when a game starts (the title screen goes) or a save is loaded, the first 3 seconds
+// are its starting point (every flag it already has, its level, gold and party size), and a flag unlocks only when it
+// comes on after that (the last of an achievement's flags, when it has several), a level, gold or party size only when
+// it crosses its threshold. A late save never unlocks the story so far. Flawless: a fight won with a full party of
 // four against four or more enemies and nobody in the party hit (Entity::DamageToLevel on a party member, hooked:
 // a spell's stamina cost doesn't go through it). AIDYN_ACH_LOG=1 prints each unlock and count; AIDYN_ACHIEVEMENTS=0
 // turns them off. Each unlock shows a toast at the top right (ach_toast: the medal on the turn bar's pieces), and the
@@ -7643,6 +7662,22 @@ namespace {
         AchKind kind;
         std::vector<uint16_t> flags;  // kAchAll: every one set; kAchAny: one set; kAchCount: see ach_count
     };
+    // The groups the page lists them in (the side quests are optional ones among the story's journal entries), and each
+    // group's medal (Codex's: kind names of art/hud/source/achievements/medal_<kind>.png).
+    enum AchCat : uint8_t { kCatStory, kCatSide, kCatBoss, kCatCompanion, kCatExplore, kCatGrowth, kCatFeat, kCatCount };
+    constexpr const char* kCatNames[kCatCount] = { "Story", "Side quests", "Bosses", "Companions", "Exploration", "Growth", "Feats" };
+    constexpr const char* kCatMedals[kCatCount] = { "story", "story", "boss", "companion", "explore", "growth", "feat" };
+    AchCat ach_cat(const char* id) {
+        const std::string s = id;
+        if (s == "story_sword" || s == "story_dinner" || s == "story_forest" || s == "story_light") return kCatSide;
+        if (s.rfind("story_", 0) == 0) return kCatStory;
+        if (s.rfind("boss_", 0) == 0) return kCatBoss;
+        if (s.rfind("join_", 0) == 0 || s == "full_party" || s == "every_companion") return kCatCompanion;
+        if (s == "cartographer" || s == "keymaster") return kCatExplore;
+        if (s == "first_spell" || s == "brewer" || s == "peak_form" || s == "master" || s == "veteran" || s == "legend") return kCatGrowth;
+        return kCatFeat;
+    }
+
     const std::vector<Achievement>& achievements() {
         static const std::vector<Achievement> list = {
             // the story (journal entries' flags)
@@ -7725,12 +7760,17 @@ namespace {
         bool in_fight = false, fight_hit = false, fight_full = false, fight_fled = false, fight_from_camp = false;
         int fight_enemies = 0;
         uint32_t last_a = 0xFF, last_walk_b = 0xFF;
-        std::vector<std::string> earned;      // in this check, for the notices
-        struct Toast { std::string head, title; };
+        std::vector<std::pair<std::string, int>> earned;  // (title, category) in this check, for the toasts
+        // The game's starting point (a new game, a save loaded): see the comment above.
+        bool base_started = false;
+        std::chrono::steady_clock::time_point base_until{};
+        std::set<uint16_t> base_flags;
+        int last_level = -1, last_party = -1;
+        uint32_t last_gold = 0;
+        struct Toast { std::string head, title, medal; };
         std::deque<Toast> toasts;
         bool toast_on = false;
         std::chrono::steady_clock::time_point toast_start{};
-        bool from_load = false;               // a save was just loaded: its unlocks get one notice
         std::chrono::steady_clock::time_point next_check{};
     } ach;
 
@@ -7778,7 +7818,7 @@ namespace {
         std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&t));
         ach.unlocked[id] = when;
         for (const Achievement& a : achievements()) {
-            if (a.id == id) ach.earned.push_back(a.title);
+            if (a.id == id) ach.earned.push_back({ a.title, (int)ach_cat(a.id) });
         }
         if (ach_log()) {
             fprintf(stdout, "Achievement: %s\n", id.c_str());
@@ -7792,7 +7832,7 @@ namespace {
 
 void ach_loaded_save() {
     if (!ach_enabled()) return;
-    ach.from_load = true;
+    ach.base_started = false;  // what the save holds is its starting point, not earned
     ach.in_fight = false;
 }
 
@@ -7811,6 +7851,7 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
     const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
     const uint32_t a = MEM_BU(0, kTrekState), b = MEM_BU(0, kGameStateB);
     const bool playing = heap_pointer(party) && !heap_pointer(MEM_W(0, kTitleScreen)) && a != 0 && a != 15;
+    if (heap_pointer(MEM_W(0, kTitleScreen))) ach.base_started = false;  // at the title: the next game starts afresh
     if (!playing) {
         ach.last_a = a;
         return;
@@ -7843,19 +7884,17 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
     const auto now = std::chrono::steady_clock::now();
     if (now >= ach.next_check) {
         ach.next_check = now + std::chrono::seconds(1);
+        if (!ach.base_started) {  // a game just began (or a save loaded): its first 3 seconds are its starting point
+            ach.base_started = true;
+            ach.base_until = now + std::chrono::seconds(3);
+            ach.base_flags.clear();
+            ach.last_level = ach.last_party = -1;
+            ach.last_gold = 0;
+        }
+        const bool settling = now < ach.base_until;
         if (!flag_set(rdram, ctx, 3693)) {  // the game's Cheater flag
-            for (const Achievement& x : achievements()) {
-                if (x.kind == kAchCount || ach.unlocked.count(x.id)) continue;
-                bool all = true, any = false;
-                for (uint16_t f : x.flags) {
-                    const bool on = flag_set(rdram, ctx, f);
-                    all = all && on;
-                    any = any || on;
-                }
-                if (x.kind == kAchAll ? all : any) ach_unlock(x.id);
-            }
-            if (MEM_BU(0x24, party) >= 4) ach_unlock("full_party");
-            if ((uint32_t)MEM_W(0x14, party) >= 10000) ach_unlock("treasure_hoard");
+            const int party_size = MEM_BU(0x24, party);
+            const uint32_t gold = (uint32_t)MEM_W(0x14, party);
             int top_level = 0;
             for (int i = 0; i < 4; i++) {
                 const gpr sheet = MEM_W(4 * i, party);
@@ -7864,22 +7903,50 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
                     top_level = std::max(top_level, (int)(int8_t)(call_game(rdram, ctx, CharStats__getBase, (uint32_t)stats, 6) & 0xFF));
                 }
             }
-            if (top_level >= 10) ach_unlock("veteran");
-            if (top_level >= 20) ach_unlock("legend");
-            int joined = 0;
-            for (const Achievement& x : achievements()) joined += std::string(x.id).rfind("join_", 0) == 0 && ach.unlocked.count(x.id);
-            if (joined >= 13) ach_unlock("every_companion");
+            if (settling) {  // what the game starts with isn't earned
+                for (const Achievement& x : achievements()) {
+                    for (uint16_t f : x.flags) {
+                        if (flag_set(rdram, ctx, f)) ach.base_flags.insert(f);
+                    }
+                }
+            } else {
+                for (const Achievement& x : achievements()) {
+                    if (x.kind == kAchCount || ach.unlocked.count(x.id)) continue;
+                    bool all = true, fresh = false;
+                    for (uint16_t f : x.flags) {
+                        const bool on = flag_set(rdram, ctx, f);
+                        all = all && on;
+                        fresh = fresh || (on && !ach.base_flags.count(f));  // came on during play
+                    }
+                    if (x.kind == kAchAll ? (all && fresh) : fresh) ach_unlock(x.id);
+                }
+                const auto crossed = [](int last, int now_value, int threshold) { return last >= 0 && last < threshold && now_value >= threshold; };
+                if (crossed(ach.last_party, party_size, 4)) ach_unlock("full_party");
+                if (ach.last_gold < 10000 && gold >= 10000) ach_unlock("treasure_hoard");
+                if (crossed(ach.last_level, top_level, 10)) ach_unlock("veteran");
+                if (crossed(ach.last_level, top_level, 20)) ach_unlock("legend");
+                int joined = 0;
+                for (const Achievement& x : achievements()) joined += std::string(x.id).rfind("join_", 0) == 0 && ach.unlocked.count(x.id);
+                if (joined >= 13) ach_unlock("every_companion");
+                // developers: AIDYN_ACH_FORCE=id,id unlocks those once, to see their toasts and the list
+                static bool forced = false;
+                if (!forced) {
+                    forced = true;
+                    const char* f = std::getenv("AIDYN_ACH_FORCE");
+                    std::stringstream ids(f != nullptr ? f : "");
+                    std::string id;
+                    while (std::getline(ids, id, ',')) ach_unlock(id);
+                }
+            }
+            ach.last_party = party_size;
+            ach.last_gold = gold;
+            ach.last_level = top_level;
         }
         if (!ach.earned.empty()) {
             ach_save();
-            if (ach.from_load && ach.earned.size() > 1) {
-                ach.toasts.push_back({ "Achievements unlocked", std::to_string(ach.earned.size()) + " from this save" });
-            } else {
-                for (const std::string& t : ach.earned) ach.toasts.push_back({ "Achievement unlocked", t });
-            }
+            for (const auto& [title, cat] : ach.earned) ach.toasts.push_back({ "Achievement unlocked", title, kCatMedals[cat] });
             ach.earned.clear();
         }
-        ach.from_load = false;
     }
     // one toast at a time, started while walking about (ach_toast draws it)
     if (!ach.toast_on && !ach.toasts.empty() && a == 1) {
@@ -8376,10 +8443,13 @@ extern "C" void aidyn_list_pointer(uint8_t* rdram, recomp_context* ctx) {
 
 // ---- Achievements page and toast (#42) ----
 // The toast: at the top right while walking about, 5 seconds a toast, one at a time: the turn bar's left cap with its
-// plate (the medal in it), its middle and right cap (title_panel.py's pieces, as the title menu's panel), "Achievement
-// unlocked" in gold over the title in ivory. Not drawn while Menu is held (the pause menu keeps a picture of the screen).
-// The page: the ReChronicled page's Achievements row opens it on the scroll, the earned ones by their titles with the
-// day they were earned, the rest ??? (hidden until earned), up and down to scroll, B back.
+// plate (the achievement's medal in it: Codex's, one per group, ach_medal_<kind>), its middle and right cap
+// (title_panel.py's pieces, as the title menu's panel), "Achievement unlocked" in gold over the title in ivory. Not
+// drawn while Menu is held (the pause menu keeps a picture of the screen).
+// The list: the ReChronicled page's Achievements row (this version's) and the title menu's Achievements (all four
+// versions: a progress bar each, then the chosen one's list) draw the same list: grouped (Story, Side quests, Bosses,
+// Companions, Exploration, Growth, Feats), a medal and the title with the day it was earned, or the locked medal and ???
+// (hidden until earned), a header with each group's count.
 bool ach_shown() { return ach_enabled(); }
 
 gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g) {
@@ -8409,7 +8479,7 @@ gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = hud_begin(rdram, g, wide);
     g = prompt_state(rdram, g, (uint8_t)alpha);
     g = panel_bar(rdram, g, "tp_cap_l_plate", x0, x1, y0, kH, hs, vs);
-    g = panel_piece(rdram, g, "tp_medal", x0 + 10.5f * k, y0 + 5.0f * k, 20.0f * k, 20.0f * k, hs, vs);
+    g = panel_piece(rdram, g, ("ach_medal_" + toast.medal).c_str(), x0 + 10.5f * k, y0 + 5.0f * k, 20.0f * k, 20.0f * k, hs, vs);
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
     GfxCommand a[2];
@@ -8424,6 +8494,106 @@ gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g) {
 }
 
 namespace {
+    // Each version keeps its own file (achievements-<its pak's name>.txt: aidyn.mpk, aidyn-patch.mpk, ...), all read for
+    // the title screen's overview.
+    constexpr const char* kAchStems[4] = { "aidyn", "aidyn-patch", "aidyn-plus", "action-edition" };
+    constexpr const char* kAchVersions[4] = { "Original", "Aidyn Patch", "Aidyn Plus", "Action Edition" };
+    using AchMap = std::map<std::string, std::string>;  // id -> when
+
+    AchMap ach_read(const std::string& stem) {
+        AchMap out;
+        std::ifstream in(save_dir / ("achievements-" + stem + ".txt"));
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("unlocked ", 0) != 0) continue;
+            const std::string rest = line.substr(9);
+            const size_t sp = rest.find(' ');
+            out[rest.substr(0, sp)] = sp == std::string::npos ? "" : rest.substr(sp + 1);
+        }
+        return out;
+    }
+
+    int ach_earned(const AchMap& m) {
+        int n = 0;
+        for (const Achievement& a : achievements()) n += m.count(a.id) ? 1 : 0;
+        return n;
+    }
+
+    // The list's rows: each group's header (a == nullptr) and its achievements.
+    struct AchRow { const Achievement* a; int cat, earned, total; };
+    std::vector<AchRow> ach_rows(const AchMap& unlocked) {
+        std::vector<AchRow> rows;
+        for (int c = 0; c < kCatCount; c++) {
+            int total = 0, earned = 0;
+            for (const Achievement& a : achievements()) {
+                if (ach_cat(a.id) == c) { total++; earned += unlocked.count(a.id) ? 1 : 0; }
+            }
+            if (total == 0) continue;
+            rows.push_back({ nullptr, c, earned, total });
+            for (const Achievement& a : achievements()) {
+                if (ach_cat(a.id) == c) rows.push_back({ &a, c, 0, 0 });
+            }
+        }
+        return rows;
+    }
+
+    // A bar of `frac` (0..1): a dark track, the fill over it (the tinted ach_bar picture).
+    gpr ach_bar(uint8_t* rdram, gpr g, float x, float y, float w, float h, float frac, uint32_t fill, uint32_t track, int fade) {
+        const int i = branding_index("ach_bar");
+        if (i < 0) return g;
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        const auto& img = aidyn::branding::kImages[i];
+        g = tinted_image_state(rdram, g, track << 8 | (uint32_t)(fade * 7 / 8));
+        g = draw_rgba16(rdram, g, i, x * hs, y * vs, w / img.w * hs, h / img.h * vs);
+        if (frac > 0.0f) {
+            g = tinted_image_state(rdram, g, fill << 8 | (uint32_t)fade);
+            g = draw_rgba16(rdram, g, i, x * hs, y * vs, std::max(1.0f, w * std::min(frac, 1.0f)) / img.w * hs, h / img.h * vs);
+        }
+        return g;
+    }
+
+    struct AchInk { uint32_t head, earned, locked; };
+
+    // `visible` rows of the list from `top`, the highlighted `row` pulsing in `highlight`, from y0 in rows kCtlRowStep apart.
+    gpr ach_draw_list(uint8_t* rdram, recomp_context* ctx, gpr g, const std::vector<AchRow>& rows, const AchMap& unlocked,
+                      int row, int top, int visible, float left, float right, float y0, const AchInk& ink,
+                      uint32_t highlight, int fade) {
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        const int n = (int)rows.size();
+        constexpr float kMedal = 9.0f;
+        copy_branding(rdram);
+        g = prompt_state(rdram, g, (uint8_t)fade);  // the medals
+        for (int i = 0; i < visible && top + i < n; i++) {
+            const AchRow& r = rows[top + i];
+            if (r.a == nullptr) continue;
+            const std::string name = std::string("ach_medal_") + (unlocked.count(r.a->id) ? kCatMedals[r.cat] : "locked");
+            const int m = branding_index(name.c_str());
+            if (m >= 0) g = draw_rgba16(rdram, g, m, left * hs, (y0 + kCtlRowStep * i - 0.8f) * vs, kMedal / 20.0f * hs, kMedal / 20.0f * vs);
+        }
+        g = ctl_state(rdram, ctx, g);
+        for (int i = 0; i < visible && top + i < n; i++) {
+            const AchRow& r = rows[top + i];
+            const float y = y0 + kCtlRowStep * i;
+            if (r.a == nullptr) {
+                g = ctl_text(rdram, ctx, g, kCatNames[r.cat], left, y, kCtlScale, top + i == row ? highlight : ink.head, fade);
+                g = ctl_text(rdram, ctx, g, std::to_string(r.earned) + " / " + std::to_string(r.total), right, y, 0.5f, ink.head, fade, true);
+                continue;
+            }
+            const auto it = unlocked.find(r.a->id);
+            const bool got = it != unlocked.end();
+            g = ctl_text(rdram, ctx, g, got ? r.a->title : "???", left + 12.0f, y, kCtlScale,
+                         top + i == row ? highlight : got ? ink.earned : ink.locked, fade);
+            if (got && it->second.size() >= 10) {
+                g = ctl_text(rdram, ctx, g, it->second.substr(0, 10), right, y, 0.5f, ink.locked, fade, true);
+            }
+        }
+        return g;
+    }
+
+    int ach_row_limit(int row, int n) { return std::clamp(row, 0, std::max(0, n - 1)); }
+}
+
+namespace {
     int ach_row = 0, ach_top = 0;
 }
 
@@ -8435,15 +8605,10 @@ void ach_open(uint8_t* rdram, recomp_context* ctx) {
     ach_top = 0;
 }
 
+// The pause menu's page: this version's list.
 gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act) {
-    // the earned ones first (in the list's order), then the rest
-    std::vector<const Achievement*> list;
-    for (int pass = 0; pass < 2; pass++) {
-        for (const Achievement& a : achievements()) {
-            if ((ach.unlocked.count(a.id) != 0) == (pass == 0)) list.push_back(&a);
-        }
-    }
-    const int n = (int)list.size();
+    const std::vector<AchRow> rows = ach_rows(ach.unlocked);
+    const int n = (int)rows.size();
     constexpr int kVisible = 12;
     if (!rc.closing && rc.fade == 255) {
         static uint32_t seen = 0;
@@ -8460,6 +8625,7 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
             rc_sound(rdram, ctx, 0x741, 60);
         }
     }
+    ach_row = ach_row_limit(ach_row, n);
     if (ach_row < ach_top) ach_top = ach_row;
     if (ach_row >= ach_top + kVisible) ach_top = ach_row - kVisible + 1;
     rc.fade = std::clamp(rc.fade + (rc.closing ? -60 : 60), 0, 255);
@@ -8470,9 +8636,6 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
     }
     rc.pulse++;
     const float left = kRowsLeft, right = kRowsRight, top = kRowsTop, centre = (left + right) / 2.0f;
-    g = ctl_state(rdram, ctx, g);
-    int earned = 0;
-    for (const Achievement* a : list) earned += ach.unlocked.count(a->id) ? 1 : 0;
     {  // the title, a picture in halves like the ReChronicled page's (4 KB of TMEM each)
         copy_branding(rdram);
         const int tl = branding_index("ach_title_l"), tr = branding_index("ach_title_r");
@@ -8482,26 +8645,156 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
             g = prompt_state(rdram, g, (uint8_t)rc.fade);
             g = draw_rgba16(rdram, g, tl, (centre - w) * hs, (top - 31.0f) * vs, hs, vs);
             g = draw_rgba16(rdram, g, tr, centre * hs, (top - 31.0f) * vs, hs, vs);
-            g = ctl_state(rdram, ctx, g);
         }
     }
-    g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(n), right, top - 16.0f, 0.55f, kMenuInk,
+    const int earned = ach_earned(ach.unlocked), total = (int)achievements().size();
+    g = ach_bar(rdram, g, left, top - 6.0f, right - left, 3.0f, (float)earned / (float)total, 0x9A5A2A, 0xC8B494, rc.fade);
+    g = ctl_state(rdram, ctx, g);
+    g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), right, top - 14.0f, 0.55f, kMenuInk,
                  rc.fade, true);
-    for (int i = 0; i < kVisible && ach_top + i < n; i++) {
-        const int r = ach_top + i;
-        const auto it = ach.unlocked.find(list[r]->id);
-        const bool got = it != ach.unlocked.end();
-        const float y = top - 2.0f + kCtlRowStep * i;
-        const uint32_t ink = r == ach_row ? rc_highlight() : got ? kMenuInk : 0xA09090;
-        g = ctl_text(rdram, ctx, g, got ? list[r]->title : "???", left, y, kCtlScale, ink, rc.fade);
-        if (got && it->second.size() >= 10) {
-            g = ctl_text(rdram, ctx, g, it->second.substr(0, 10), right, y, 0.5f, 0xA09090, rc.fade, true);
-        }
-    }
+    g = ach_draw_list(rdram, ctx, g, rows, ach.unlocked, ach_row, ach_top, kVisible, left, right, top - 2.0f,
+                      { 0x442A22, kMenuInk, 0xA09090 }, rc_highlight(), rc.fade);
     const bool kb = aidyn::input::keyboard_last();
     const std::string back = kb ? keys_of(aidyn::controls::kB, false) : "B";
     g = ctl_text(rdram, ctx, g, "Up / down: scroll   " + back + ": back", centre, top - 2.0f + kCtlRowStep * kVisible + 3.0f,
                  kCtlScale, kMenuInk, rc.fade, false, true);
+    return g;
+}
+
+// The title menu's Achievements: a panel over the title screen, all four versions with their progress, A opens one's list.
+namespace {
+    struct TitleAch {
+        bool open = false, closing = false;
+        int fade = 0, pulse = 0, repeat = 0, level = 0, sel = 0, row = 0, top = 0;
+        uint32_t held = 0xFFFFFFFF;
+        AchMap views[4];
+    } ta;
+
+    int running_version_index() {
+        switch (aidyn::settings::game().rom_patch) {
+            case aidyn::settings::RomPatch::AidynPatch: return 1;
+            case aidyn::settings::RomPatch::AidynPlus: return 2;
+            case aidyn::settings::RomPatch::ActionEdition: return 3;
+            default: return 0;
+        }
+    }
+}
+
+void title_ach_open(uint8_t* rdram, recomp_context* ctx) {
+    ta = TitleAch{};
+    ta.open = true;
+    for (int i = 0; i < 4; i++) ta.views[i] = ach_read(kAchStems[i]);
+    ta.sel = running_version_index();
+    aidyn::input::set_capture(true);
+}
+
+gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (!ta.open) return g;
+    if (!heap_pointer(MEM_W(0, kTitleScreen))) {  // the title is gone (a version switch, a game starting)
+        ta = TitleAch{};
+        aidyn::input::set_capture(false);
+        return g;
+    }
+    uint32_t b = 0;
+    float sx = 0.0f, sy = 0.0f;
+    aidyn::input::captured(&b, &sx, &sy);
+    if (sy > 0.5f) b |= 0x0800;
+    if (sy < -0.5f) b |= 0x0400;
+    if (sx < -0.5f) b |= 0x0200;
+    if (sx > 0.5f) b |= 0x0100;
+    const uint32_t pressed = ta.held == 0xFFFFFFFF ? 0 : (b & ~ta.held);
+    ta.held = (ta.held == 0xFFFFFFFF && (b & 0x8000)) ? 0xFFFFFFFF : b;
+    const uint32_t dirs = b & 0x0F00;
+    ta.repeat = dirs != 0 ? ta.repeat + 1 : 0;
+    const uint32_t act = pressed | ((ta.repeat > 24 && ta.repeat % 6 == 0) ? dirs : 0);
+    const AchMap& view = ta.views[ta.sel];
+    const std::vector<AchRow> rows = ach_rows(view);
+    const int n = (int)rows.size();
+    constexpr int kVisible = 9;
+    constexpr float kLeft = 58.0f, kRight = 262.0f, kBodyTop = 59.0f, kVersionStep = 27.0f;
+    if (!ta.closing && ta.fade == 255) {
+        static uint32_t seen = 0;
+        if (ta.level == 0) {
+            const PointerPick p = pointer_pick(kBodyTop - 3.0f, kVersionStep, 4, 44.0f, 276.0f, seen);
+            if (p.row >= 0 && p.row != ta.sel) { ta.sel = p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0800) { ta.sel = (ta.sel + 3) % 4; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0400) { ta.sel = (ta.sel + 1) % 4; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (pressed & 0x8000) { ta.level = 1; ta.row = ta.top = 0; rc_sound(rdram, ctx, 0x740, 60); }
+            else if (pressed & (0x4000 | 0x1000)) { ta.closing = true; rc_sound(rdram, ctx, 0x741, 60); }
+        } else {
+            const PointerPick p = pointer_pick(kBodyTop + 14.0f - 2.0f, kCtlRowStep, std::min(kVisible, n - ta.top), 44.0f, 276.0f, seen);
+            if (p.row >= 0 && ta.top + p.row != ta.row) { ta.row = ta.top + p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0800) { ta.row = (ta.row + n - 1) % n; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0400) { ta.row = (ta.row + 1) % n; rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0200) { ta.row = std::max(0, ta.row - kVisible); rc_sound(rdram, ctx, 0x73B, 30); }
+            if (act & 0x0100) { ta.row = std::min(n - 1, ta.row + kVisible); rc_sound(rdram, ctx, 0x73B, 30); }
+            if (pressed & (0x4000 | 0x1000)) { ta.level = 0; rc_sound(rdram, ctx, 0x741, 60); }
+        }
+    }
+    ta.row = ach_row_limit(ta.row, n);
+    if (ta.row < ta.top) ta.top = ta.row;
+    if (ta.row >= ta.top + kVisible) ta.top = ta.row - kVisible + 1;
+    ta.fade = std::clamp(ta.fade + (ta.closing ? -60 : 60), 0, 255);
+    if (ta.closing && ta.fade == 0 && b == 0) {
+        ta = TitleAch{};
+        aidyn::input::set_capture(false);
+        return g;
+    }
+    ta.pulse++;
+    const int fade = ta.fade;
+    const CtlHost h{ true, fade, ta.closing, ta.pulse, 0 };
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    const float centre = 160.0f;
+    g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 194.0f, (uint32_t)fade);
+    copy_branding(rdram);
+    {  // the title picture on the top bar, as the Versions panel's
+        const int tl = branding_index("ach_title_l"), tr = branding_index("ach_title_r");
+        if (tl >= 0 && tr >= 0) {
+            const float w = aidyn::branding::kImages[tl].w;
+            g = prompt_state(rdram, g, (uint8_t)fade);
+            g = draw_rgba16(rdram, g, tl, (centre - w) * hs, 28.5f * vs, hs, vs);
+            g = draw_rgba16(rdram, g, tr, centre * hs, 28.5f * vs, hs, vs);
+        }
+    }
+    const int total = (int)achievements().size();
+    if (ta.level == 0) {
+        for (int i = 0; i < 4; i++) {
+            const float y = kBodyTop + kVersionStep * i;
+            const int earned = ach_earned(ta.views[i]);
+            if (i == ta.sel) {  // the title's copper marker
+                const int mark = branding_index("ver_mark");
+                if (mark >= 0) {
+                    g = prompt_state(rdram, g, (uint8_t)fade);
+                    g = draw_rgba16(rdram, g, mark, 47.0f * hs, (y - 1.0f) * vs, hs, vs);
+                }
+            }
+            g = ach_bar(rdram, g, kLeft + 4.0f, y + 12.0f, kRight - kLeft - 4.0f, 4.0f, (float)earned / (float)total, 0xE8B850, 0x20282E, fade);
+        }
+        g = ctl_state(rdram, ctx, g);
+        for (int i = 0; i < 4; i++) {
+            const float y = kBodyTop + kVersionStep * i;
+            const int earned = ach_earned(ta.views[i]);
+            const uint32_t ink = i == ta.sel ? ctl_highlight(h) : 0xF2E6C8;
+            g = ctl_text(rdram, ctx, g, kAchVersions[i], kLeft + 4.0f, y, 0.8f, ink, fade);
+            if (i == running_version_index()) {
+                g = ctl_text(rdram, ctx, g, "playing", kLeft + 12.0f + ctl_width(rdram, ctx, MEM_W(0, kFontPtr), kAchVersions[i], 0.8f),
+                             y + 2.0f, 0.5f, 0xE8C060, fade);
+            }
+            g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), kRight, y, 0.8f, 0xE8C060, fade, true);
+        }
+    } else {
+        const int earned = ach_earned(view);
+        g = ach_bar(rdram, g, kLeft, kBodyTop + 10.0f, kRight - kLeft, 3.0f, (float)earned / (float)total, 0xE8B850, 0x20282E, fade);
+        g = ctl_state(rdram, ctx, g);
+        g = ctl_text(rdram, ctx, g, kAchVersions[ta.sel], kLeft, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade);
+        g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), kRight, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade, true);
+        g = ach_draw_list(rdram, ctx, g, rows, view, ta.row, ta.top, kVisible, kLeft, kRight, kBodyTop + 14.0f,
+                          { 0xE8C060, 0xF2E6C8, 0x8C8470 }, ctl_highlight(h), fade);
+    }
+    const bool kb = aidyn::input::keyboard_last();
+    const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
+    g = ctl_text(rdram, ctx, g, ta.level == 0 ? a_key + ": open   " + b_key + ": back" : "Up / down: scroll   " + b_key + ": back",
+                 centre, 167.0f, 0.55f, 0xC8BFA8, fade, false, true);  // above the closing bar's rail
     return g;
 }
 
