@@ -532,7 +532,7 @@ text = "extern int aidyn_title_back(uint8_t* rdram, recomp_context* ctx); if (ai
 # (func_800403AC) where it reads the chosen entry's id (v1), which returns through its exit L_8004054C for ours.
 # The list is made with room for six entries (new WidgetScrollMenu(6)) and Append doesn't check: a seventh would be
 # written past its array, into the heap (the game hung freeing the pause menu). Ours are up to four (Quick Load,
-# Display, ReChronicled, Quit to Title; in a fight Load Game too): room for twelve. And the eight entries sit 3 pixels apart instead of 5 (Utilities::SetArrayVSpace), clear of the page
+# Display, ReChronicled, Achievements, Quit to Title; in a fight Load Game too): room for twelve. And the eleven entries sit 2 pixels apart instead of 5 (Utilities::SetArrayVSpace), clear of the page
 # arrow.
 [[patches.instruction]]
 func = "func_8003F8C4"
@@ -542,7 +542,7 @@ value = 0x2405000C   # addiu $a1, $zero, 12 (was 6)
 [[patches.instruction]]
 func = "func_8003F8C4"
 vram = 0x8003FBDC
-value = 0x24050003   # addiu $a1, $zero, 3 (was 5)
+value = 0x24050002   # addiu $a1, $zero, 2 (was 5)
 
 [[patches.hook]]
 func = "func_8003F8C4"
@@ -964,3 +964,30 @@ text = "extern void aidyn_list_pointer(uint8_t* rdram, recomp_context* ctx); aid
 func = "func_80041264"
 before_vram = 0x800419A0
 text = "extern void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx); aidyn_options_layout(rdram, ctx);"
+
+# Fair play (src/game/patches.cpp, "Fair play"): rules chosen at New Game. Party::PrintHeal's entry (a0 the party, a1 the
+# healer, a2 the target): the healer rule may refuse it (v0 = the port's message).
+[[patches.hook]]
+func = "Party__PrintHeal"
+before_vram = 0x80077778
+text = "extern int aidyn_heal_rule(uint8_t* rdram, recomp_context* ctx); if (aidyn_heal_rule(rdram, ctx)) return;"
+
+# Party::CampHeal's entry: a rest (camping, an inn): the healer rule's record of who healed whom starts again.
+[[patches.hook]]
+func = "Party__CampHeal"
+before_vram = 0x80078BA4
+text = "extern void aidyn_party_rested(void); aidyn_party_rested();"
+
+# Achievements (#42): Brewer, a potion brewed. WidgetPotionCraft::AFunc just after Party::CraftPotion returns (v0: the
+# potion made, 0 for none).
+[[patches.hook]]
+func = "WidgetPotionCraft__AFunc"
+before_vram = 0x800032CC
+text = "extern void aidyn_potion_brewed(uint8_t* rdram, recomp_context* ctx); aidyn_potion_brewed(rdram, ctx);"
+
+# WidgetInvShop::GetGoldPrice (func_800357A0) with its price worked out (v1, a0 the item, s0 set when selling): fair trade's
+# buy floor and honest alchemy's cap on potions sold.
+[[patches.hook]]
+func = "func_800357A0"
+before_vram = 0x800358D8
+text = "extern void aidyn_shop_price(uint8_t* rdram, recomp_context* ctx); aidyn_shop_price(rdram, ctx);"

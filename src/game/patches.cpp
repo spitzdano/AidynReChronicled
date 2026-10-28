@@ -4334,6 +4334,11 @@ void title_controls_open(uint8_t* rdram, recomp_context* ctx);
 gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 void title_ach_open(uint8_t* rdram, recomp_context* ctx);      // "Achievements page and toast", below
 gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g);
+bool fair_panel_open(uint8_t* rdram, recomp_context* ctx);       // "Fair play", below
+gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g);
+void fair_show(uint8_t* rdram, recomp_context* ctx);
+void fair_fix_stats(uint8_t* rdram, recomp_context* ctx);
+bool fair_rule_kept(int i);
 
 namespace {
     // The mouse pointer over one of the port's own lists (#44): when it has moved since this list last looked
@@ -4356,7 +4361,7 @@ namespace {
 
 namespace {
     // Our entries' ids (the game's are 0xA0..0x17A and 9999), their texts and their pages' titles.
-    constexpr uint16_t kRcId = 0x7A11, kDisplayId = 0x7A12;
+    constexpr uint16_t kRcId = 0x7A11, kDisplayId = 0x7A12, kAchMenuId = 0x7A16;
     constexpr gpr kRcText = (gpr)(int32_t)0x80F81100;           // the entries' texts (above the game's 15 MB), 0x20 each
     enum RcKind { kRcGameplay = 0, kRcDisplay = 1, kRcControls = 2, kRcAchievements = 3 };
     constexpr const char* kRcEntryText[] = { "ReChronicled", "Display" };
@@ -4451,12 +4456,9 @@ namespace {
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
             { "rc_controls", nullptr, "", nullptr, nullptr, nullptr, controls_open },
-            { "rc_achievements", nullptr, "", nullptr, nullptr, nullptr, ach_open },
+            { "rc_fair_play", nullptr, "", nullptr, nullptr, nullptr, fair_show },
             { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
-        if (!ach_shown()) {
-            rows.erase(std::remove_if(rows.begin(), rows.end(), [](const RcRow& r) { return std::strcmp(r.label, "rc_achievements") == 0; }), rows.end());
-        }
         if (aidyn_restored_samples_available()) {  // the rechronicled-samples pack ("Restored instrument samples")
             rows.insert(rows.begin() + 1, { "rc_instruments", &sound.restored_samples, "restored_samples", nullptr,
                                             nullptr, nullptr, nullptr, "rc_restored", "rc_dd_1", "audio" });
@@ -4486,6 +4488,10 @@ namespace {
         int pulse = 0;                    // frames since opening: the highlight's colour
     } rc;
     int rc_row[3] = { 0, 0, 0 };             // each page's highlighted row, kept between visits
+    int rc_top[3] = { 0, 0, 0 };             // and its first row shown
+    // A page shows ten rows, 14 apart (spitzdano: the page had filled up, 8 apart); more scroll, with a bar at the right.
+    constexpr int kRcVisible = 10;
+    constexpr float kRcStep = 14.0f;
 
     uint32_t rc_highlight() {
         const int k = rc.pulse % 40;
@@ -4565,13 +4571,15 @@ extern "C" void aidyn_rc_entry(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
-void quit_entry(uint8_t* rdram, recomp_context* ctx, gpr list);  // "Quit to Title", below
+void quit_entry(uint8_t* rdram, recomp_context* ctx, gpr list);      // "Quit to Title", below
+void ach_menu_entry(uint8_t* rdram, recomp_context* ctx, gpr list);  // the same place: Achievements, after Help
 
 extern "C" void aidyn_rc_entry_end(uint8_t* rdram, recomp_context* ctx) {
     if (!rc_entry_added) {
         aidyn_rc_entry(rdram, ctx);  // a battle's list: Theater isn't in it
     }
     rc_entry_added = false;
+    ach_menu_entry(rdram, ctx, MEM_W(0, ctx->r17));
     quit_entry(rdram, ctx, MEM_W(0, ctx->r17));
 }
 
@@ -4590,7 +4598,7 @@ extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
             return quit;
         }
     }
-    if ((id != kRcId && id != kDisplayId) || rc.open) {
+    if ((id != kRcId && id != kDisplayId && id != kAchMenuId) || rc.open) {
         return 0;
     }
     rc.open = true;
@@ -4602,6 +4610,7 @@ extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
     rc.fade = 0;
     rc.held = 0xFFFFFFFF;  // the A that chose it is still down: wait for it to come up
     aidyn::input::set_capture(true);
+    if (id == kAchMenuId) ach_open(rdram, ctx);  // the list, straight from the Menu page
     return 1;
 }
 
@@ -4609,6 +4618,7 @@ extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = title_controls_page(rdram, ctx, g);
     g = title_ach_page(rdram, ctx, g);
+    g = fair_panel(rdram, ctx, g);
     if (!rc.open) {
         return g;
     }
@@ -4637,13 +4647,15 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         return achievements_page(rdram, ctx, g, b, pressed, act);
     }
     const std::vector<RcRow> rows = rc_rows(rc.kind);
+    const int n = (int)rows.size(), shown = std::min(n, kRcVisible);
     int& row = rc_row[rc.kind];
-    row = std::min(row, (int)rows.size() - 1);
+    int& top = rc_top[rc.kind];
+    row = std::min(row, n - 1);
+    top = std::clamp(top, 0, n - shown);
     if (!rc.closing && rc.fade == 255) {  // the pointer over a row highlights it (A, or a click, then acts on it)
         static uint32_t seen = 0;
-        const float step = rows.size() > 9 ? 14.5f * 9.0f / (float)(rows.size() - 1) : kRowStep;
-        const PointerPick p = pointer_pick(kRowsTop, step, (int)rows.size(), kRowsLeft - 8.0f, kRowsRight + 4.0f, seen);
-        if (p.row >= 0 && p.row != row) { row = p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+        const PointerPick p = pointer_pick(kRowsTop, kRcStep, shown, kRowsLeft - 8.0f, kRowsRight + 4.0f, seen);
+        if (p.row >= 0 && top + p.row != row) { row = top + p.row; rc_sound(rdram, ctx, 0x73B, 30); }
     }
     if (!rc.closing && rc.fade == 255) {
         if (act & 0x0800) { row = (row + (int)rows.size() - 1) % (int)rows.size(); rc_sound(rdram, ctx, 0x73B, 30); }
@@ -4658,6 +4670,8 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             rc_sound(rdram, ctx, 0x741, 60);
         }
     }
+    if (row < top) top = row;
+    if (row >= top + shown) top = row - shown + 1;
     // Fades: the page in over the list, or out.
     rc.fade = std::clamp(rc.fade + (rc.closing ? -60 : 60), 0, 255);
     call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)rc.list, (uint32_t)(255 - rc.fade));
@@ -4699,22 +4713,32 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             word("rc_title_r", x + w, kRowsTop - 31.0f, false);
         }
     }
-    // Ten rows or more: closer, so the last stays where ten at 14.5 put it, on the parchment.
-    const float row_step = rows.size() > 9 ? 14.5f * 9.0f / (float)(rows.size() - 1) : kRowStep;
-    for (int k = 0; k < (int)rows.size(); k++) {
+    for (int k = top; k < top + shown; k++) {
         const RcRow& r = rows[k];
-        const float y = kRowsTop + row_step * k;
+        const float y = kRowsTop + kRcStep * (k - top);
         ink(k == row ? rc_highlight() : kMenuInk);
         word(r.label, kRowsLeft, y, false);
         if (r.action == nullptr) {
             word(r.flag != nullptr ? (rc_on(r) ? r.on_word : r.off_word) : r.steps->words[step_index(*r.steps)], kRowsRight, y, true);
         }
     }
+    if (n > shown) {  // the scroll bar: the track the rows' height, the thumb where the shown rows are
+        const int bar = branding_index("ach_bar");
+        if (bar >= 0) {
+            const auto& img = aidyn::branding::kImages[bar];
+            const float x = kRowsRight + 6.0f, y0 = kRowsTop + 1.0f, h = kRcStep * shown - 4.0f, w = 2.0f;
+            const float th = std::max(8.0f, h * shown / n), ty = y0 + (h - th) * top / (float)(n - shown);
+            g = tinted_image_state(rdram, g, 0xC8B494u << 8 | (uint32_t)(rc.fade * 7 / 8));
+            g = draw_rgba16(rdram, g, bar, x * hs, y0 * vs, w / img.w * hs, h / img.h * vs);
+            g = tinted_image_state(rdram, g, (uint32_t)kMenuInk << 8 | (uint32_t)rc.fade);
+            g = draw_rgba16(rdram, g, bar, x * hs, ty * vs, w / img.w * hs, th / img.h * vs);
+        }
+    }
     g = prompt_state(rdram, g, (uint8_t)rc.fade);
     const int change = branding_index("rc_hint_change"), back = branding_index("rc_hint_back");
     if (change >= 0 && back >= 0) {
         const float gap = 24.0f, x = centre - (ink_width(change) + gap + ink_width(back)) / 2.0f;
-        const float y = kRowsTop + row_step * rows.size() + 6.0f;
+        const float y = kRowsTop + kRcStep * shown + 6.0f;
         word("rc_hint_change", x, y, false);
         word("rc_hint_back", x + ink_width(change) + gap, y, false);
     }
@@ -5303,9 +5327,13 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, 
 // END, STA and VIG (Vigour: the level pool; spitzdano's short names, the words crowded the page), each its current of its most (CharStats::getModded / getBase
 // of STAT_END 3, STAT_STAM 5, STAT_LV 6: the three add up to the total). The character is the one the page shows
 // (gPartyPicker, 0x800DE9F0, of gGlobals.party's Members); the lines follow the Gold text's place and fade (+0x80).
+// They are clipped like the page's own text (Font::PrintWrapperA with the bounds WidgetHealthGold::Render was given),
+// so they close with the scroll instead of staying on the screen as it rolls up.
 extern "C" void CharStats__getBase(uint8_t* rdram, recomp_context* ctx);
+extern "C" void Font__PrintWrapperA(uint8_t* rdram, recomp_context* ctx);
 namespace {
     gpr hp_parts_widget = 0;
+    uint32_t hp_parts_clip[4] = { 0, 0, 320, 240 };  // x0, y0, x1, y1
 }
 
 // The rope (the HP bar, HPBar +0x8C) 3 units higher than the game puts it (y 27 to 37): the redrawn page keeps a faint
@@ -5313,6 +5341,10 @@ namespace {
 extern "C" void aidyn_hp_parts_begin(uint8_t* rdram, recomp_context* ctx) {
     const gpr widget = ctx->r4;
     hp_parts_widget = widget;
+    hp_parts_clip[0] = (uint32_t)ctx->r6 & 0xFFFF;
+    hp_parts_clip[1] = (uint32_t)ctx->r7 & 0xFFFF;
+    hp_parts_clip[2] = (uint32_t)MEM_W(0x10, ctx->r29) & 0xFFFF;
+    hp_parts_clip[3] = (uint32_t)MEM_W(0x14, ctx->r29) & 0xFFFF;
     const gpr bar = heap_pointer(widget) ? MEM_W(0x8C, widget) : 0, gold = heap_pointer(widget) ? MEM_W(0x80, widget) : 0;
     if (heap_pointer(bar) && heap_pointer(gold)) {
         const int16_t y = (int16_t)(MEM_H(0x62, gold) - 69 + 24);  // the Gold text's y (69) tells the page's own place
@@ -5346,11 +5378,24 @@ extern "C" gpr aidyn_hp_parts_end(uint8_t* rdram, recomp_context* ctx, gpr g) {
         const int now = (int)(int32_t)call_game(rdram, ctx, CharStats__getModded, (uint32_t)stats, kParts[k].stat);
         const int most = (int)(int32_t)call_game(rdram, ctx, CharStats__getBase, (uint32_t)stats, kParts[k].stat);
         const float row = top + k * kRow;
-        print_text(rdram, ctx, font, g, kParts[k].name, label_x, row, kScale);
+        const auto print = [&](const std::string& text, float tx) {
+            tx = std::round(tx);
+            for (char c : text) {
+                put_text(rdram, std::string(1, c));
+                MEM_W(0, kLogGfx) = (int32_t)g;
+                call_game_stack(rdram, ctx, Font__PrintWrapperA, (uint32_t)font, (uint32_t)kLogGfx, (uint32_t)kLogText,
+                                (uint32_t)(int)tx,
+                                { (uint32_t)(int)std::lround(row), hp_parts_clip[0], hp_parts_clip[1], hp_parts_clip[2],
+                                  hp_parts_clip[3], f32_bits(kScale), f32_bits(kScale) });
+                g = (gpr)(int32_t)MEM_W(0, kLogGfx);
+                tx += letter_advance(rdram, ctx, font, c, kScale);
+            }
+        };
+        print(kParts[k].name, label_x);
         const std::string value = std::to_string(std::max(0, now)) + " / " + std::to_string(std::max(0, most));
         float w = 0.0f;
         for (char c : value) w += letter_advance(rdram, ctx, font, c, kScale);
-        print_text(rdram, ctx, font, g, value, right - w, row, kScale);
+        print(value, right - w);
     }
     font_restore(rdram, font, st);
     return g;
@@ -6752,6 +6797,9 @@ extern "C" void WidgetText__WidgetText(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_800CBC94(uint8_t* rdram, recomp_context* ctx);  // CRC table: made (if not there)
 extern "C" void func_800CBD28(uint8_t* rdram, recomp_context* ctx);  // CRC table: freed
 
+void fair_note_save(uint64_t hash);  // "Fair play", below: the playthrough's rules go with each save the port writes
+void fair_loaded_save(uint64_t hash);  // ... and come back with it
+
 namespace {
     constexpr gpr kSaveBuffer = (gpr)(int32_t)0x80F84000;  // a SaveDatStruct (free up to 0x80F8FFFF)
     constexpr uint32_t kSaveSize = 0x1C00;
@@ -6899,9 +6947,11 @@ namespace {
     }
 
     // "" if the save may load here, else the version it belongs to.
+    uint64_t read_hash = 0;  // the save about to load, hashed as read (the game changes its buffer before loading it)
     std::string foreign_save(uint8_t* rdram, gpr buffer) {
         load_save_versions();
-        const auto it = save_versions.find(save_hash(rdram, buffer));
+        read_hash = save_hash(rdram, buffer);
+        const auto it = save_versions.find(read_hash);
         const std::string here = version_name(aidyn::settings::game().rom_patch);
         return it == save_versions.end() || it->second == here ? std::string() : it->second;
     }
@@ -6933,6 +6983,7 @@ namespace {
         }
         load_save_versions();
         note_version(save_hash(reinterpret_cast<const uint8_t*>(bytes.data())), version_name(aidyn::settings::game().rom_patch), false);
+        fair_note_save(save_hash(reinterpret_cast<const uint8_t*>(bytes.data())));
         return true;
     }
 
@@ -7149,6 +7200,8 @@ extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
     }
     quit_pending = false;
     ach_loaded_save();
+    fair_loaded_save(read_hash);  // the hash of the bytes read (a file's, the pak's): its record in save-rules.txt
+    read_hash = 0;
     saves.save_loaded = true;
     saves.explored = 0.0;
     saves.pending = 0;
@@ -7281,6 +7334,21 @@ void quit_entry(uint8_t* rdram, recomp_context* ctx, gpr list) {
     MEM_H(0x5E, entry) = (int16_t)kQuitId;
     quit.list = list;
     quit.index = MEM_HU(0x20, sub);  // numChoices: its place once appended
+    call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
+}
+
+// The Menu page's Achievements (spitzdano: on the main pause page, beside Help), when achievements are on.
+void ach_menu_entry(uint8_t* rdram, recomp_context* ctx, gpr list) {
+    if (!ach_shown() || !heap_pointer(list)) {
+        return;
+    }
+    const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (!heap_pointer(memory)) {
+        return;
+    }
+    const gpr entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetClipText__WidgetClipText, (uint32_t)memory,
+                                              (uint32_t)put_menu_text(rdram, kAchText, "Achievements"), 400);
+    MEM_H(0x5E, entry) = (int16_t)kAchMenuId;
     call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)entry);
 }
 
@@ -7576,6 +7644,10 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
         title_ach_open(rdram, ctx);
         return 1;
     }
+    if (text == "New Game" && fair_panel_open(rdram, ctx)) {  // the Fair play panel first ("Fair play", below)
+        rc_sound(rdram, ctx, 0x740, 60);
+        return 1;
+    }
     if (text == "Quit Game") {
         rc_sound(rdram, ctx, 0x740, 60);
         aidyn::request_quit();
@@ -7685,6 +7757,7 @@ void watch_tick(uint8_t* rdram) {
 // turns them off. Each unlock shows a toast at the top right (ach_toast: the medal on the turn bar's pieces), and the
 // ReChronicled page's Achievements row lists them (achievements_page).
 extern "C" void getEventFlag(uint8_t* rdram, recomp_context* ctx);
+extern "C" void setEventFlag(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
     enum AchKind : uint8_t { kAchAll, kAchAny, kAchCount };
@@ -7783,8 +7856,9 @@ namespace {
                                                           3418, 3419, 3420, 3421, 3422, 3423, 3424 } },
             { "keymaster", "Keymaster", kAchAll, { 3425, 3426, 3427, 3428, 3429, 3430, 3431, 3432 } },
             // growth
-            { "first_spell", "First Spell", kAchAll, { 3611 } },
-            { "brewer", "Brewer", kAchAll, { 3612 } },
+            { "first_spell", "First Spell", kAchAll, { 3611 } },  // FLAG_LearnedFirstSpell: a new spell from a trainer
+            // a potion brewed (aidyn_potion_brewed; flag 3612 is FLAG_GotFirstPotion, any potion taken, a chest's too)
+            { "brewer", "Brewer", kAchCount, {} },
             { "peak_form", "Peak Form", kAchAny, { 5290, 5294, 5298, 5302, 5306 } },
             { "master", "Master", kAchAny, { 5346, 5336, 5316, 5326 } },
             { "veteran", "Veteran", kAchCount, {} },
@@ -7795,14 +7869,89 @@ namespace {
             { "night_watch", "Night Watch", kAchCount, {} },
             { "discretion", "Discretion", kAchCount, {} },
             { "treasure_hoard", "Treasure Hoard", kAchCount, {} },
+            // fair play: the game finished with a rule on all the way ("Fair play")
+            { "fair_healer", "Honest Healer", kAchCount, {} },
+            { "fair_trade", "Fair Trader", kAchCount, {} },
+            { "fair_alchemy", "True Alchemist", kAchCount, {} },
         };
         return list;
     }
+
+    // How each is earned: shown under the list for the highlighted one (a secret one's only once it is earned).
+    const char* ach_how(const std::string& id) {
+        static const std::unordered_map<std::string, const char*> kHow = {
+            { "story_spirit", "Meet the strange spirit in the forest." },
+            { "story_poisoned", "Wake in Oriana's hut, poisoned by the goblins." },
+            { "story_errand", "Take the King's errand to the Mirari of Erromon." },
+            { "story_sword", "Find the sword Trahern lost (Bowden hid it in a storeroom off the lab)." },
+            { "story_erromon", "Reach Erromon, the Mirari city under the hills." },
+            { "story_promise", "Learn that Txomin won't keep his promise." },
+            { "story_dinner", "Have dinner with Yeraza in Erromon." },
+            { "story_school", "Be let into the Wizard's School in Talewok." },
+            { "story_amaranth", "Find the amaranth Ardra needs to cure you." },
+            { "story_forest", "Win the favour of Pandara, the dryad queen, and her amulet." },
+            { "story_nameless", "Learn from Ardra that you have no True Name." },
+            { "story_mago", "Hear of Fyrsil, the wizard who may have a cure for Mago." },
+            { "story_light", "Light the lighthouse and open the port of Saiid." },
+            { "story_sail", "Set sail for Cradawgh's Isle." },
+            { "story_isle", "Reach Cradawgh's Isle." },
+            { "story_bog", "Reach the Darkling Bog." },
+            { "story_trolls", "Defeat the trolls of the bog." },
+            { "story_tower", "Reach Shamsuk's tower." },
+            { "story_gate", "Solve the riddle of the Desert Gate." },
+            { "story_emperor", "Speak with Zaratas, the Jundar Emperor." },
+            { "story_fate", "Recover Loden's sword, Fate." },
+            { "story_whole", "Join with your darker self." },
+            { "story_named", "Finish the game: be given your True Name." },
+            { "side_letter", "Find the strange letter in the cave under Saiid." },
+            { "side_wildman", "Meet the wild man of the Darkling Bog." },
+            { "side_tomb", "Find Elisheva's tomb in the Darkling Bog." },
+            { "boss_kitarak", "Defeat Kitarak, the goblin king." },
+            { "boss_shamsuk", "Defeat Shamsuk, the necromancer, in his tower." },
+            { "boss_lugash", "Defeat Lugash, the lich under the Barrow." },
+            { "full_party", "Have four in the party." },
+            { "every_companion", "Have all 13 companions join you." },
+            { "cartographer", "Collect all 18 maps." },
+            { "keymaster", "Collect all eight keys." },
+            { "first_spell", "Learn a new spell from a trainer." },
+            { "brewer", "Brew a potion (Alchemist skill, the Alchemy menu)." },
+            { "peak_form", "Have a stat at 29: Intelligence, Willpower, Endurance, Dexterity or Strength." },
+            { "master", "Reach rank 10 in Wizard, Lore, Mechanic or Diplomat." },
+            { "veteran", "Bring someone in the party to level 10." },
+            { "legend", "Bring someone in the party to level 20." },
+            { "seasoned", "Win 100 fights." },
+            { "flawless", "With four in the party, beat four or more enemies without a scratch." },
+            { "night_watch", "Win a fight that ambushed your camp." },
+            { "discretion", "Flee from a fight." },
+            { "treasure_hoard", "Hold 10,000 gold at once." },
+            { "fair_healer", "Finish the game with the Healer rule on (Fair Play, at New Game)." },
+            { "fair_trade", "Finish the game with Fair trade on (Fair Play, at New Game)." },
+            { "fair_alchemy", "Finish the game with Honest alchemy on (Fair Play, at New Game)." },
+        };
+        const auto it = kHow.find(id);
+        if (it != kHow.end()) return it->second;
+        static std::map<std::string, std::string> made;  // the companions' and the optional bosses'
+        auto& m = made[id];
+        if (m.empty()) {
+            for (const Achievement& a : achievements()) {
+                if (a.id != id) continue;
+                const std::string t = a.title;
+                if (id.rfind("join_", 0) == 0) m = "Have " + t.substr(10) + " join the party.";  // "Joined by X"
+                else if (id.rfind("boss_", 0) == 0) m = "Defeat " + t + ".";
+            }
+        }
+        return m.c_str();
+    }
+
+    // The secret kinds (spitzdano): the story, the side quests, the companions and the optional bosses show ??? until
+    // earned; the rest (the story's bosses, exploration, growth, feats, fair play) show their names and how from the start.
+    bool ach_secret(int cat) { return cat == kCatStory || cat == kCatSide || cat == kCatCompanion || cat == kCatBossOpt; }
 
     struct AchState {
         bool loaded = false;
         std::map<std::string, std::string> unlocked;  // id -> when
         int fights_won = 0;
+        bool brewed = false;  // a potion brewed since the last check (aidyn_potion_brewed)
         // the fight in progress
         bool in_fight = false, fight_hit = false, fight_full = false, fight_fled = false, fight_from_camp = false;
         int fight_enemies = 0;
@@ -7864,6 +8013,12 @@ namespace {
         const std::time_t t = std::time(nullptr);
         std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&t));
         ach.unlocked[id] = when;
+        if (id == "story_named") {  // the ending: the fair play rules kept all game
+            static const char* kFair[3] = { "fair_healer", "fair_trade", "fair_alchemy" };
+            for (int i = 0; i < 3; i++) {
+                if (fair_rule_kept(i)) ach_unlock(kFair[i]);
+            }
+        }
         for (const Achievement& a : achievements()) {
             if (a.id == id) ach.earned.push_back({ a.title, (int)ach_cat(a.id) });
         }
@@ -7881,6 +8036,20 @@ void ach_loaded_save() {
     if (!ach_enabled()) return;
     ach.base_started = false;  // what the save holds is its starting point, not earned
     ach.in_fight = false;
+    ach.brewed = false;
+}
+
+// WidgetPotionCraft::AFunc after Party::CraftPotion (v0: the potion made, 0 for none): Brewer.
+extern "C" void aidyn_potion_brewed(uint8_t* rdram, recomp_context* ctx) {
+    if (ach_enabled() && (uint32_t)ctx->r2 != 0) ach.brewed = true;
+}
+
+namespace {
+    // The game's cheat codes (typed as a name) were used in this game: !cheater (experience), !bingo (gold), !slashing
+    // and !darkside (weapons). No achievement is earned in it then.
+    bool ach_cheated(uint8_t* rdram, recomp_context* ctx) {
+        return flag_set(rdram, ctx, 3693) || flag_set(rdram, ctx, 3694) || flag_set(rdram, ctx, 3673) || flag_set(rdram, ctx, 3675);
+    }
 }
 
 // Entity::DamageToLevel's entry (a0 the character, a1 the damage): a hit on a party member in a fight spoils Flawless.
@@ -7917,13 +8086,15 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
     if (ach.in_fight && (a == 2 || a == 3) && MEM_BU(0, (gpr)(int32_t)0x800D9454) == 20) ach.fight_fled = true;
     if (ach.in_fight && a != 2 && a != 3) {
         ach.in_fight = false;
-        if (a == 6) {  // after a fight: won
+        if (ach_cheated(rdram, ctx)) {
+            // nothing counts
+        } else if (a == 6) {  // after a fight: won
             ach.fights_won++;
             if (ach.fights_won >= 100) ach_unlock("seasoned");
             if (ach.fight_full && ach.fight_enemies >= 4 && !ach.fight_hit) ach_unlock("flawless");
             if (ach.fight_from_camp) ach_unlock("night_watch");
         }
-        if (ach.fight_fled) ach_unlock("discretion");
+        if (ach.fight_fled && !ach_cheated(rdram, ctx)) ach_unlock("discretion");
         ach_save();
     }
     ach.last_a = a;
@@ -7937,9 +8108,17 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
             ach.base_flags.clear();
             ach.last_level = ach.last_party = -1;
             ach.last_gold = 0;
+            // developers: AIDYN_SET_FLAGS=f,f sets those event flags as a game begins (a cheat code's, to see the gate)
+            if (const char* fl = std::getenv("AIDYN_SET_FLAGS")) {
+                std::stringstream ids(fl);
+                std::string id;
+                while (std::getline(ids, id, ',')) call_game(rdram, ctx, setEventFlag, (uint32_t)std::atoi(id.c_str()), 1);
+            }
         }
         const bool settling = now < ach.base_until;
-        if (!flag_set(rdram, ctx, 3693)) {  // the game's Cheater flag
+        if (ach_cheated(rdram, ctx)) {
+            ach.brewed = false;
+        } else {
             const int party_size = MEM_BU(0x24, party);
             const uint32_t gold = (uint32_t)MEM_W(0x14, party);
             int top_level = 0;
@@ -7972,6 +8151,8 @@ void achievements_tick(uint8_t* rdram, recomp_context* ctx) {
                 if (ach.last_gold < 10000 && gold >= 10000) ach_unlock("treasure_hoard");
                 if (crossed(ach.last_level, top_level, 10)) ach_unlock("veteran");
                 if (crossed(ach.last_level, top_level, 20)) ach_unlock("legend");
+                if (ach.brewed) ach_unlock("brewer");
+                ach.brewed = false;
                 int joined = 0;
                 for (const Achievement& x : achievements()) joined += std::string(x.id).rfind("join_", 0) == 0 && ach.unlocked.count(x.id);
                 if (joined >= 13) ach_unlock("every_companion");
@@ -8012,6 +8193,7 @@ gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     quit_tick(rdram);
     watch_tick(rdram);
     achievements_tick(rdram, ctx);
+    fair_fix_stats(rdram, ctx);
     g = ach_toast(rdram, ctx, g);
     const gpr font = MEM_W(0, kFontPtr);
     const auto now = std::chrono::steady_clock::now();
@@ -8665,7 +8847,7 @@ namespace {
             }
             const auto it = unlocked.find(r.a->id);
             const bool got = it != unlocked.end();
-            g = ctl_text(rdram, ctx, g, got ? r.a->title : "???", left + 12.0f, y, kCtlScale,
+            g = ctl_text(rdram, ctx, g, got || !ach_secret(r.cat) ? r.a->title : "???", left + 12.0f, y, kCtlScale,
                          top + i == row ? highlight : got ? ink.earned : ink.locked, fade);
             if (got && it->second.size() >= 10) {
                 g = ctl_text(rdram, ctx, g, it->second.substr(0, 10), right, y, 0.5f, ink.locked, fade, true);
@@ -8675,6 +8857,37 @@ namespace {
     }
 
     int ach_row_limit(int row, int n) { return std::clamp(row, 0, std::max(0, n - 1)); }
+
+    // Under the list: how the highlighted one is earned (a secret one not yet earned: that it shows once it is), in up
+    // to two lines of `width`, centred on `centre` from y.
+    gpr ach_describe(uint8_t* rdram, recomp_context* ctx, gpr g, const std::vector<AchRow>& rows, const AchMap& unlocked,
+                     int row, float centre, float y, float width, uint32_t ink, int fade) {
+        if (row < 0 || row >= (int)rows.size()) return g;
+        const AchRow& r = rows[row];
+        std::string text;
+        if (r.a == nullptr) {
+            text = ach_secret(r.cat) ? "Each shows what it is once you have earned it." : "";
+        } else if (!unlocked.count(r.a->id) && ach_secret(r.cat)) {
+            text = "Not earned yet: it shows what it is once you have.";
+        } else {
+            text = ach_how(r.a->id);
+        }
+        if (text.empty()) return g;
+        constexpr float kScale = 0.5f;
+        const gpr font = MEM_W(0, kFontPtr);
+        std::vector<std::string> lines(1);
+        std::stringstream words(text);
+        std::string w;
+        while (words >> w) {
+            const std::string tryline = lines.back().empty() ? w : lines.back() + " " + w;
+            if (!lines.back().empty() && ctl_width(rdram, ctx, font, tryline, kScale) > width * 0.86f && lines.size() < 2) lines.push_back(w);
+            else lines.back() = tryline;
+        }
+        for (size_t k = 0; k < lines.size(); k++) {
+            g = ctl_text(rdram, ctx, g, lines[k], centre, y + 8.0f * k, kScale, ink, fade, false, true);
+        }
+        return g;
+    }
 }
 
 namespace {
@@ -8693,7 +8906,7 @@ void ach_open(uint8_t* rdram, recomp_context* ctx) {
 gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act) {
     const std::vector<AchRow> rows = ach_rows(ach.unlocked);
     const int n = (int)rows.size();
-    constexpr int kVisible = 12;
+    constexpr int kVisible = 12;  // and two lines of the highlighted one's description under them
     if (!rc.closing && rc.fade == 255) {
         static uint32_t seen = 0;
         const PointerPick p = pointer_pick(kRowsTop - 2.0f, kCtlRowStep, std::min(kVisible, n - ach_top), kRowsLeft - 8.0f, kRowsRight + 4.0f, seen);
@@ -8739,9 +8952,11 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
                  rc.fade, true);
     g = ach_draw_list(rdram, ctx, g, rows, ach.unlocked, running_version_index(), ach_row, ach_top, kVisible, left, right, top - 2.0f,
                       { 0x442A22, kMenuInk, 0xA09090 }, rc_highlight(), rc.fade);
+    g = ach_describe(rdram, ctx, g, rows, ach.unlocked, ach_row, centre, top - 2.0f + kCtlRowStep * kVisible + 2.0f, right - left,
+                     0x442A22, rc.fade);
     const bool kb = aidyn::input::keyboard_last();
     const std::string back = kb ? keys_of(aidyn::controls::kB, false) : "B";
-    g = ctl_text(rdram, ctx, g, "Up / down: scroll   " + back + ": back", centre, top - 2.0f + kCtlRowStep * kVisible + 3.0f,
+    g = ctl_text(rdram, ctx, g, "Up / down: scroll   " + back + ": back", centre, top - 2.0f + kCtlRowStep * (kVisible + 2) + 3.0f,
                  kCtlScale, kMenuInk, rc.fade, false, true);
     return g;
 }
@@ -8787,7 +9002,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const AchMap& view = ta.views[ta.sel];
     const std::vector<AchRow> rows = ach_rows(view);
     const int n = (int)rows.size();
-    constexpr int kVisible = 9;
+    constexpr int kVisible = 7;  // and two lines of the highlighted one's description under them
     constexpr float kLeft = 58.0f, kRight = 262.0f, kBodyTop = 59.0f, kVersionStep = 27.0f;
     if (!ta.closing && ta.fade == 255) {
         static uint32_t seen = 0;
@@ -8866,6 +9081,8 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), kRight, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade, true);
         g = ach_draw_list(rdram, ctx, g, rows, view, ta.sel, ta.row, ta.top, kVisible, kLeft, kRight, kBodyTop + 14.0f,
                           { 0xE8C060, 0xF2E6C8, 0x8C8470 }, ctl_highlight(h), fade);
+        g = ach_describe(rdram, ctx, g, rows, view, ta.row, centre, kBodyTop + 14.0f + kCtlRowStep * kVisible + 3.0f,
+                         kRight - kLeft, 0xC8BFA8, fade);
     }
     const bool kb = aidyn::input::keyboard_last();
     const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
@@ -9020,6 +9237,322 @@ void title_versions_watchdog() {
     if (vers.open && std::chrono::steady_clock::now() - vers.last > std::chrono::milliseconds(300)) {
         versions_close_now();
     }
+}
+
+// ---- Fair play ----
+// Three fixes for the original's loopholes, chosen on a panel when a New Game begins and fixed for that playthrough (on
+// by default; each has its own achievement, earned by finishing the game with it on the whole way):
+//   Healer rule     a healer can't lay hands on someone who healed them since the party last rested (camping, an inn:
+//                   Party::CampHeal), so two healers can't heal each other up for free (#33). Honest Healer.
+//   Fair trade      a shop never sells an item for less than it would pay for it. The game prices with
+//                   f = (keeper's Merchant - the party's best) x 0.05: you buy at price x markup x (1 + f) and sell at
+//                   base x (1 - f) / 2, so a party out-ranking the keeper (by 7, or at all on half-price stock) could
+//                   buy and sell back at a profit for ever. Fair Trader.
+//   Honest alchemy  a potion sells for no more than its ingredients' base price (the original sold a Restore Potion
+//                   brewed from 150 gold of reagents for about 1,200). True Alchemist.
+// The rules travel with each save the port writes (save-rules.txt beside the saves: the save's hash, the three as 0/1);
+// a save without a record (made before) plays with none of them, and its playthrough can't earn their achievements.
+// Always on, outside the panel: Sholeh's intelligence (35 in the original and Aidyn Patch) is saved in 5 bits and came
+// back as 3; any stat a save cut below the character's starting value gets its 32 back (fair_fix_stats).
+// The ReChronicled page's Fair play row says which are on (it can't change them).
+namespace {
+    struct FairRules {
+        bool known = true;  // chosen at New Game (false: a save from before, or a playthrough without a record)
+        bool on[3] = { true, true, true };
+    };
+    FairRules fair;             // this playthrough's
+    FairRules fair_pending;     // the panel's choice, for the game about to begin
+    std::map<uint64_t, FairRules> fair_records;
+    bool fair_records_loaded = false;
+    constexpr const char* kFairNames[3] = { "Healer rule", "Fair trade", "Honest alchemy" };
+    constexpr const char* kFairAch[3] = { "Honest Healer", "Fair Trader", "True Alchemist" };
+    constexpr const char* kFairWhy[3][2] = {
+        { "A healer can't lay hands on someone who", "healed them since the party last rested." },
+        { "A shop never sells an item for less than", "it would pay you for it." },
+        { "A potion sells for no more than", "its ingredients cost." },
+    };
+    constexpr gpr kFairText = (gpr)(int32_t)0x80F82000;  // the healer rule's message for the game (0x100 bytes)
+
+    std::filesystem::path fair_path() { return save_dir / "save-rules.txt"; }
+
+    void fair_load_records() {
+        if (fair_records_loaded || save_dir.empty()) return;
+        fair_records_loaded = true;
+        std::ifstream in(fair_path());
+        std::string hex, bits;
+        while (in >> hex >> bits) {
+            FairRules r;
+            for (int i = 0; i < 3 && i < (int)bits.size(); i++) r.on[i] = bits[i] == '1';
+            fair_records[std::stoull(hex, nullptr, 16)] = r;
+        }
+    }
+
+    // A rule in force now.
+    bool fair_on(int i) { return fair.known && fair.on[i]; }
+
+    // (healer ID, target ID) pairs since the last rest.
+    std::set<std::pair<uint16_t, uint16_t>> healed_since_rest;
+}
+
+bool fair_rule_kept(int i) { return fair_on(i); }
+
+void fair_note_save(uint64_t hash) {
+    fair_load_records();
+    if (!fair.known) return;  // nothing to record: it plays without the rules either way
+    fair_records[hash] = fair;
+    std::ofstream out(fair_path(), std::ios::app);
+    char line[64];
+    snprintf(line, sizeof line, "%016llx %d%d%d\n", (unsigned long long)hash, fair.on[0], fair.on[1], fair.on[2]);
+    out << line;
+}
+
+void fair_loaded_save(uint64_t hash) {
+    fair_load_records();
+    const auto it = fair_records.find(hash);
+    fair = it != fair_records.end() ? it->second : FairRules{ false, { false, false, false } };
+    healed_since_rest.clear();
+    fprintf(stdout, "Fair play: loaded save %016llx, %s\n", (unsigned long long)hash,
+            fair.known ? (std::string("rules ") + "01"[fair.on[0]] + "01"[fair.on[1]] + "01"[fair.on[2]]).c_str()
+                       : "no record (none on)");
+    fflush(stdout);
+}
+
+// Party::PrintHeal's entry: refused (the message in v0) when the target healed the healer since the last rest.
+extern "C" int aidyn_heal_rule(uint8_t* rdram, recomp_context* ctx) {
+    if (!fair_on(0)) return 0;
+    const gpr party = ctx->r4;
+    const gpr healer = MEM_W(4 * (ctx->r5 & 0xFF), party), target = MEM_W(4 * (ctx->r6 & 0xFF), party);
+    if (!heap_pointer(healer) || !heap_pointer(target)) return 0;
+    const uint16_t hid = MEM_HU(0, healer), tid = MEM_HU(0, target);
+    // developers: AIDYN_FAIR_TEST_HEAL also refuses healing the same one twice, to see the refusal with one healer
+    static const bool test = std::getenv("AIDYN_FAIR_TEST_HEAL") != nullptr;
+    if (healed_since_rest.count({ tid, hid }) || (test && healed_since_rest.count({ hid, tid }))) {
+        auto name = [&](gpr sheet) {
+            std::string n;
+            const gpr str = MEM_W(4, sheet);
+            for (int k = 0; heap_pointer(str & ~(gpr)3) && k < 24 && MEM_B(k, str) != 0; k++) n += (char)MEM_B(k, str);
+            return n;
+        };
+        const std::string msg = name(target) + " healed " + name(healer) + " since you last rested: " + name(healer) +
+                                " can't lay hands on " + name(target) + " until you rest.";
+        for (size_t k = 0; k < msg.size() && k < 0xFF; k++) MEM_B(k, kFairText) = (int8_t)msg[k];
+        MEM_B(std::min<size_t>(msg.size(), 0xFF), kFairText) = 0;
+        ctx->r2 = kFairText;
+        return 1;
+    }
+    healed_since_rest.insert({ hid, tid });
+    return 0;
+}
+
+extern "C" void aidyn_party_rested() { healed_since_rest.clear(); }
+
+extern "C" void getItemPrice(uint8_t* rdram, recomp_context* ctx);
+extern "C" void processIntroMenu(uint8_t* rdram, recomp_context* ctx);
+extern "C" void GetIDIndex(uint8_t* rdram, recomp_context* ctx);
+
+namespace {
+    // An item's base price (ItemInstance::GetPrice: the database's, before a shop's markup).
+    uint32_t base_price(uint8_t* rdram, recomp_context* ctx, gpr item) {
+        return call_game(rdram, ctx, getItemPrice, (uint32_t)item) & 0xFFFF;
+    }
+
+    // The ingredients of potion `potion` at their base prices (potionRecipies: potion, spices, herbs, gemstones, rank,
+    // 2 more; 15 of 7 bytes), or 0 for one with no recipe.
+    uint32_t potion_ingredients(uint8_t* rdram, recomp_context* ctx, int potion) {
+        static uint32_t price[3] = { 0, 0, 0 };  // spice, herb, gemstone (item IDs 0x111..0x113)
+        if (price[0] == 0) {  // ItemInstance::GetPrice on a stand-in holding just the ingredient's ID
+            const gpr probe = kFairText + 0x100;
+            for (int k = 0; k < 3; k++) {
+                MEM_H(0, probe) = (int16_t)(0x111 + k);
+                price[k] = base_price(rdram, ctx, probe);
+            }
+        }
+        for (int r = 0; r < 15; r++) {
+            const gpr rec = (gpr)(int32_t)0x800D7960 + 7 * r;
+            if (MEM_BU(0, rec) == potion) {
+                return MEM_BU(1, rec) * price[0] + MEM_BU(2, rec) * price[1] + MEM_BU(3, rec) * price[2];
+            }
+        }
+        return 0;
+    }
+}
+
+// GetGoldPrice with its price in v1 (a0 the item, s0 set while selling): fair trade's floor, honest alchemy's cap.
+extern "C" void aidyn_shop_price(uint8_t* rdram, recomp_context* ctx) {
+    const gpr item = ctx->r4;
+    if (!heap_pointer(item)) return;
+    const bool selling = ctx->r16 != 0;
+    // developers: AIDYN_FAIR_TEST_F=<f> sets the barter factor the next prices are made with (a party out-ranking the
+    // keeper is negative), to see the rules act without one
+    static const char* test_f = std::getenv("AIDYN_FAIR_TEST_F");
+    if (test_f != nullptr) MEM_W(0, (gpr)(int32_t)0x800DEA60) = (int32_t)f32_bits(std::strtof(test_f, nullptr));
+    const float f = read_f32(rdram, (gpr)(int32_t)0x800DEA60);  // gBarterFloat
+    uint32_t price = (uint32_t)ctx->r3 & 0xFFFF;
+    if (!selling && fair_on(1)) {
+        const uint32_t sell = (uint32_t)std::max(0.0f, (float)base_price(rdram, ctx, item) * (1.0f - f) * 0.5f);
+        price = std::max(price, sell);
+    }
+    if (selling && fair_on(2) && (MEM_HU(0, item) >> 8) == 16) {  // DB_POTION
+        const uint32_t cost = potion_ingredients(rdram, ctx, MEM_HU(0, item) & 0xFF);
+        if (cost > 0) price = std::min(price, cost);
+    }
+    static const bool log = std::getenv("AIDYN_FAIR_LOG") != nullptr;  // developers: each price the shop asks
+    if (log) {
+        const bool potion = (MEM_HU(0, item) >> 8) == 16;
+        fprintf(stdout, "Fair play: item %04x %s, f %.2f, base %u, game %u, now %u%s\n", MEM_HU(0, item), selling ? "sold" : "bought",
+                f, base_price(rdram, ctx, item), (uint32_t)ctx->r3 & 0xFFFF, price,
+                potion ? (", ingredients " + std::to_string(potion_ingredients(rdram, ctx, MEM_HU(0, item) & 0xFF))).c_str() : "");
+        fflush(stdout);
+    }
+    ctx->r3 = price;
+}
+
+// Once a second while playing: stats a save cut to 5 bits back to their real value (see above).
+void fair_fix_stats(uint8_t* rdram, recomp_context* ctx) {
+    static auto next = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next) return;
+    next = now + std::chrono::seconds(1);
+    // only while a game is being played (the title keeps a party from before, half freed)
+    if (heap_pointer(MEM_W(0, kTitleScreen)) || MEM_BU(0, kTrekState) != 1) return;
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684), edb = MEM_W(0, (gpr)(int32_t)0x800E2830);
+    if (!heap_pointer(party) || !heap_pointer(edb) || !heap_pointer(MEM_W(0x10, edb))) return;
+    for (int i = 0; i < 4; i++) {
+        const gpr sheet = MEM_W(4 * i, party);
+        const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0;
+        if (!heap_pointer(stats)) continue;
+        const uint16_t id = MEM_HU(0, sheet);
+        if ((id >> 8) != 2) continue;  // an entity (DB_ENTITY), or GetIDIndex stops the game
+        const uint32_t idx = call_game(rdram, ctx, GetIDIndex, id, 0, 0) & 0xFF;
+        if (idx >= MEM_BU(0, edb)) continue;
+        const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)idx);  // signed: a uint32 sum wouldn't sign-extend
+        for (int st : { 0, 1, 2, 4 }) {  // INT, WIL, DEX, STR: the 5-bit ones (EntityRAM stats at +0x39, StatEnum order)
+            const int start = MEM_BU(0x39 + st, ent), base = MEM_BU(st, stats);
+            if (start < 32 || base >= 32) continue;  // only a value the save's 5 bits couldn't hold was cut
+            MEM_B(st, stats) = (int8_t)(base + 32);
+            MEM_B(14 + st, stats) = (int8_t)(MEM_BU(14 + st, stats) + 32);  // magicMod (a copy of Base when loaded)
+            for (int arr : { 7, 21 }) {  // health, Modded: wrapped too when they were 32 or more
+                const int v = MEM_BU(arr + st, stats);
+                if (std::abs(v + 32 - (base + 32)) < std::abs(v - (base + 32))) MEM_B(arr + st, stats) = (int8_t)(v + 32);
+            }
+            static int told = 0;
+            if (told++ < 8) {
+                fprintf(stdout, "Stats: stat %d of party member %d was %d in the save (5 bits): %d again\n", st, i, base, base + 32);
+                fflush(stdout);
+            }
+        }
+    }
+}
+
+// The New Game panel (over the title screen): the three rules, left and right change the highlighted one, A begins (the
+// game's own New Game, its name entry, with the choice kept for the game about to start), B goes back.
+namespace {
+    struct FairPanel {
+        bool open = false, closing = false, begin = false;
+        int fade = 0, pulse = 0, repeat = 0, row = 0;
+        uint32_t held = 0xFFFFFFFF;
+        uint32_t menu = 0, widget = 0;  // processIntroMenu's arguments, to call it once A is pressed
+        bool passing = false;           // calling it ourselves: not ours to open
+    } fp;
+}
+
+bool fair_panel_open(uint8_t* rdram, recomp_context* ctx) {
+    if (fp.passing) return false;
+    fp = FairPanel{};
+    fp.open = true;
+    fp.menu = (uint32_t)ctx->r4;
+    fp.widget = (uint32_t)ctx->r5;
+    fair_pending = FairRules{};
+    aidyn::input::set_capture(true);
+    return true;
+}
+
+gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (!fp.open) return g;
+    if (!heap_pointer(MEM_W(0, kTitleScreen))) {
+        fp = FairPanel{};
+        aidyn::input::set_capture(false);
+        return g;
+    }
+    uint32_t b = 0;
+    float sx = 0.0f, sy = 0.0f;
+    aidyn::input::captured(&b, &sx, &sy);
+    if (sy > 0.5f) b |= 0x0800;
+    if (sy < -0.5f) b |= 0x0400;
+    if (sx < -0.5f) b |= 0x0200;
+    if (sx > 0.5f) b |= 0x0100;
+    const uint32_t pressed = fp.held == 0xFFFFFFFF ? 0 : (b & ~fp.held);
+    fp.held = (fp.held == 0xFFFFFFFF && (b & 0x8000)) ? 0xFFFFFFFF : b;
+    const uint32_t dirs = b & 0x0F00;
+    fp.repeat = dirs != 0 ? fp.repeat + 1 : 0;
+    const uint32_t act = pressed | ((fp.repeat > 24 && fp.repeat % 6 == 0) ? dirs : 0);
+    constexpr float kLeft = 50.0f, kRight = 270.0f, kTop = 62.0f, kStep = 15.0f;
+    if (!fp.closing && fp.fade == 255) {
+        static uint32_t seen = 0;
+        const PointerPick p = pointer_pick(kTop - 2.0f, kStep, 3, kLeft - 8.0f, kRight + 4.0f, seen);
+        if (p.row >= 0 && p.row != fp.row) { fp.row = p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0800) { fp.row = (fp.row + 2) % 3; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0400) { fp.row = (fp.row + 1) % 3; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0300) { fair_pending.on[fp.row] = !fair_pending.on[fp.row]; rc_sound(rdram, ctx, 0x740, 60); }
+        if (pressed & 0x8000) { fp.begin = true; fp.closing = true; rc_sound(rdram, ctx, 0x740, 60); }
+        else if (pressed & (0x4000 | 0x1000)) { fp.closing = true; rc_sound(rdram, ctx, 0x741, 60); }
+    }
+    fp.fade = std::clamp(fp.fade + (fp.closing ? -60 : 60), 0, 255);
+    if (fp.closing && fp.fade == 0 && b == 0) {
+        const bool begin = fp.begin;
+        const uint32_t menu = fp.menu, widget = fp.widget;
+        fp = FairPanel{};
+        aidyn::input::set_capture(false);
+        if (begin) {  // the game's own New Game now (its name entry), this choice the new playthrough's
+            fair = fair_pending;
+            fair.known = true;
+            healed_since_rest.clear();
+            fprintf(stdout, "Fair play: new game, rules %d%d%d\n", fair.on[0], fair.on[1], fair.on[2]);
+            fflush(stdout);
+            fp.passing = true;
+            call_game(rdram, ctx, processIntroMenu, menu, widget);
+            fp.passing = false;
+        }
+        return g;
+    }
+    fp.pulse++;
+    const int fade = fp.fade;
+    const CtlHost h{ true, fade, fp.closing, fp.pulse, 0 };
+    const float centre = 160.0f;
+    g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 194.0f, (uint32_t)fade);
+    g = ctl_state(rdram, ctx, g);
+    g = ctl_text(rdram, ctx, g, "Fair Play", centre, 26.0f, 0.9f, 0xE8C060, fade, false, true);
+    g = ctl_text(rdram, ctx, g, "Fixes for the original's loopholes, set for the whole game.", centre, 46.0f, 0.5f, 0xC8BFA8,
+                 fade, false, true);
+    for (int i = 0; i < 3; i++) {
+        const float y = kTop + kStep * i;
+        const uint32_t ink = i == fp.row ? ctl_highlight(h) : 0xF2E6C8;
+        g = ctl_text(rdram, ctx, g, kFairNames[i], kLeft, y, 0.7f, ink, fade);
+        g = ctl_text(rdram, ctx, g, fair_pending.on[i] ? "On" : "Off", kRight, y, 0.7f,
+                     fair_pending.on[i] ? 0xE8C060 : 0x8C8470, fade, true);
+    }
+    const float dy = kTop + kStep * 3 + 6.0f;
+    g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][0], centre, dy, 0.55f, 0xF2E6C8, fade, false, true);
+    g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][1], centre, dy + 9.0f, 0.55f, 0xF2E6C8, fade, false, true);
+    const std::string warn = std::string("Off: the achievement ") + kFairAch[fp.row] + " can't be earned in this game.";
+    g = ctl_text(rdram, ctx, g, warn, centre, dy + 22.0f, 0.5f, fair_pending.on[fp.row] ? 0x8C8470 : 0xE8A050, fade, false, true);
+    const bool kb = aidyn::input::keyboard_last();
+    const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
+    g = ctl_text(rdram, ctx, g, a_key + ": begin   left / right: change   " + b_key + ": back", centre, 167.0f, 0.55f, 0xC8BFA8,
+                 fade, false, true);
+    return g;
+}
+
+// The ReChronicled page's Fair play row (A): which rules this playthrough has.
+void fair_show(uint8_t* rdram, recomp_context* ctx) {
+    static constexpr const char* kShort[3] = { "Healer", "Trade", "Alchemy" };  // short: the notice is one line
+    std::string t = "Fair play: none (an older game)";
+    if (fair.known) {
+        t = "Fair play: ";
+        for (int i = 0; i < 3; i++) t += std::string(i ? ", " : "") + kShort[i] + (fair_on(i) ? " on" : " off");
+    }
+    notice(t.c_str(), 6000);
+    rc_sound(rdram, ctx, 0x740, 60);
 }
 
 // ---- Keys on the prompts (#44) ----

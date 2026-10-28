@@ -555,11 +555,14 @@ int main(int argc, char** argv) {
     }
 
     std::filesystem::create_directories(data_folder());
-    aidyn::platform::start_log(data_folder() / "logs", g_args);
-    recomp::register_config_path(data_folder());
-    // settings.json: AIDYN_SETTINGS_DIR points at another folder (tests).
+    // settings.json: AIDYN_SETTINGS_DIR points at another folder (tests). A test run keeps its logs and its session
+    // marker there too, away from the player's (a test beside a real session would report it, or end its marker).
     const char* settings_dir = std::getenv("AIDYN_SETTINGS_DIR");
-    aidyn::settings::load(settings_dir != nullptr && *settings_dir != '\0' ? std::filesystem::path(settings_dir) : data_folder());
+    const std::filesystem::path own_folder =
+        settings_dir != nullptr && *settings_dir != '\0' ? std::filesystem::path(settings_dir) : data_folder();
+    aidyn::platform::start_log(own_folder / "logs", g_args);
+    recomp::register_config_path(data_folder());
+    aidyn::settings::load(own_folder);
 
     if (version_flag >= 0) {
         aidyn::settings::use_rom_patch(version_flag == 1   ? aidyn::settings::RomPatch::AidynPatch
@@ -620,7 +623,7 @@ int main(int argc, char** argv) {
     aidyn::watch::install_crash_signals();
     // A session that didn't close properly last time gets its report now (src/main/watch.cpp); the --report run (the
     // launcher's, after a crash) clears the marker, its own report covering it.
-    aidyn::watch::session_start(data_folder(), !report_reason.empty());
+    aidyn::watch::session_start(own_folder, !report_reason.empty());
     std::atexit(aidyn::watch::session_end);
     if (!report_reason.empty()) {
         const std::filesystem::path made = aidyn::report::make(report_reason);

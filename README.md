@@ -405,22 +405,45 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 65 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
+- **Achievements (#42).** 68 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
   of the bog, Elisheva's tomb),
-  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (5). Most are read from the event flags the game
-  keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, stats and skills), a few
-  counted by the port (fights won, a flawless fight, a camp ambush survived, a fight fled, gold, levels, a full party).
+  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (8: five, and the three
+  fair play ones). Most are read from the event flags the game
+  keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, a spell learned, stats
+  and skills), a few counted by the port (a potion brewed: `Party::CraftPotion`'s result; fights won, a flawless fight,
+  a camp ambush survived, a fight fled, gold, levels, a full party).
   **Only what is done in play counts**: when a game starts or a save is loaded, what it already holds (flags, level,
   gold, party size: the first 3 seconds) is its starting point, and an achievement unlocks only when its flag comes on
   after that (or a level, gold or party size crosses its threshold), so loading a late save never unlocks the story so
   far. Each version (Original, Aidyn Patch, Aidyn Plus, Action Edition) keeps its own progress beside its saves
-  (`achievements-<pak>.txt`, not in a save), so it adds up across playthroughs; nothing unlocks while the game's own
-  Cheater flag is set. Each unlock shows a toast at the top right while walking about (the turn bar's pieces with the
+  (`achievements-<pak>.txt`, not in a save), so it adds up across playthroughs; nothing unlocks in a game where a
+  cheat code was used (below). Each unlock shows a toast at the top right while walking about (the turn bar's pieces with the
   group's medal, painted by Codex; its metal is the version's: bronze for Original, silver for Aidyn Patch, gold for
-  Aidyn Plus, rose copper for Action Edition). Every locked one shows as `???` (its title and medal appear when earned), so each group can be counted. The title menu's **Achievements** shows all four
-  versions with a progress bar and their counts, A opens one's list; the pause menu's ReChronicled page has this
-  version's list: grouped, a medal and the day each was earned. `AIDYN_ACHIEVEMENTS=0` turns them off;
-  `AIDYN_ACH_LOG=1` logs each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once (tests).
+  Aidyn Plus, rose copper for Action Edition). The story, the side quests, the companions and the optional bosses
+  show as `???` until earned (so each group can still be counted); the rest (the story's bosses, exploration, growth,
+  feats, fair play) show their names from the start. Under the list, the highlighted one says how it is earned (a
+  secret one once it has been). The title menu's **Achievements** shows all four versions with a progress bar and
+  their counts, A opens one's list; the pause menu's Menu page has **Achievements** (after Help) with this version's
+  list: grouped, a medal and the day each was earned. `AIDYN_ACHIEVEMENTS=0` turns them off; `AIDYN_ACH_LOG=1` logs
+  each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once and `AIDYN_SET_FLAGS=f,f` sets event flags as a game begins
+  (tests).
+- **Fair play.** New Game opens a panel of three fixes for the original's loopholes, each on by default and fixed for
+  that playthrough (shown, not changeable, on the ReChronicled page's Fair play row); each has an achievement for
+  finishing the game with it on, and the panel says that turning it off rules that achievement out:
+  - *Healer rule* (Honest Healer): a healer can't lay hands on someone who healed them since the party last rested
+    (camping or an inn, `Party::CampHeal`), so two healers can't heal each other up for free (#33).
+  - *Fair trade* (Fair Trader): a shop never sells an item for less than it would pay for it. The game prices with
+    f = (the keeper's Merchant - the party's best) x 0.05, buying at price x markup x (1 + f) and selling at base price
+    x (1 - f) / 2, so a party that out-ranks the keeper (by 7, or at all on half-price stock) could buy and sell back at
+    a profit for ever.
+  - *Honest alchemy* (True Alchemist): a potion sells for no more than its ingredients' base price (the original sold a
+    Restore Potion brewed from 150 gold of reagents for about 1,200; Aidyn Patch and Action Edition repriced potions).
+  The choice goes with each save the port writes (`save-rules.txt` beside the saves, by the save's hash); a save made
+  before has none of the rules and its playthrough can't earn their achievements. The game's cheat codes (typed as a
+  name: `!cheater`, `!bingo`, `!slashing`, `!darkside`) stop all achievements in that playthrough.
+- **Sholeh's intelligence.** Saves keep intelligence, willpower, dexterity and strength in 5 bits (at most 31): Sholeh
+  starts with 35 intelligence (the original, Aidyn Patch) and came back from every save with 3. A stat whose starting
+  value is 32 or more and that a save cut below 32 gets its 32 back (`fair_fix_stats`, once a second).
 - **The mouse pointer on the port's own pages.** On the ReChronicled, Display, Controls, Achievements and Versions
   pages, moving the pointer over a row highlights it (a click is A as usual: it then acts on that row);
   `aidyn::controls::pointer` maps the window to the menus' 320 x 240 units. The game's own scroll lists (the pause
