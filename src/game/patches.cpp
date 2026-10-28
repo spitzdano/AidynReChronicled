@@ -8581,9 +8581,10 @@ namespace {
         return out;
     }
 
-    // The side quests are hidden achievements: nothing of one shows until it is earned (no ??? row, not in the group's
-    // header, not in the totals), so a player isn't told they exist.
-    bool ach_hidden(const Achievement& a) { return ach_cat(a.id) == kCatSide; }
+    // A hidden achievement shows nothing until it is earned (no ??? row, not in the group's header or the totals). None
+    // is hidden now (spitzdano: the side quests and optional bosses show as ??? so they can be counted); kept so one can
+    // be again.
+    bool ach_hidden(const Achievement&) { return false; }
 
     // What a version has earned, and the total it is out of (every achievement but the hidden ones not yet earned).
     struct AchCount { int earned, total; };
@@ -8658,9 +8659,8 @@ namespace {
             const float y = y0 + kCtlRowStep * i;
             if (r.a == nullptr) {
                 g = ctl_text(rdram, ctx, g, kCatNames[r.cat], left, y, kCtlScale, top + i == row ? highlight : ink.head, fade);
-                g = ctl_text(rdram, ctx, g, r.cat == kCatSide ? std::to_string(r.earned) + " found"
-                                                              : std::to_string(r.earned) + " / " + std::to_string(r.total),
-                             right, y, 0.5f, ink.head, fade, true);
+                g = ctl_text(rdram, ctx, g, std::to_string(r.earned) + " / " + std::to_string(r.total), right, y, 0.5f,
+                             ink.head, fade, true);
                 continue;
             }
             const auto it = unlocked.find(r.a->id);
