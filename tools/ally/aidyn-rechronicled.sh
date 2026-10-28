@@ -25,4 +25,11 @@ case $status in
         fi
         ;;
 esac
+# A personal after-run hook (e.g. a save sync): ~/.config/AidynReChronicled/after-run, if there is one, runs after the
+# game with its exit status; its output goes to the log.
+hook=${XDG_CONFIG_HOME:-$HOME/.config}/AidynReChronicled/after-run
+if [[ -x $hook ]]; then
+    echo "== after-run: $hook" >>"$logs/last-run.log"
+    timeout 120 "$hook" "$status" >>"$logs/last-run.log" 2>&1
+fi
 exit $status

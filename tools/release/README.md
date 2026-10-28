@@ -176,6 +176,9 @@ All in the data folder (see "Your ROM and the data folder"):
 - `reports/`: problem reports, one `.zip` each with the logs, settings and saves: written by the game when it
   crashes, or by **Report a problem** on the pause menu's ReChronicled page. Send the newest with a few words on what
   happened.
+- Linux, optional: an executable `~/.config/AidynReChronicled/after-run` (outside this folder) is run by
+  `aidyn-rechronicled.sh` after each game with the game's exit status, its output in `logs/last-run.log`: a place for
+  your own script, e.g. copying your saves somewhere.
 - `texture-packs/`: HD texture packs of your own (folders, or `.rtz` files). This release includes, next to the game
   (in its own `texture-packs`), the newly painted art (`rechronicled-art`: every portrait, the item and equipment-slot
   icons, the button prompts, redrawn HUD pieces, the map page's land and 2,113 of the 2,115 world textures), the HD
