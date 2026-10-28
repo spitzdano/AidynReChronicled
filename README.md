@@ -711,8 +711,14 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   model from an OBJ file (a Borg2: the bounding box, vertices and F3DEX2 display lists, keeping the original's display
   lists, materials, scale and placement; normals for a lit mesh, colours for one with material flag `0x8`).
   `AIDYN_ASSET_DIR=<folder>` with `<index in hex>.bin` files loads them, `AIDYN_ASSET_LOG=1` lists every asset as it
-  loads. Tested on the shields: the Kite Shield (`352e`, the goblins') and the Buckler (`3520`) as a hexagonal spiked
-  shield, drawn, textured and shaded in combat; the converter rebuilds the Small Shield's own mesh exactly.
+  loads. `borg2_mesh.py export` writes a mesh as an OBJ (one group per display list, texture coordinates over the area
+  each list's texture covers), and `tools/models/roundtrip_check.py` checks that a mesh exported and built again draws
+  the same. Tested on the shields (the Kite Shield `352e`, the goblins', and the Buckler `3520` as a hexagonal spiked
+  shield, in combat) and on characters, which are rigid parts: Alaron's model (`25cb`) is 17 meshes on 17 of its 24
+  bones, all in the model's own space; with his torso widened and his hands made 2.5x bigger, the game's own
+  animations move them while he walks. All 17 and the shields round-trip exactly. Those 17 meshes are a body other
+  characters share (at least six models), so a mesh replaced changes all of them; a character of its own would need
+  its own copies.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while

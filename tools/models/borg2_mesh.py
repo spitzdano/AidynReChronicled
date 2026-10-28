@@ -2,7 +2,8 @@
 """borg2_mesh.py: a new mesh for one of the game's models, as a replacement for its Borg2 asset (vertices and display
 lists), from a Wavefront OBJ file.
 
-    tools/models/borg2_mesh.py <asset index> <model.obj> <out.bin> [--rom baserom.z64] [--fit-uv]
+    tools/models/borg2_mesh.py build <asset index> <model.obj> <out.bin> [--rom baserom.z64] [--fit-uv]
+    tools/models/borg2_mesh.py export <asset index> <out.obj> [--rom baserom.z64]
 
 The game draws a model (a Borg5: a list of drawing steps) from meshes (Borg2) and textures (Borg1). A Borg2 is one
 relocatable blob (decomp include/borg/borg2.h; offsets made pointers on load by borg2_func_a):
@@ -20,8 +21,11 @@ the model still expects of the mesh is kept from the original asset (from the RO
 OBJ with one usemtl group per list, in order; one list takes every face), each list's material entry, scale, position
 and rotation. Triangles keep the OBJ's winding: counter-clockwise seen from the side that shows, as in Blender's and
 every other tool's OBJ files, and as the game's own meshes are (all 22 of the Small Shield's turn counter-clockwise
-about their normals). --fit-uv maps each vertex flat (x across, y down) into the texture area the
-original's coordinates cover, for a test model without its own texture coordinates.
+about their normals). Texture coordinates: an OBJ's 0..1 (v up) are the area of its texture each display list's own
+coordinates cover in the original (each list draws with its own texture), which is what export writes, so a mesh
+exported and built again is the same. --fit-uv maps each vertex flat (x across, y down) into that area instead, for a
+test model without its own texture coordinates. export writes a mesh as an OBJ in its own units (its bone's space, for
+a character's part), one usemtl group per display list.
 
 A vertex's last four bytes are its normal (x y z as signed bytes, then 255) for a display list the game lights, and its
 colour (r g b a) for one with flag 0x8 in its material entry (the decompilation calls it B2S_Lighting, but the meshes
@@ -56,9 +60,10 @@ def read_template(rom_path, index):
     verts = [VTX.unpack(d[vlist2 + 16 * i:vlist2 + 16 * i + 16]) for i in range(count)]
     materials = [d[mats + 20 * i:mats + 20 * i + 20] for i in range(n)]
     lists = [struct.unpack(">I", d[h[11] + 4 * i:h[11] + 4 * i + 4])[0] for i in range(n)]
-    # The original's triangles (vertex cache indices resolved to vertices), to learn its winding.
+    # Each display list's triangles (vertex cache indices resolved to vertices).
     tris = []
     for off in lists:
+        tris.append([])
         cache = [0] * 32
         k = off
         while True:
@@ -72,16 +77,59 @@ def read_template(rom_path, index):
                     for j in range(num):
                         cache[end - num + j] = first + j
             elif op == 0x05:  # G_TRI1
-                tris.append(tuple(cache[(w0 >> s & 0xFF) // 2] for s in (16, 8, 0)))
+                tris[-1].append(tuple(cache[(w0 >> s & 0xFF) // 2] for s in (16, 8, 0)))
             elif op == 0xDF:
                 break
     return h, verts, materials, tris
+
+
+def uv_boxes(verts, tris):
+    """Per display list, the area (s_lo, s_hi, t_lo, t_hi) of its texture its vertices' coordinates cover."""
+    every = (min(v[4] for v in verts), max(v[4] for v in verts), min(v[5] for v in verts), max(v[5] for v in verts))
+    out = []
+    for t in tris:
+        used = {i for tri in t for i in tri}
+        if not used:
+            out.append(every)
+            continue
+        out.append((min(verts[i][4] for i in used), max(verts[i][4] for i in used),
+                    min(verts[i][5] for i in used), max(verts[i][5] for i in used)))
+    return out
+
+
+def export(index, rom):
+    """The mesh as OBJ text: every vertex (once per display list using it, with that list's texture coordinates),
+    its normal (or, for a coloured list, the colour after the position), one usemtl group per list."""
+    h, verts, materials, tris = read_template(rom, index)
+    boxes = uv_boxes(verts, tris)
+    lines, faces = [f"# asset {index:#x}, exported by borg2_mesh.py"], []
+    n = 0
+    for li, t in enumerate(tris):
+        coloured = bool(struct.unpack(">I", materials[li][:4])[0] & 0x8)
+        s_lo, s_hi, t_lo, t_hi = boxes[li]
+        local = {}
+        for i in sorted({i for tri in t for i in tri}):
+            v = verts[i]
+            n += 1
+            local[i] = n
+            if coloured:
+                lines.append(f"v {v[0]} {v[1]} {v[2]} " + " ".join(f"{(c & 0xFF) / 255:.4f}" for c in v[6:9]))
+            else:
+                lines.append(f"v {v[0]} {v[1]} {v[2]}")
+            lines.append(f"vt {(v[4] - s_lo) / ((s_hi - s_lo) or 1):.6f} {1 - (v[5] - t_lo) / ((t_hi - t_lo) or 1):.6f}")
+            nv = [c / 127 for c in v[6:9]] if not coloured else [0.0, 1.0, 0.0]
+            lines.append(f"vn {nv[0]:.5f} {nv[1]:.5f} {nv[2]:.5f}")
+        faces.append(f"usemtl list{li}")
+        for tri in t:
+            faces.append("f " + " ".join(f"{local[i]}/{local[i]}/{local[i]}" for i in tri))
+    return "\n".join(lines + faces) + "\n"
 
 
 def read_obj(path):
     """(positions, colours, uvs, normals, groups): colours per position (None without them), groups a list of faces,
     each face a list of (v, vt, vn) indices (0-based, vt / vn None when absent), one group per usemtl (or one for all)."""
     pos, col, uv, nrm, groups = [], [], [], [], [[]]
+    named = False  # a usemtl seen: from then on every group counts, empty or not (a mesh can have an empty list)
     for line in Path(path).read_text().splitlines():
         p = line.split()
         if not p or p[0].startswith("#"):
@@ -94,15 +142,16 @@ def read_obj(path):
         elif p[0] == "vn":
             nrm.append(tuple(float(x) for x in p[1:4]))
         elif p[0] == "usemtl":
-            if groups[-1]:
+            if named or groups[-1]:
                 groups.append([])
+            named = True
         elif p[0] == "f":
             face = []
             for c in p[1:]:
                 ix = (c.split("/") + ["", ""])[:3]
                 face.append(tuple(int(x) - 1 if x else None for x in ix))
             groups[-1].append(face)
-    return pos, col, uv, nrm, [g for g in groups if g]
+    return pos, col, uv, nrm, groups if named else [g for g in groups if g]
 
 
 def normalize(v):
@@ -111,13 +160,12 @@ def normalize(v):
 
 
 def build(index, obj, rom, fit_uv):
-    h, tverts, materials, _ = read_template(rom, index)
+    h, tverts, materials, ttris = read_template(rom, index)
+    boxes = uv_boxes(tverts, ttris)
     pos, col, uv, nrm, groups = read_obj(obj)
     if len(groups) != len(materials):
         raise SystemExit(f"borg2_mesh.py: the OBJ has {len(groups)} usemtl group(s), the original {len(materials)} "
                          "display list(s)")
-    s_lo, s_hi = min(v[4] for v in tverts), max(v[4] for v in tverts)
-    t_lo, t_hi = min(v[5] for v in tverts), max(v[5] for v in tverts)
     x_lo, x_hi = min(p[0] for p in pos), max(p[0] for p in pos)
     y_lo, y_hi = min(p[1] for p in pos), max(p[1] for p in pos)
 
@@ -131,7 +179,8 @@ def build(index, obj, rom, fit_uv):
     # The original's average vertex colour (for its coloured display lists), which tints its texture.
     tone = [sum((v[6 + i] & 0xFF) for v in tverts) / len(tverts) / 255 for i in range(3)]
 
-    def vertex(corner, fn, coloured):
+    def vertex(corner, fn, coloured, box):
+        s_lo, s_hi, t_lo, t_hi = box
         p = pos[corner[0]]
         n = normalize(nrm[corner[2]]) if corner[2] is not None and nrm else fn
         if fit_uv or corner[1] is None or not uv:
@@ -182,7 +231,7 @@ def build(index, obj, rom, fit_uv):
 
         pending = []
         for tri, fn in tris:
-            need = [vertex(c, fn, coloured) for c in tri]
+            need = [vertex(c, fn, coloured, boxes[li]) for c in tri]
             new = [v for v in dict.fromkeys(need) if v not in keys]
             if len(batch) + len(new) > 32:
                 flush()
@@ -212,6 +261,9 @@ def build(index, obj, rom, fit_uv):
     dl_offs = []
     for cmds in dl_cmds:
         dl_offs.append(len(out))
+        if not cmds:  # an empty list is a bare G_ENDDL, as the game's are: it skips those
+            out += struct.pack(">II", 0xDF000000, 0)
+            continue
         out += struct.pack(">II", 0x01008010, 0x0E000000)  # G_VTX the box: 8 into slots 0..7
         out += struct.pack(">II", 0x0300000E, 0)           # G_CULLDL 0..7
         for w0, w1 in cmds:
@@ -234,12 +286,23 @@ def build(index, obj, rom, fit_uv):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("index", type=lambda s: int(s, 0), help="the Borg2 asset it replaces (e.g. 0x3533)")
-    ap.add_argument("obj", type=Path)
-    ap.add_argument("out", type=Path)
-    ap.add_argument("--rom", type=Path, default=Path(__file__).resolve().parents[2] / "baserom.z64")
-    ap.add_argument("--fit-uv", action="store_true", help="map the texture flat across the mesh (x across, y down)")
+    sub = ap.add_subparsers(dest="mode", required=True)
+    rom_default = Path(__file__).resolve().parents[2] / "baserom.z64"
+    b = sub.add_parser("build", help="a mesh from an OBJ, to replace the asset")
+    b.add_argument("index", type=lambda s: int(s, 0), help="the Borg2 asset it replaces (e.g. 0x3533)")
+    b.add_argument("obj", type=Path)
+    b.add_argument("out", type=Path)
+    b.add_argument("--rom", type=Path, default=rom_default)
+    b.add_argument("--fit-uv", action="store_true", help="map the texture flat across the mesh (x across, y down)")
+    e = sub.add_parser("export", help="the asset's mesh as an OBJ")
+    e.add_argument("index", type=lambda s: int(s, 0))
+    e.add_argument("obj", type=Path)
+    e.add_argument("--rom", type=Path, default=rom_default)
     args = ap.parse_args()
+    if args.mode == "export":
+        args.obj.write_text(export(args.index, args.rom))
+        print(f"borg2_mesh.py: {args.obj}")
+        return
     blob, verts, tris = build(args.index, args.obj, args.rom, args.fit_uv)
     args.out.write_bytes(blob)
     print(f"borg2_mesh.py: {args.out} ({len(blob)} bytes): {verts} vertices, {tris} triangles")
