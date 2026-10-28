@@ -5868,6 +5868,69 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
+// ---- Asset files ----
+// Any of the game's assets (a Borg: a mesh, a texture, a model...) can come from a file in place of the ROM's: getBorgItem
+// reads the asset's listing (type, compression, compressed and uncompressed sizes, offset) to its stack (+0x18),
+// allocates the uncompressed size and decompresses the ROM's data into it, then sets it up (its pointers) as usual. With
+// a file for the asset, the listing's size becomes the file's (0x80098D98, after the listing is read: s3 the index) and
+// decompressBorg (its entry: a2 the buffer, a3 the size) copies the file in instead of decompressing. Everything after
+// is the game's own, so a file in the asset's own format works as the original would. A first test (tools/models/
+// borg2_mesh.py: a new mesh for a model from an OBJ); developers only for now: AIDYN_ASSET_DIR=<folder> with
+// <index in hex>.bin files (3533.bin: the Small Shield's mesh); AIDYN_ASSET_LOG=1 lists every asset as it loads.
+namespace {
+    struct AssetFile {
+        bool checked = false;
+        std::vector<uint8_t> bytes;
+    };
+    std::map<uint32_t, AssetFile> asset_files;
+    uint32_t asset_pending = 0xFFFFFFFF;  // the index getBorgItem is loading from a file, until decompressBorg copies it
+
+    const std::vector<uint8_t>* asset_file(uint32_t index) {
+        static const char* dir = std::getenv("AIDYN_ASSET_DIR");
+        if (dir == nullptr || *dir == '\0') return nullptr;
+        AssetFile& f = asset_files[index];
+        if (!f.checked) {
+            f.checked = true;
+            char name[16];
+            snprintf(name, sizeof name, "%04x.bin", index);
+            std::ifstream in(std::filesystem::path(dir) / name, std::ios::binary);
+            if (in) {
+                f.bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                fprintf(stdout, "Asset files: %s (%zu bytes) for asset %#x\n", name, f.bytes.size(), index);
+                fflush(stdout);
+            }
+        }
+        return f.bytes.empty() ? nullptr : &f.bytes;
+    }
+}
+
+extern "C" void aidyn_asset_listing(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t index = (uint32_t)ctx->r19;
+    static const bool log = std::getenv("AIDYN_ASSET_LOG") != nullptr;  // every asset as it loads: which to replace
+    if (log) {
+        fprintf(stdout, "Asset files: loading %#x (type %u, %u bytes)\n", index, MEM_HU(0x18, ctx->r29),
+                (uint32_t)MEM_W(0x20, ctx->r29));
+        fflush(stdout);
+    }
+    const std::vector<uint8_t>* file = asset_file(index);
+    asset_pending = file != nullptr ? index : 0xFFFFFFFF;
+    if (file != nullptr) {
+        MEM_W(0x20, ctx->r29) = (int32_t)file->size();  // BorgListing.uncompressed
+    }
+}
+
+extern "C" int aidyn_asset_decompress(uint8_t* rdram, recomp_context* ctx) {
+    if (asset_pending == 0xFFFFFFFF) return 0;
+    const std::vector<uint8_t>* file = asset_file(asset_pending);
+    if (file == nullptr || (uint32_t)ctx->r7 != file->size()) return 0;
+    asset_pending = 0xFFFFFFFF;
+    const gpr dest = ctx->r6;
+    for (size_t i = 0; i < file->size(); i++) {
+        MEM_B(i, dest) = (int8_t)(*file)[i];
+    }
+    return 1;
+}
+
 // ---- Buckler ----
 // The Buckler's model (BORG5_ShieldBuckler; its vertices and display list are BORG2 asset 0x3520) was exported with
 // every texture coordinate inside a patch of about 5x5 of its texture's 32x32 texels, so in the game its face shows a

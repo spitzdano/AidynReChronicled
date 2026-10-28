@@ -1028,3 +1028,16 @@ text = "extern int aidyn_emptied_for_good(uint8_t* rdram, recomp_context* ctx); 
 func = "func_8002583C"
 before_vram = 0x8002583C
 text = "extern int aidyn_party_row(uint8_t* rdram, recomp_context* ctx); if (aidyn_party_row(rdram, ctx)) return;"
+
+# Asset files (src/game/patches.cpp, "Asset files"; AIDYN_ASSET_DIR): getBorgItem once it has read an asset's listing
+# (s3 the index, the listing at sp+0x18) takes a file's size for one there is a file for, and decompressBorg's entry
+# copies the file in place of decompressing the ROM's data.
+[[patches.hook]]
+func = "getBorgItem"
+before_vram = 0x80098D98
+text = "extern void aidyn_asset_listing(uint8_t* rdram, recomp_context* ctx); aidyn_asset_listing(rdram, ctx);"
+
+[[patches.hook]]
+func = "decompressBorg"
+before_vram = 0x800989F0
+text = "extern int aidyn_asset_decompress(uint8_t* rdram, recomp_context* ctx); if (aidyn_asset_decompress(rdram, ctx)) return;"
