@@ -7954,6 +7954,7 @@ namespace {
             { "fair_healer", "Honest Healer", kAchCount, {} },
             { "fair_trade", "Fair Trader", kAchCount, {} },
             { "fair_alchemy", "True Alchemist", kAchCount, {} },
+            { "fair_stay_won", "Settled Scores", kAchCount, {} },
             { "fair_chests", "Fair Finder", kAchCount, {} },
             { "fair_keen_eye", "Keen Eye", kAchCount, {} },
         };
@@ -8010,6 +8011,7 @@ namespace {
             { "fair_healer", "Finish the game with the Healer rule on (Fair Play, at New Game)." },
             { "fair_trade", "Finish the game with Fair trade on (Fair Play, at New Game)." },
             { "fair_alchemy", "Finish the game with Honest alchemy on (Fair Play, at New Game)." },
+            { "fair_stay_won", "Finish the game with Fights stay won on (Fair Play, at New Game)." },
             { "fair_chests", "Finish the game with Chests stay empty on (Fair Play, at New Game)." },
             { "fair_keen_eye", "Finish the game without the treasure sparkle (Fair Play, at New Game)." },
         };
@@ -8099,8 +8101,9 @@ namespace {
         std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&t));
         ach.unlocked[id] = when;
         if (id == "story_named") {  // the ending: the fair play rules kept all game
-            static const char* kFair[5] = { "fair_healer", "fair_trade", "fair_alchemy", "fair_keen_eye", "fair_chests" };
-            for (int i = 0; i < 5; i++) {
+            static const char* kFair[6] = { "fair_healer", "fair_trade", "fair_alchemy", "fair_keen_eye", "fair_chests",
+                                            "fair_stay_won" };
+            for (int i = 0; i < 6; i++) {
                 if (fair_rule_kept(i)) ach_unlock(kFair[i]);
             }
         }
@@ -9347,7 +9350,7 @@ void title_versions_watchdog() {
 // Always on, outside the panel: Sholeh's intelligence (35 in the original and Aidyn Patch) is saved in 5 bits and came
 // back as 3; any stat a save cut below the character's starting value gets its 32 back (fair_fix_stats).
 // The ReChronicled page's Fair play row says which are on (it can't change them).
-//   Fights stay won (no achievement of its own) a group of monsters beaten stays beaten. The game brings back a group
+//   Fights stay won (Settled Scores) a group of monsters beaten stays beaten. The game brings back a group
 //                   that has no "defeated" flag of its own (52 of its 1,085 groups, such as the Gwernia inn cellar's
 //                   bats, and townsfolk who fight once spoken to) after three trips through a door or to another map
 //                   (its voxel chart, 19 places, counts them down: WriteTo_VoxelChart's last argument 3, in
@@ -9377,8 +9380,8 @@ namespace {
     constexpr int kFairRows = 6, kStayWonRow = 3, kChestsRow = 4, kSparkleRow = 5;
     constexpr const char* kFairNames[kFairRows] = { "Healer rule", "Fair trade", "Honest alchemy", "Fights stay won",
                                                      "Chests stay empty", "Treasure sparkle" };
-    constexpr const char* kFairAch[kFairRows] = { "Honest Healer", "Fair Trader", "True Alchemist", nullptr, "Fair Finder",
-                                                   "Keen Eye" };
+    constexpr const char* kFairAch[kFairRows] = { "Honest Healer", "Fair Trader", "True Alchemist", "Settled Scores",
+                                                   "Fair Finder", "Keen Eye" };
     constexpr const char* kFairWhy[kFairRows][2] = {
         { "A healer can't lay hands on someone who", "healed them since the party last rested." },
         { "A shop never sells an item for less than", "it would pay you for it." },
@@ -9441,8 +9444,10 @@ namespace {
     std::set<std::pair<uint16_t, uint16_t>> healed_since_rest;
 }
 
-// 0-2 the rules, 3 Keen Eye (never the sparkle), 4 chests stay empty.
-bool fair_rule_kept(int i) { return i < 3 ? fair_on(i) : i == 3 ? fair.known && !fair.sparkle : fair.known && fair.chests; }
+// 0-2 the rules, 3 Keen Eye (never the sparkle), 4 chests stay empty, 5 fights stay won.
+bool fair_rule_kept(int i) {
+    return i < 3 ? fair_on(i) : i == 3 ? fair.known && !fair.sparkle : i == 4 ? fair.known && fair.chests : fair.known && fair.stay_won;
+}
 bool sparkle_on() { return fair.sparkle; }
 
 // The ReChronicled page's Treasure sparkle row (A): on for the rest of this playthrough, once A is pressed twice (the
@@ -9853,7 +9858,6 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][1], centre, dy + 9.0f, 0.55f, 0xF2E6C8, fade, false, true);
     const bool help = fp.row == kSparkleRow;  // the sparkle: on loses its achievement, and stays on
     const std::string warn = help ? std::string("On (for good): the achievement ") + kFairAch[kSparkleRow] + " can't be earned."
-                           : fp.row == kStayWonRow ? std::string("Off: a few groups come back after three doors.")
                            : fp.row == 1 && !fair_trade_offered() ? std::string("Action Edition's shops are its own fix.")
                            : std::string("Off: the achievement ") + kFairAch[fp.row] + " can't be earned in this game.";
     g = ctl_text(rdram, ctx, g, warn, centre, dy + 21.0f, 0.5f, fair_pick(fp.row) != help ? 0x8C8470 : 0xE8A050, fade, false, true);

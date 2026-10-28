@@ -411,9 +411,9 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 70 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
+- **Achievements (#42).** 71 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
   of the bog, Elisheva's tomb),
-  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (10: five, and the five
+  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (11: five, and the six
   fair play ones; Action Edition has no Fair Trader). Most are read from the event flags the game
   keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, a spell learned, stats
   and skills), a few counted by the port (a potion brewed: `Party::CraftPotion`'s result; fights won, a flawless fight,
@@ -434,8 +434,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once and `AIDYN_SET_FLAGS=f,f` sets event flags as a game begins
   (tests).
 - **Fair play.** New Game opens a panel of five fixes for the original's loopholes and one help, each fixed for that
-  playthrough (shown on the ReChronicled page's Fair play row). The fixes are on by default; four have an achievement
-  for finishing the game with them on, and the panel says that turning one off rules that achievement out:
+  playthrough (shown on the ReChronicled page's Fair play row). The fixes are on by default and each has an achievement
+  for finishing the game with it on, and the panel says that turning one off rules that achievement out:
   - *Healer rule* (Honest Healer): a healer can't lay hands on someone who healed them since the party last rested
     (camping or an inn, `Party::CampHeal`), so two healers can't heal each other up for free (#33).
   - *Fair trade* (Fair Trader): a shop never sells an item for less than it would pay for it. The game prices with
@@ -445,7 +445,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
     keeps the original's shopkeepers and prices them the same way, so it has the rule.
   - *Honest alchemy* (True Alchemist): a potion sells for no more than its ingredients' base price (the original sold a
     Restore Potion brewed from 150 gold of reagents for about 1,200; Aidyn Patch and Action Edition repriced potions).
-  - *Fights stay won* (on by default, no achievement): a group of monsters beaten stays beaten. The game brings back
+  - *Fights stay won* (Settled Scores): a group of monsters beaten stays beaten. The game brings back
     the groups that have no "defeated" flag of their own (52 of its 1,085, such as the Gwernia inn cellar's bats, and
     townsfolk who fight once spoken to) after three trips through a door or to another map (its voxel chart). With the
     rule each such win over a group with no conversation is kept with the save (`battle_setup_func`,
