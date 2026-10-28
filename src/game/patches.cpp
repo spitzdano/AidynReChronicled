@@ -10514,3 +10514,8 @@ gpr treasure_sparkle(uint8_t* rdram, recomp_context* ctx, gpr g) {
     }
     return begun ? hud_end(rdram, g) : g;
 }
+
+// src/main/main.cpp graphics_memory_fallback, as the game starts (before its thread runs): a note on the title screen.
+void aidyn_startup_notice(const std::string& text) {
+    notice(text.c_str(), 15000);
+}

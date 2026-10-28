@@ -547,6 +547,13 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   report as Windows' handler does, then end by the same signal so the core dump is kept (the launcher skips its own
   report when one was made). `AIDYN_FREEZE_TEST=1` stops the game thread for 25 s after 10 s of walking about (`=start`:
   20 s after the first frame); `AIDYN_CRASH_TEST=native` tries the crash handlers.
+- **Out of graphics memory** (#47, `graphics_memory_fallback` in `src/main/main.cpp`). A small or shared graphics card
+  (an integrated AMD Radeon at the defaults: 1080 lines, 4x MSAA and 2x supersampling) can't make the renderer's
+  images, and the game crashes as the title screen opens ("vmaCreateImage failed with error code 0xFFFFFFFE" in the
+  log). The next start finds that in `logs/previous-run.log` and turns the graphics down a step, each in
+  `settings.json`: anti-aliasing and supersampling off, then 720 lines, then 480, then the new textures off; a note
+  at the top of the title screen says which ("Graphics memory ran out: anti-aliasing turned off"). The log handled is
+  remembered (`logs/graphics-fallback.txt`), so the same one never turns things down twice.
 - **Quicksaves and autosaves.** Files of their own beside the pak, named after it (`aidyn-patch-quicksave.sav`,
   `-autosave-1.sav`, `-autosave-2.sav`), each the 7 KB `SaveDatStruct` the game writes to the pak. View while walking
   quicksaves; an autosave is made on arriving in another area (a map other than before after a screen fade: doors are

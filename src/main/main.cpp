@@ -282,6 +282,73 @@ void aidyn::set_borderless(bool on, bool save) {
 
 // Anti-aliasing: MSAA through RT64's own settings (RT64Context::update_config rebuilds its targets with the new sample
 // count), supersampling through the resolution it draws at (set_application_user_config, on refresh_aspect's path).
+// Out of graphics memory (#47: an integrated AMD GPU at the defaults, 1080 lines with 4x MSAA and 2x supersampling,
+// stopped as the title screen opened). The renderer can't go on once an image or buffer it needs can't be made (plume
+// prints "vmaCreateImage failed with error code 0xFFFFFFFE", VK_ERROR_OUT_OF_DEVICE_MEMORY, or 0xFFFFFFFF, out of
+// host memory, and the game then crashes), so the next start reads the run before's log (previous-run.log: the
+// Windows game moves last-run.log there as it starts, the Linux launchers before) and turns the graphics down a step:
+// anti-aliasing and supersampling off, then 720 lines, then 480, then the new textures off. A note on the title screen
+// says what changed. The log handled is remembered (graphics-fallback.txt, its size and time), so starting the game
+// without a launcher, which leaves previous-run.log as it was, doesn't turn things down again.
+void aidyn_startup_notice(const std::string& text);  // src/game/patches.cpp
+
+static void graphics_memory_fallback(const std::filesystem::path& logs) {
+    namespace fs = std::filesystem;
+    const fs::path log = logs / "previous-run.log", seen = logs / "graphics-fallback.txt";
+    std::error_code ec;
+    if (!fs::exists(log, ec)) {
+        return;
+    }
+    const auto size = fs::file_size(log, ec);
+    const auto when = fs::last_write_time(log, ec).time_since_epoch().count();
+    const std::string stamp = std::to_string(size) + " " + std::to_string(when);
+    {
+        std::ifstream in(seen);
+        std::string old;
+        if (std::getline(in, old) && old == stamp) {
+            return;
+        }
+    }
+    bool ran_out = false;
+    {
+        std::ifstream in(log);
+        for (std::string line; !ran_out && std::getline(in, line);) {
+            ran_out = (line.find("vmaCreateImage failed with error code 0xFFFFFFF") != std::string::npos ||
+                       line.find("vmaCreateBuffer failed with error code 0xFFFFFFF") != std::string::npos);
+        }
+    }
+    std::ofstream(seen) << stamp << "\n";
+    if (!ran_out) {
+        return;
+    }
+    auto& gfx = aidyn::settings::graphics_rw();
+    std::string what;
+    if (gfx.msaa > 0 || gfx.supersampling > 1) {
+        gfx.msaa = 0;
+        gfx.supersampling = 1;
+        aidyn::settings::save_number("graphics", "msaa", 0);
+        aidyn::settings::save_number("graphics", "supersampling", 1);
+        what = "anti-aliasing turned off";
+    } else if (gfx.render_height == 0 || gfx.render_height > 720) {
+        gfx.render_height = 720;
+        aidyn::settings::save_number("graphics", "render_height", 720);
+        what = "picture now 720 lines";
+    } else if (gfx.render_height > 480) {
+        gfx.render_height = 480;
+        aidyn::settings::save_number("graphics", "render_height", 480);
+        what = "picture now 480 lines";
+    } else if (gfx.textures) {
+        gfx.textures = false;
+        aidyn::settings::save_bool("graphics", "textures", false);
+        what = "new textures turned off";
+    } else {
+        what = "nothing left to turn down";
+    }
+    printf("Graphics: the last run ran out of graphics memory (previous-run.log): %s\n", what.c_str());
+    fflush(stdout);
+    aidyn_startup_notice("Graphics memory ran out: " + what);
+}
+
 void aidyn::set_antialiasing(int msaa, int supersampling) {
     aidyn::settings::graphics_rw().msaa = msaa;
     aidyn::settings::graphics_rw().supersampling = supersampling;
@@ -563,6 +630,7 @@ int main(int argc, char** argv) {
     aidyn::platform::start_log(own_folder / "logs", g_args);
     recomp::register_config_path(data_folder());
     aidyn::settings::load(own_folder);
+    graphics_memory_fallback(own_folder / "logs");
 
     if (version_flag >= 0) {
         aidyn::settings::use_rom_patch(version_flag == 1   ? aidyn::settings::RomPatch::AidynPatch
