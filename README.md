@@ -705,6 +705,14 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   bands. As the model loads (`getBorgItem`, BORG2 asset 0x3520) its coordinates are projected flat across the shield,
   so the texture covers it once. It is the only shield like that: every other one's face covers its texture at least
   half.
+- **Asset files** (a first test, developers only). Any of the game's assets can come from a file in place of the ROM's:
+  `getBorgItem` takes the file's size for the asset (after reading its listing) and `decompressBorg` copies the file in
+  instead of decompressing, and the game sets it up as its own. `tools/models/borg2_mesh.py` makes a new mesh for a
+  model from an OBJ file (a Borg2: the bounding box, vertices and F3DEX2 display lists, keeping the original's display
+  lists, materials, scale and placement; normals for a lit mesh, colours for one with material flag `0x8`).
+  `AIDYN_ASSET_DIR=<folder>` with `<index in hex>.bin` files loads them, `AIDYN_ASSET_LOG=1` lists every asset as it
+  loads. Tested on the shields: the Kite Shield (`352e`, the goblins') and the Buckler (`3520`) as a hexagonal spiked
+  shield, drawn, textured and shaded in combat; the converter rebuilds the Small Shield's own mesh exactly.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while
