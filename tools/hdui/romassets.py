@@ -98,9 +98,14 @@ class Rom:
         return fmt, w, h, pixels, palette
 
 
+# Pictures the decomp leaves unnamed that have redrawn art (art/), named here for it: two portraits (a skull-masked figure
+# and a hooded one) and the halves of the trainer page's "Level Up Rituals" title.
+UNNAMED = {0x117: "Portrait117", 0x170: "Portrait170", 0xE8: "TitleLevelUp", 0xEA: "TitleRituals"}
+
+
 def borg8_names(decomp):
-    """BORG8_* names from the decomp's include/Borgindecies.h: {index: name}."""
-    names = {}
+    """BORG8_* names from the decomp's include/Borgindecies.h, and UNNAMED's: {index: name}."""
+    names = dict(UNNAMED)
     for line in (Path(decomp) / "include/Borgindecies.h").read_text().splitlines():
         m = re.match(r"#define\s+BORG8_(\w+)\s+(0[xX][0-9a-fA-F]+)", line)  # some have two spaces (PortraitBecan),
         # some 0X (the compass's)
