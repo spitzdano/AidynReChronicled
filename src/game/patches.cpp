@@ -276,6 +276,7 @@ extern "C" int aidyn_ui_image_seen(uint8_t* rdram, recomp_context* ctx) {
                 pixels, name, format, width, height, palette, (int)MEM_W(0x00, img));
         fclose(log);
     }
+    return 0;
 }
 
 // Menus drawn this frame. RT64's widescreen keeps some 2D draws centred and stretches others, which pulls apart menus
