@@ -5877,22 +5877,40 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // is the game's own, so a file in the asset's own format works as the original would. A first test (tools/models/
 // borg2_mesh.py: a new mesh for a model from an OBJ); developers only for now: AIDYN_ASSET_DIR=<folder> with
 // <index in hex>.bin files (3533.bin: the Small Shield's mesh); AIDYN_ASSET_LOG=1 lists every asset as it loads.
+//
+// A model's own copy of a mesh: <model>-<mesh>.bin (25cb-203d.bin: Alaron's torso) replaces that mesh in that model only.
+// Meshes are shared (Alaron's 17 body parts are in at least six other characters' models), and getBorgItem hands every
+// model the same loaded copy unless borgFlag (0x800E4850) is set, when it makes a private one (freed with its model:
+// the header's index -1, borg_2_free). InitBorgScene (0x80099B6C, a model's setup: a0 the Borg5Header, its mesh count
+// at +0x18 and mesh indices at +0x3C; its own index still in getBorgItem's s3, the header's written after) notes the meshes the model has its own files for; when it asks for
+// one, getBorgItem's entry sets borgFlag and the file is that one. The private path also clears the mesh's shared cache
+// entry (gBorgpointers[index], gBorgBytes[index]: the arrays at 0x800E4984 / 0x800E4988), which the other models still
+// use: they are saved first and put back, with borgFlag, as getBorgItem returns.
 namespace {
     struct AssetFile {
         bool checked = false;
         std::vector<uint8_t> bytes;
     };
     std::map<uint32_t, AssetFile> asset_files;
+    std::map<std::pair<uint32_t, uint32_t>, AssetFile> model_files;  // (model, mesh) -> its own copy
     uint32_t asset_pending = 0xFFFFFFFF;  // the index getBorgItem is loading from a file, until decompressBorg copies it
+    const std::vector<uint8_t>* asset_pending_file = nullptr;
 
-    const std::vector<uint8_t>* asset_file(uint32_t index) {
+    constexpr gpr kBorgFlag = (gpr)(int32_t)0x800E4850, kBorgPointers = (gpr)(int32_t)0x800E4984,
+                  kBorgBytes = (gpr)(int32_t)0x800E4988;
+    std::vector<uint32_t> model_pending;  // meshes the model being set up has its own files for
+    uint32_t model_current = 0xFFFFFFFF;
+    struct ModelOverride {
+        bool active = false;
+        uint32_t model = 0, mesh = 0;
+        int32_t flag = 0, pointer = 0;
+        uint8_t count = 0;
+    } model_override;
+
+    const std::vector<uint8_t>* read_asset(AssetFile& f, const char* name, uint32_t index) {
         static const char* dir = std::getenv("AIDYN_ASSET_DIR");
-        if (dir == nullptr || *dir == '\0') return nullptr;
-        AssetFile& f = asset_files[index];
         if (!f.checked) {
             f.checked = true;
-            char name[16];
-            snprintf(name, sizeof name, "%04x.bin", index);
             std::ifstream in(std::filesystem::path(dir) / name, std::ios::binary);
             if (in) {
                 f.bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
@@ -5902,6 +5920,76 @@ namespace {
         }
         return f.bytes.empty() ? nullptr : &f.bytes;
     }
+
+    bool assets_on() {
+        static const char* dir = std::getenv("AIDYN_ASSET_DIR");
+        return dir != nullptr && *dir != '\0';
+    }
+
+    const std::vector<uint8_t>* model_file(uint32_t model, uint32_t mesh) {
+        if (!assets_on()) return nullptr;
+        char name[24];
+        snprintf(name, sizeof name, "%04x-%04x.bin", model, mesh);
+        return read_asset(model_files[{ model, mesh }], name, mesh);
+    }
+
+    const std::vector<uint8_t>* asset_file(uint32_t index) {
+        if (!assets_on()) return nullptr;
+        char name[16];
+        snprintf(name, sizeof name, "%04x.bin", index);
+        return read_asset(asset_files[index], name, index);
+    }
+}
+
+// InitBorgScene's entry: the meshes this model has its own copies of.
+extern "C" void aidyn_model_init(uint8_t* rdram, recomp_context* ctx) {
+    model_pending.clear();
+    if (!assets_on()) return;
+    const gpr b5 = ctx->r4;
+    if (!heap_pointer(b5)) return;
+    // The header's index is only written once the setup is done; getBorgItem, which calls it, still has the index in s3.
+    model_current = (uint32_t)ctx->r19;
+    const int count = MEM_W(0x18, b5);
+    const gpr list = MEM_W(0x3C, b5);
+    static const bool log = std::getenv("AIDYN_ASSET_LOG") != nullptr;
+    if (log) {
+        fprintf(stdout, "Asset files: model %#x set up, %d meshes at %08x\n", model_current, count, (uint32_t)list);
+        fflush(stdout);
+    }
+    if (count <= 0 || count > 256 || !heap_pointer(list)) return;
+    for (int k = 0; k < count; k++) {
+        const uint32_t mesh = (uint32_t)MEM_W(4 * k, list);
+        if (model_file(model_current, mesh) != nullptr) model_pending.push_back(mesh);
+    }
+}
+
+// getBorgItem's entry (a0 the index): a mesh the model being set up has its own copy of is loaded privately.
+extern "C" void aidyn_asset_request(uint8_t* rdram, recomp_context* ctx) {
+    if (model_pending.empty() || model_override.active) return;
+    const uint32_t index = (uint32_t)ctx->r4;
+    const auto it = std::find(model_pending.begin(), model_pending.end(), index);
+    if (it == model_pending.end()) return;
+    model_pending.erase(it);
+    const gpr pointers = MEM_W(0, kBorgPointers), counts = MEM_W(0, kBorgBytes);
+    if (!heap_pointer(pointers) || !heap_pointer(counts)) return;
+    model_override = { true, model_current, index, MEM_W(0, kBorgFlag), MEM_W(4 * index, pointers),
+                       MEM_BU(index, counts) };
+    MEM_W(0, kBorgFlag) = 1;
+}
+
+// As getBorgItem returns (from aidyn_borg_loaded): the shared entry and borgFlag back as they were.
+void asset_request_done(uint8_t* rdram, uint32_t index) {
+    if (!model_override.active || index != model_override.mesh) return;
+    const gpr pointers = MEM_W(0, kBorgPointers), counts = MEM_W(0, kBorgBytes);
+    MEM_W(4 * index, pointers) = model_override.pointer;
+    MEM_B(index, counts) = (int8_t)model_override.count;
+    MEM_W(0, kBorgFlag) = model_override.flag;
+    static const bool log = std::getenv("AIDYN_ASSET_LOG") != nullptr;
+    if (log) {
+        fprintf(stdout, "Asset files: model %#x has its own copy of mesh %#x\n", model_override.model, index);
+        fflush(stdout);
+    }
+    model_override = {};
 }
 
 extern "C" void aidyn_asset_listing(uint8_t* rdram, recomp_context* ctx) {
@@ -5912,8 +6000,10 @@ extern "C" void aidyn_asset_listing(uint8_t* rdram, recomp_context* ctx) {
                 (uint32_t)MEM_W(0x20, ctx->r29));
         fflush(stdout);
     }
-    const std::vector<uint8_t>* file = asset_file(index);
+    const std::vector<uint8_t>* file = model_override.active && index == model_override.mesh
+                                           ? model_file(model_override.model, index) : asset_file(index);
     asset_pending = file != nullptr ? index : 0xFFFFFFFF;
+    asset_pending_file = file;
     if (file != nullptr) {
         MEM_W(0x20, ctx->r29) = (int32_t)file->size();  // BorgListing.uncompressed
     }
@@ -5921,7 +6011,7 @@ extern "C" void aidyn_asset_listing(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" int aidyn_asset_decompress(uint8_t* rdram, recomp_context* ctx) {
     if (asset_pending == 0xFFFFFFFF) return 0;
-    const std::vector<uint8_t>* file = asset_file(asset_pending);
+    const std::vector<uint8_t>* file = asset_pending_file;
     if (file == nullptr || (uint32_t)ctx->r7 != file->size()) return 0;
     asset_pending = 0xFFFFFFFF;
     const gpr dest = ctx->r6;
@@ -5944,7 +6034,10 @@ namespace {
     constexpr int kBorg2Dat = 0x58;  // Borg2Header: head 8, lookat[2] 8, MtxF 64, dlist, dlistSet, dat
 }
 
+void asset_request_done(uint8_t* rdram, uint32_t index);  // "Asset files", above
+
 extern "C" void aidyn_borg_loaded(uint8_t* rdram, uint32_t index, gpr header) {
+    asset_request_done(rdram, index);
     if (index != kBucklerVerts || !heap_pointer(header)) {
         return;
     }

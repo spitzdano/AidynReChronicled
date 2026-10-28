@@ -716,9 +716,12 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   the same. Tested on the shields (the Kite Shield `352e`, the goblins', and the Buckler `3520` as a hexagonal spiked
   shield, in combat) and on characters, which are rigid parts: Alaron's model (`25cb`) is 17 meshes on 17 of its 24
   bones, all in the model's own space; with his torso widened and his hands made 2.5x bigger, the game's own
-  animations move them while he walks. All 17 and the shields round-trip exactly. Those 17 meshes are a body other
-  characters share (at least six models), so a mesh replaced changes all of them; a character of its own would need
-  its own copies.
+  animations move them while he walks. All 17 and the shields round-trip exactly. Characters hardly share meshes (16 of
+  the 2,441 they use, all effects), but a character's meshes are shared with its cut-scene models (Alaron's with six,
+  the coronation among them), and props with every map that places them, so `<model>-<mesh>.bin` (`25cb-203d.bin`)
+  replaces a mesh in that one model only: as the model is set up (`InitBorgScene`, 0x80099B6C) its meshes with their
+  own file are loaded as private copies (the game's `borgFlag`), the shared copy's cache entry put back as
+  `getBorgItem` returns. Tested on Alaron (his torso and hands) through three Quick Loads.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while
