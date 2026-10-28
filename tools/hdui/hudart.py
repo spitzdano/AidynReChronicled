@@ -31,6 +31,11 @@ bicubically and its edge pulled tight around the texel boundary (as upscale_glyp
 added up again, so outlines stay their thickness and crisp, and the fill keeps its see-through level. (The map's frame
 and backing, WhiteBorderAlphaSquare and WhiteBorderGraySquare, are soft glows and keep their upscale.)
 
+Spacer (152x18, the Options page's Sound and Music bars: white, the game tints it and cuts the lit part from the left):
+a hollow outline of a rope, its stair-stepped edges upscaled into a jagged pixel rope. Redrawn as a solid twisted rope in
+the same way as the HitPoints bar's, shaded in greys (the tint colours it: white on the title menu's panel, the pages'
+brown on the parchment), a strand every 11 texels as the original's twist, its ends rounded.
+
 HealthBar (77x8 colour, drawn stretched to 80x10, cut from the left to show the hit points left): a twisted rope.
 Its original's faint middle stretch upscaled into a smear. Redrawn in the original's reddish browns: a strand every
 4.6 texels, each round and lit from the upper left with fine fibres and a little variety from strand to strand; the
@@ -41,7 +46,7 @@ import math
 import numpy as np
 
 NAMES = ({"SundailCross", "SundailSunSmall", "SundailSunBig"} | {f"SundailMoon{i}" for i in range(6)}
-         | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "LongUpArrow", "LongDownArrow"}
+         | {"SliderArrowL", "SliderArrowR", "SliderArrowLR", "HealthBar", "Spacer", "LongUpArrow", "LongDownArrow"}
          | {"CompassNorth", "CompassEast", "CompassSouth", "CompassWest"} | {"ScrollBarArrowUp", "ScrollBarArrowDown"})
 INK = (0x94, 0x5A, 0x4A)  # the menus' hint ink
 
@@ -204,19 +209,23 @@ def _scroll_arrow(w, h, down):
     return (head | stem).astype(np.float32)
 
 
-def _rope(w, h):
-    """The HitPoints bar: (colour H x W x 3 at 8x, alpha)."""
+def _rope(w, h, period=4.6, grey=False, ends=0.0):
+    """The HitPoints bar (or, grey, the Options page's slider): (colour H x W x 3 at 8x, alpha). ends: texels over which
+    the ends round off."""
     x, y = _grid(w, h)
     cy = h / 2.0
     r = h / 2.0 - 0.35                                     # the rope's radius at a strand's crest
     d = (y - cy) / r                                        # -1 top .. 1 bottom
-    period, slant = 4.6, 0.95                               # the original's twist: a strand every 4.6 texels
+    slant = 0.95                                            # the original's twist: a strand every `period` texels
     u = x + (y - cy) * slant                                # strand boundaries are lines of constant u
     k = np.floor(u / period)                                # which strand
     f = u / period - k                                      # 0..1 across one strand
     lobe = np.sin(np.pi * f) ** 0.55                        # a strand's round cross-section
     radius = 0.80 + 0.20 * np.sin(np.pi * f) ** 0.8         # strands bulge, grooves pinch in: the page shows between
     alpha = (np.abs(d) <= radius).astype(np.float32)
+    if ends > 0:  # round caps: an ellipse over the last `ends` texels at each end
+        ex = np.clip(1.0 - np.minimum(x, w - x) / ends, 0.0, 1.0)
+        alpha = alpha * (ex ** 2 + d ** 2 <= 1.0).astype(np.float32)
     across = np.sqrt(np.clip(1.0 - (d / radius) ** 2, 0, 1))  # the rope's roundness, top to bottom
     side = np.clip(1.2 - 1.6 * f, 0.35, 1.0)                # each strand's left side faces the light
     top = 0.72 + 0.28 * np.clip(-d, -1, 1)                  # the upper half a little brighter
@@ -228,6 +237,8 @@ def _rope(w, h):
     light = np.clip(shade ** 0.72 * jitter * fibre + 0.3 * np.clip((shade - 0.62) / 0.38, 0, 1) ** 2, 0, 1)
     stops = [(0.0, (0x40, 0x1c, 0x0a)), (0.22, (0x6b, 0x31, 0x18)), (0.45, (0x94, 0x63, 0x4a)),
              (0.7, (0xbd, 0x9c, 0x84)), (1.0, (0xec, 0xdb, 0xc4))]  # the original's reddish browns
+    if grey:  # for a bar the game tints: shades only (white at the lit side, a mid grey in the grooves)
+        stops = [(0.0, (0x70, 0x70, 0x70)), (0.3, (0xb4, 0xb4, 0xb4)), (0.62, (0xf0, 0xf0, 0xf0)), (1.0, (0xff, 0xff, 0xff))]
     colour = np.zeros(x.shape + (3,), np.float32)
     for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
         t = np.clip((light - p0) / (p1 - p0), 0, 1)[..., None]
@@ -273,8 +284,8 @@ def redraw(name, w, h, rgba=None):
     """(W, H, rgba bytes) at 8x for one of NAMES."""
     if name in LETTERS:
         return _letter(LETTERS[name], w, h)
-    if name == "HealthBar":
-        colour, alpha = _rope(w, h)
+    if name in ("HealthBar", "Spacer"):
+        colour, alpha = _rope(w, h, 11.0, True, 2.2) if name == "Spacer" else _rope(w, h)
         n = SCALE
         cover = alpha.reshape(h * n, SS, w * n, SS).sum(axis=(1, 3))[..., None]  # colour of the rope's samples only
         c = (colour * alpha[..., None]).reshape(h * n, SS, w * n, SS, 3).sum(axis=(1, 3)) / np.maximum(cover, 1e-6)

@@ -76,11 +76,17 @@ def world_textures(rom_path, textures, out, tmemhash):
 
 
 def big_pictures(rom_path, decomp, art, out, tmemhash):
-    """Replacements for redrawn pictures too big for one load of TMEM (the pause pages' titles, the title card): the
-    fixed strips the game draws them in (bigstrips.py), cut from the picture at 8x."""
+    """Replacements for redrawn pictures too big for one load of TMEM (the pause pages' titles, the title card, and
+    the ones hudart.py draws: the Options page's Sound and Music bars): the fixed strips the game draws them in
+    (bigstrips.py), cut from the picture at 8x."""
     import bigstrips
-    items = [(img, redone.load(art[name], img[1], img[2]), redone.SCALE)
-             for name, img in bigstrips.big_images(rom_path, decomp).values() if name in art]
+    import hudart
+    items = []
+    for name, img in bigstrips.big_images(rom_path, decomp).values():
+        if name in art:
+            items.append((img, redone.load(art[name], img[1], img[2]), redone.SCALE))
+        elif hudart.handles(name):
+            items.append((img, hudart.redraw(name, img[1], img[2]), hudart.SCALE))
     return bigstrips.cut(out, tmemhash, items) if items else []
 
 

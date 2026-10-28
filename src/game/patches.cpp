@@ -7463,6 +7463,34 @@ gpr title_panel(uint8_t* rdram, recomp_context* ctx, gpr g, float x0, float y0, 
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
+// The Options page over the title screen's panel (WidgetOptionsConfig::InitMenu's end): its title picture sat 1.3 units
+// high in the panel's top bar, and its rows leaned left (AUDIO 14 units from the left rail, the bars ending 22 short of
+// the right one). The title goes down a unit and the rows (AUDIO, Sound, Music, Graphics and their bars, which take the
+// labels' x) 4 units right. Substruct: AudioTitle +0, GraphicsTitle +4, optionTitles[0..3] +0xC.., TitleImage +0x1C.
+namespace {
+    // The shifted page (s4) and its vtable word, to tell it is still the one open (the title screen's box, sized from
+    // the page's rows, is moved back by the same 4 units: aidyn_title_box).
+    gpr options_page = 0;
+    uint32_t options_page_vtable = 0;
+    bool options_box_shifted(uint8_t* rdram) {
+        return heap_pointer(options_page) && (uint32_t)MEM_W(0x78, options_page) == options_page_vtable;
+    }
+}
+
+extern "C" void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx) {
+    if (!heap_pointer(MEM_W(0, kTitleScreen))) return;  // the pause menu's page is on the parchment: left as it is
+    const gpr sub = ctx->r19;
+    if (!heap_pointer(sub)) return;
+    options_page = ctx->r20;
+    options_page_vtable = heap_pointer(options_page) ? (uint32_t)MEM_W(0x78, options_page) : 0;
+    for (int off : { 0x0, 0x4, 0xC, 0x10, 0x14, 0x18 }) {
+        const gpr w = MEM_W(off, sub);
+        if (heap_pointer(w)) MEM_H(kWidgetPosX, w) = (int16_t)(MEM_H(kWidgetPosX, w) + 4);
+    }
+    const gpr title = MEM_W(0x1C, sub);
+    if (heap_pointer(title)) MEM_H(kWidgetPosX + 2, title) = (int16_t)(MEM_H(kWidgetPosX + 2, title) + 1);
+}
+
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
     if (!heap_pointer(menu) || !heap_pointer(w) || (w != MEM_W(0x84, menu) && w != MEM_W(0x80, menu))) {
@@ -7485,6 +7513,10 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
             y1 = 232.0f;
         }
         if (y1 > 232.0f) y1 = std::min(y1, y0 + 140.0f);
+        if (options_box_shifted(rdram) && x1 - x0 == 208.0f) {  // the Options page's box follows its rows: kept centred
+            x0 -= 4.0f;
+            x1 -= 4.0f;
+        }
         g = title_panel(rdram, ctx, g, x0, y0, x1, y1, alpha);
     }
     ctx->r2 = g;

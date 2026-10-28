@@ -657,8 +657,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 - **Field HUD.** With `hud_at_edges` the dial is drawn aligned to the picture's left edge and the compass to its right
   edge (RT64 extended GBI); the party portraits stay centred, where the game puts them. The dial's pieces (rays, moon phases, suns) are redrawn as clean
   shapes in the HD UI pack (`tools/hdui/hudart.py`): upscaled they were lumpy and the moon was cut flat. The pause
-  pages' arrows (including the one painted into the map page, `labels.json` "arrows") and the HitPoints bar are
-  redrawn the same way (upscaled they were blurred zigzags and a smeared rope); the `rechronicled-art` pack carries
+  pages' arrows (including the one painted into the map page, `labels.json` "arrows"), the HitPoints bar and the
+  Options page's Sound and Music bars (a stair-stepped outline of a rope; now a smooth shaded twisted rope the game tints,
+  `Spacer` in hudart.py) are redrawn the same way (upscaled they were blurred zigzags and a smeared rope); the `rechronicled-art` pack carries
   all of these, as they are drawn, not taken from the ROM.
 - **Big pictures.** Images too big for one texture load (page backgrounds, title cards, the Controller Pak screen, map
   pieces, clouds) are drawn as the same full-width strips whatever part of them is shown, then clipped, so the HD pack

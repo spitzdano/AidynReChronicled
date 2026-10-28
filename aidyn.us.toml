@@ -956,3 +956,11 @@ text = "extern int aidyn_borg_holder_down(uint8_t* rdram, recomp_context* ctx); 
 func = "WidgetScrollMenu__Tick"
 before_vram = 0x800AFE88
 text = "extern void aidyn_list_pointer(uint8_t* rdram, recomp_context* ctx); aidyn_list_pointer(rdram, ctx);"
+
+# WidgetOptionsConfig::InitMenu (func_80041264) once its rows are placed (s4 the page, s3 its substruct): on the title
+# screen's panel the Options title is lowered a unit (it sat high in the panel's top bar) and the rows moved 4 units
+# right (they leaned left inside the panel) (src/game/patches.cpp, aidyn_options_layout).
+[[patches.hook]]
+func = "func_80041264"
+before_vram = 0x800419A0
+text = "extern void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx); aidyn_options_layout(rdram, ctx);"
