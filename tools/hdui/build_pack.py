@@ -421,9 +421,12 @@ def main():
     # bilinear-filtered 3D textures); on these flat 2D draws it cut the top and left edge off every letter.
     # Every portrait in the game, from the ROM (portraits.py), including ones never drawn during collection. These
     # replace any captured copies (same hashes).
-    art = redone.collect()  # the redrawn portraits and icons in art/, used instead of upscaling those
+    # The portraits are always upscaled here, the redrawn ones too: rechronicled-art has those and wins, releases leave
+    # them out of this pack (make_release.sh, rtz.py --without), and F2 (redrawn art off) then shows these upscales, not
+    # an older copy of the repaint.
+    art = redone.collect()  # the redrawn icons in art/, used instead of upscaling those
     rom_entries = big_entries + romportraits.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
-                                     SCALE * 2, SCALE, art=art)
+                                     SCALE * 2, SCALE, art=None)
     # Every other small image in the ROM (romimages.py): item, skill and spell icons, minimap pictures. Words that
     # labels.json redraws of collected pictures are left to the captured path; word pictures the game never drew
     # while collecting (the shops' and trainers' titles) are redrawn here from the ROM.
