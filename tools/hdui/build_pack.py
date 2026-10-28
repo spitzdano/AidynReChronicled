@@ -37,7 +37,6 @@ import font as fontsheet  # noqa: E402
 import labels as wordlabels  # noqa: E402
 import repaint  # noqa: E402
 import portraits as romportraits  # noqa: E402
-import redone  # noqa: E402
 import romimages  # noqa: E402
 import text_pack  # noqa: E402
 import buttons  # noqa: E402
@@ -421,10 +420,9 @@ def main():
     # bilinear-filtered 3D textures); on these flat 2D draws it cut the top and left edge off every letter.
     # Every portrait in the game, from the ROM (portraits.py), including ones never drawn during collection. These
     # replace any captured copies (same hashes).
-    # The portraits are always upscaled here, the redrawn ones too: rechronicled-art has those and wins, releases leave
-    # them out of this pack (make_release.sh, rtz.py --without), and F2 (redrawn art off) then shows these upscales, not
-    # an older copy of the repaint.
-    art = redone.collect()  # the redrawn icons in art/, used instead of upscaling those
+    # The portraits and the other pictures (below) are always upscaled here, the redrawn ones too: rechronicled-art has
+    # those and wins, releases leave them out of this pack (make_release.sh, rtz.py --without), and F2 (redrawn art off)
+    # then shows these upscales, not an older copy of the repaint.
     rom_entries = big_entries + romportraits.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
                                      SCALE * 2, SCALE, art=None)
     # Every other small image in the ROM (romimages.py): item, skill and spell icons, minimap pictures. Words that
@@ -434,7 +432,7 @@ def main():
     redrawn_keys = {k for k, v in LABELS.items() if ("text" in v or "numbers" in v) and k in images}
     rom_labels = {k: v for k, v in LABELS.items() if "text" in v and k not in images} if args.font != "none" else {}
     rom_entries += romimages.build(PROJECT / "baserom.z64", PROJECT / "decomp", tmemhash, esrgan, args.model, out,
-                                   SCALE, redrawn_keys, key_of, art=art, labels=rom_labels, font=args.font)
+                                   SCALE, redrawn_keys, key_of, art=None, labels=rom_labels, font=args.font)
     # Every letter of both font sheets, whole and clipped (Font::PrintMain trims a letter's box at a text box's
     # edges: any left/right part at full height, any top/bottom part at full width). Checked against capture: 321 of 321.
     new_widths = fontsheet.widths(args.font) if args.font != "none" else {}  # what the game is given (font_widths.h)
