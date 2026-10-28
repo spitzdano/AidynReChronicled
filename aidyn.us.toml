@@ -1041,3 +1041,16 @@ text = "extern void aidyn_asset_listing(uint8_t* rdram, recomp_context* ctx); ai
 func = "decompressBorg"
 before_vram = 0x800989F0
 text = "extern int aidyn_asset_decompress(uint8_t* rdram, recomp_context* ctx); if (aidyn_asset_decompress(rdram, ctx)) return;"
+
+# A model's own copy of a mesh (src/game/patches.cpp, "Asset files": <model>-<mesh>.bin): InitBorgScene's entry (a0 the
+# model's Borg5Header) notes the meshes it has its own files for, and getBorgItem's entry (a0 the index) loads such a
+# mesh privately (borgFlag), the shared cache entry put back as it returns (aidyn_borg_loaded).
+[[patches.hook]]
+func = "func_80099B6C"
+before_vram = 0x80099B6C
+text = "extern void aidyn_model_init(uint8_t* rdram, recomp_context* ctx); aidyn_model_init(rdram, ctx);"
+
+[[patches.hook]]
+func = "getBorgItem"
+before_vram = 0x80098D14
+text = "extern void aidyn_asset_request(uint8_t* rdram, recomp_context* ctx); aidyn_asset_request(rdram, ctx);"
