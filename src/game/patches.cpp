@@ -8847,7 +8847,10 @@ gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y,
     }
     // Codex's finished cap, when the key has one: drawn whole, as tall as the slot and as wide as painted (shrunk as a
     // whole if the slot can't hold it), centred in the slot.
-    if (const int painted = cap_painted(face.cap)) {
+    // A cap that would have to shrink below 85% of its size (ENTER in the controls card's narrow slot) isn't used: the
+    // short name ("Ent") is lettered on a full-height cap instead, so every cap in a column stays the same height.
+    if (const int painted = cap_painted(face.cap); painted != 0 &&
+        std::max(slot_w, hu * (cover ? 1.4f : 1.15f)) >= 0.85f * painted * (hu / 12.0f)) {
         const float u = hu / 12.0f, room = std::max(slot_w, hu * (cover ? 1.4f : 1.15f));
         const float k = std::min(1.0f, room / (painted * u));
         const float cw = painted * u * k, ch = hu * k;
