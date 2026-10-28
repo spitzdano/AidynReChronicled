@@ -869,6 +869,26 @@ if (ACH_SOURCE / "medal_story.png").exists():
     IMAGES.append(("ach_medal_locked", 20, 20, medal_piece("locked")))
 IMAGES.append(("ach_bar", 8, 4, plain_bar))
 
+
+def sparkle(w, h):
+    """The treasure sparkle (src/game/patches.cpp, "Treasure sparkle"): a four-point star in a soft glow, warm white
+    (the game tints and pulses it)."""
+    H, W = h * SS, w * SS
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    cx, cy = (W - 1) / 2.0, (H - 1) / 2.0
+    dx, dy = np.abs(x - cx) / (W / 2.0), np.abs(y - cy) / (H / 2.0)
+    r = np.sqrt(dx * dx + dy * dy)
+    star = np.clip(1.0 - (np.sqrt(dx) + np.sqrt(dy)) / 1.0, 0.0, 1.0) ** 0.7     # four rays along the axes
+    glow = np.clip(1.0 - r / 0.75, 0.0, 1.0) ** 1.6 * 0.8                         # the soft round core
+    a = np.clip(star * 2.2 + glow, 0.0, 1.0)
+    img = np.zeros((H, W, 4), np.float32)
+    img[..., 0], img[..., 1], img[..., 2] = 1.0, 0.96, 0.82
+    img[..., 3] = a
+    return img
+
+
+IMAGES.append(("sparkle", 16, 16, sparkle))
+
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],

@@ -42,6 +42,7 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Spell desc
 bool aidyn_restored_samples_available();  // "Restored instrument samples", below
 gpr draw_fps_counter(uint8_t* rdram, recomp_context* ctx, gpr g);  // "FPS counter", below
 gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g);  // "Quick and auto saves", below
+gpr treasure_sparkle(uint8_t* rdram, recomp_context* ctx, gpr g);   // "Treasure sparkle", below
 void all_props_frame_end();  // "Every prop considered", below
 void heap_trace_frame(uint8_t* rdram);  // "Heap trace", below
 void free_spill_frame(uint8_t* rdram, recomp_context* ctx);  // "Free queue overflow", below
@@ -86,6 +87,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     all_props_frame_end();
     heap_trace_frame(rdram);
     free_spill_frame(rdram, ctx);
+    g = treasure_sparkle(rdram, ctx, g);
     g = aidyn_prompts(rdram, g);
     g = draw_dialogue_hint(rdram, ctx, g);
     if (combat_log_frame) {
@@ -10053,4 +10055,97 @@ extern "C" void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx) {
     }
     if (!seen.insert(text).second) return;
     std::ofstream(path, std::ios::app) << text << "\n";
+}
+
+// ---- Treasure sparkle (prototype: AIDYN_SPARKLE=1) ----
+// spitzdano asked for a sparkle where something can be picked up or opened, for containers that aren't obvious. While
+// walking about, every container of the camera's map (gCamera.borg_9, +0x88: the map cell it is in, or the interior)
+// within kReach of the party that is still to be opened (its openFlag not set) and holds something (gold, a loot table,
+// an item; or a herb, spice or gem patch) gets a pulsing star at its place, projected with the camera's position and
+// aim (gCamera +0, +0xC) and the game's 45-degree vertical view. Drawn over the picture: it shows through walls too.
+// voxelObject: header (pos +0, type +0x16), container_Dat at +0x28 (openFlag +8, LootCat +0x10, LootType +0x12, Gold
+// +0x16, item +0x18).
+gpr treasure_sparkle(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    static const bool on = std::getenv("AIDYN_SPARKLE") != nullptr;
+    if (!on || MEM_BU(0, kTrekState) != 1 || heap_pointer(MEM_W(0, kTitleScreen)) ||
+        heap_pointer(MEM_W(0, (gpr)(int32_t)0x800D9558))) {
+        return g;
+    }
+    const gpr cam = (gpr)kGlobals + 0x214;
+    const gpr dat = MEM_W(0x88, cam);
+    if (!heap_pointer(dat)) return g;
+    const int count = MEM_HU(0x28, dat);
+    const gpr voxels = MEM_W(0x44, dat);
+    if (!heap_pointer(voxels)) return g;
+    const int image = branding_index("sparkle");
+    if (image < 0) return g;
+    const float px = read_f32(rdram, cam), py = read_f32(rdram, cam + 4), pz = read_f32(rdram, cam + 8);
+    const float ax = read_f32(rdram, cam + 0xC), ay = read_f32(rdram, cam + 0x10), az = read_f32(rdram, cam + 0x14);
+    float fx = ax - px, fy = ay - py, fz = az - pz;
+    const float fl = std::sqrt(fx * fx + fy * fy + fz * fz);
+    if (fl < 1e-4f) return g;
+    fx /= fl, fy /= fl, fz /= fl;
+    float rx = -fz, rz = fx;  // right = forward x up (y up)
+    const float rl = std::sqrt(rx * rx + rz * rz);
+    if (rl < 1e-4f) return g;
+    rx /= rl, rz /= rl;
+    const float ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;  // up = right x forward
+    const float tv = std::tan(22.5f * kPi / 180.0f), aspect = view_aspect();
+    constexpr float kReach = 20.0f;
+    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    bool begun = false;
+    static int logged = -1;
+    int shown = 0;
+    static const bool debug = std::getenv("AIDYN_SPARKLE_DEBUG") != nullptr;  // a star at the camera's aim too
+    static int frame = 0;
+    frame++;
+    for (int i = debug ? -1 : 0; i < count && i < 512; i++) {
+        const gpr v = voxels + 0x6C * (i < 0 ? 0 : i);
+        float x, y, z;
+        if (i < 0) {
+            x = ax, y = ay, z = az;
+        } else {
+        if (MEM_HU(0x16, v) != 1) continue;  // VOXEL_Container
+        const gpr c = v + 0x28;
+        const int type = MEM_HU(0x12, c);
+        const bool patch = type >= 4 && type <= 6;  // Treasure_Herb, _Spice, _Gem
+        if (!patch && MEM_HU(0x16, c) == 0 && MEM_HU(0x10, c) == 0 && MEM_HU(0x18, c) == 0) continue;
+        const uint16_t open = MEM_HU(8, c);
+        if (open > 1 && flag_set(rdram, ctx, open)) continue;
+        x = read_f32(rdram, v), y = read_f32(rdram, v + 4) + 0.6f, z = read_f32(rdram, v + 8);
+        }
+        const float dx = x - ax, dz = z - az;
+        if (dx * dx + dz * dz > kReach * kReach) continue;
+        const float wx = x - px, wy = y - py, wz = z - pz;
+        const float depth = wx * fx + wy * fy + wz * fz;
+        if (depth < 0.5f) continue;
+        const float sx = (wx * rx + wz * rz) / (depth * tv * aspect), sy = (wx * ux + wy * uy + wz * uz) / (depth * tv);
+        if (std::fabs(sx) > 1.1f || std::fabs(sy) > 1.1f) continue;
+        const float hx = 160.0f + sx * 120.0f * aspect, hy = 120.0f - sy * 120.0f;  // the 4:3 picture's units, centred
+        if (debug && frame % 60 == 0) {
+            fprintf(stdout, "Sparkle %d: at %.2f %.2f %.2f, camera %.2f %.2f %.2f aim %.2f %.2f %.2f, depth %.2f, screen %.1f %.1f\n",
+                    i, x, y, z, px, py, pz, ax, ay, az, depth, hx, hy);
+            fflush(stdout);
+        }
+        const float size = std::clamp(120.0f / depth, 8.0f, 24.0f) * (0.8f + 0.2f * (float)std::sin(t * 4.0 + i));
+        const uint32_t alpha = (uint32_t)(195.0 + 60.0 * std::sin(t * 3.0 + i * 1.7));
+        if (!begun) {
+            copy_branding(rdram);
+            g = hud_begin(rdram, g, false);
+            GfxCommand a[2];
+            gEXSetRectAlign(&a[0], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, -160 * 4, 0, -160 * 4, 0);
+            g = put_cmds(rdram, g, a, 2);
+            begun = true;
+        }
+        g = tinted_image_state(rdram, g, 0xFFF0C0u << 8 | alpha);
+        g = draw_rgba16(rdram, g, image, (hx - size / 2.0f) * hs, (hy - size / 2.0f) * vs, size / 16.0f * hs, size / 16.0f * vs);
+        shown++;
+    }
+    if (shown != logged) {
+        logged = shown;
+        fprintf(stdout, "Sparkle: %d shown (map %d voxels)\n", shown, count);
+        fflush(stdout);
+    }
+    return begun ? hud_end(rdram, g) : g;
 }
