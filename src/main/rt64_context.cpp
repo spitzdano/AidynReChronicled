@@ -216,13 +216,21 @@ ultramodern::renderer::GraphicsApi map_graphics_api(RT64::UserConfiguration::Gra
 // (a release ships its own packs there). One that isn't in either is reported and skipped: the default list names
 // the HD packs, which only exist once they have been built or copied to this machine. Without `art`, the redrawn
 // art pack (rechronicled-art) is left out: F2 switches it to compare (aidyn::toggle_redrawn_art).
+// Whether the redrawn art pack is really there (listed and found), for what is drawn to go with it
+// (aidyn::redrawn_art_available: the redesigned title card, the field's portrait row).
+static std::atomic_bool art_pack_found{ false };
+
 static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool report) {
     std::vector<RT64::ReplacementDirectory> packs;
     if (!aidyn::settings::graphics().textures) {
         return packs;  // textures off (the pause menu's ReChronicled page): the game's own, as on the N64
     }
     const std::filesystem::path beside = aidyn::platform::exe_path().parent_path() / "texture-packs";
+    bool art_found = false;
     for (const std::string& name : aidyn::settings::graphics().texture_packs) {
+        if (name == "rechronicled-art") {
+            art_found = !aidyn::packs::find(name).empty();
+        }
         if (!art && name == "rechronicled-art") {
             continue;
         }
@@ -239,6 +247,7 @@ static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool repo
             fprintf(stdout, "Texture pack: %s\n", pack.string().c_str());
         }
     }
+    art_pack_found = art_found;
     return packs;
 }
 
@@ -259,6 +268,10 @@ void aidyn::toggle_redrawn_art() {
 
 bool aidyn::redrawn_art() {
     return redrawn_art_on;
+}
+
+bool aidyn::redrawn_art_available() {
+    return art_pack_found;
 }
 
 aidyn::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, ultramodern::renderer::PresentationMode presentation_mode, bool debug) {

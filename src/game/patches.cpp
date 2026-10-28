@@ -2070,15 +2070,14 @@ extern "C" int aidyn_title_back(uint8_t* rdram, recomp_context* ctx) {
 }
 
 namespace aidyn {
-    bool redrawn_art();  // src/main/rt64_context.cpp: false while F2 has the redrawn art pack off
+    bool redrawn_art();            // src/main/rt64_context.cpp: false while F2 has the redrawn art pack off
+    bool redrawn_art_available();  // ... and whether the pack is there at all (listed and found)
 }
 
 // The redrawn title card (art/titles, tools/branding/make_logo.py: spitzdano's redesign) has RECHRONICLED in it: on screen
-// while textures are on, the art pack is listed and F2 hasn't turned it off.
+// while textures are on, the art pack was really loaded (listed in settings.json and found) and F2 hasn't turned it off.
 bool redesigned_card() {
-    const auto& gfx = aidyn::settings::graphics();
-    return gfx.textures && aidyn::redrawn_art()
-        && std::find(gfx.texture_packs.begin(), gfx.texture_packs.end(), "rechronicled-art") != gfx.texture_packs.end();
+    return aidyn::settings::graphics().textures && aidyn::redrawn_art() && aidyn::redrawn_art_available();
 }
 
 gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba) {

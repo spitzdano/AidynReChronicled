@@ -44,6 +44,8 @@ namespace aidyn {
     float shown_fps();       // the frames shown a second (the FPS counter), measured twice a second
     void refresh_aspect();   // the Display page's Widescreen: picture shape again on the next frame
     bool redrawn_art();
+    // The redrawn art pack (rechronicled-art) is listed in settings.json and was found (folder or .rtz).
+    bool redrawn_art_available();
 
     // Save pictures (src/game/save_pictures.cpp). RT64 copies part of a framebuffer's full-resolution picture (area in
     // native pixels; see SharedQueueResources::FramebufferCapture) before it draws the next frame, and calls done with
