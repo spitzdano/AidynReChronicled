@@ -7670,8 +7670,10 @@ namespace {
     constexpr const char* kCatMedals[kCatCount] = { "story", "side", "boss", "boss", "companion", "explore", "growth", "feat" };
     AchCat ach_cat(const char* id) {
         const std::string s = id;
-        // The side quests: Trahern's sword (a favour, the journal's 85/19/87), Pandara's amulet (234) and the five
-        // "side_" ones the journal notes (a letter, a knight, Mago, a wild man, Elisheva's tomb). The lighthouse
+        // The side quests: Trahern's sword (a favour, the journal's 85/19/87; not in Prima's route), Pandara's amulet (234:
+        // only for a courteous player) and the three "side_" ones the journal notes (a letter, a wild man, Elisheva's
+        // tomb). Mago's house and Batrin's tale of the knight on the bridge (Arturo: recruiting him is "Joined by
+        // Arturo") are on the story's road, not side quests. The lighthouse
         // (Captain Amann's boat needs the port open) and Yeraza's dinner (the Stormbreaker for the voyage) are the story's.
         if (s == "story_sword" || s == "story_forest" || s.rfind("side_", 0) == 0) return kCatSide;
         if (s.rfind("story_", 0) == 0) return kCatStory;
@@ -7698,6 +7700,7 @@ namespace {
             { "story_amaranth", "The Amaranth", kAchAll, { 222 } },
             { "story_forest", "Friend of the Forest", kAchAll, { 234 } },
             { "story_nameless", "Nameless", kAchAll, { 240 } },
+            { "story_mago", "A Cure for Mago", kAchAll, { 390 } },  // Mago's house in Terminor: Fyrsil, the Jundar wizard
             { "story_light", "Let There Be Light", kAchAll, { 5017 } },
             { "story_sail", "Set Sail", kAchAll, { 297 } },
             { "story_isle", "Cradawgh's Isle", kAchAll, { 309 } },
@@ -7709,11 +7712,10 @@ namespace {
             { "story_fate", "Fate", kAchAll, { 548 } },
             { "story_whole", "Whole Again", kAchAll, { 566 } },
             { "story_named", "Named", kAchAll, { 601 } },
-            // the side quests the journal notes (its entries' flags): the strange letter in the Saiid cave, the knight on
-            // the road into Saiid (a merchant's tale), Mago and Fyrsil's cure, the wild man of the bog, Elisheva's tomb
+            // the side quests the journal notes (its entries' flags; Prima's guide: Elisheva's tomb is its "Side Quest"):
+            // the strange letter (Shamsuk's journal, in the Saiid cave that also holds the lighthouse scroll), the wild
+            // man of the bog (he gives directions to Shamsuk's tower), Elisheva's tomb
             { "side_letter", "A Strange Letter", kAchAll, { 295 } },
-            { "side_knight", "The Knight on the Road", kAchAll, { 287 } },
-            { "side_mago", "A Cure for Mago", kAchAll, { 390 } },
             { "side_wildman", "The Wild Man of the Bog", kAchAll, { 425 } },
             { "side_tomb", "Elisheva's Tomb", kAchAll, { 429 } },
             // bosses (their killed flags)
