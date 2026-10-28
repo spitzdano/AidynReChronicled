@@ -3244,6 +3244,8 @@ namespace {
 // The journal (Camp > Journal on the map page) is a book over the map page, whose painted arrow is still drawn under
 // it: told by its own background (JournalBG, 320x240 CI8, the FNV hash of its rows 100..103), so that arrow gets no LB.
 static bool journal_frame = false;
+// The journal's book (the Help book too: a conversation drawn on the same page) was drawn in the last few frames.
+static int book_frames = 0;
 // The map page's and the journal's texel (0, 0) on screen, scale and fade, this frame (their button hints, #11).
 // ---- World map pieces ----
 // The map page's land (#26): 18 grey drawings, one per region whose map the party has found, that the game tints brown
@@ -3591,7 +3593,11 @@ namespace aidyn {
     bool redrawn_art();  // src/main/rt64_context.cpp: false while F2 has the redrawn art pack off
 }
 
+int conversation_state(uint8_t* rdram);  // "Conversation hint", below
+
 gpr aidyn_prompts(uint8_t* rdram, gpr g) {
+    book_frames = journal_frame ? 10 : std::max(0, book_frames - 1);
+    aidyn::input::set_dialogue(book_frames > 0 ? 0 : conversation_state(rdram));  // the Help book has its own hints
     if (!aidyn::redrawn_art()) {  // say so, top right under the fast-forward marker
         copy_branding(rdram);
         const int label = branding_index("art_off");
@@ -4860,7 +4866,8 @@ namespace {
             "turned off, and either of its directions inverted, on the ReChronicled page of the Menu." } },
         { "Fast-Forward", {
             "Click the left stick to make everything run three times faster: long walks, fights and scenes. Click it "
-            "again to go back to normal speed. Two chevrons at the top right of the screen show when it is on.",
+            "again to go back to normal speed. Two chevrons at the top right of the screen show when it is on. "
+            "In a conversation, \\x82 skips it until you are asked something.",
             "In combat, the enemies' turns also run twice as fast on their own, so you spend less time waiting for "
             "your next turn. Combat speed and Enemy turns on the ReChronicled page set how fast each side goes." } },
         { "Controls Card", {
@@ -9927,26 +9934,55 @@ std::string help_keys_text() {
 }
 
 // ---- Conversation hint ----
-// A conversation (gameStateA 12) says nothing about how to move it on. While one is up, the bottom right of its dark
+// A conversation says nothing about how to move it on. While one is up, the bottom right of its dark
 // band shows "Continue [A]", or "Choose [A]" when it offers answers: the A button's picture, or a cap with the key bound
 // to A while the keyboard or mouse was used last (the picture's keyboard twin). gGlobals.diaClass (0x800D964C) -> its menu (+4, substruct
 // +0x40: DiaMenuSub, Background +0xC, the answers' scroll menu +0x28). AIDYN_DIALOGUE_LOG=1 prints what it finds.
+//
+// View skips a conversation (src/main/input.cpp: A pressed for the player, line by line, until answers are offered or
+// it ends): "Skip [View]" beside Continue, "Stop [View]" while it skips.
+namespace {
+    // The conversation's band (gGlobals.diaClass's menu's Background) and its answers, or no band. A conversation the
+    // story starts is gameStateA 12; talking to someone in the field (a shopkeeper) stays 1: the game's own test for one
+    // is the menu (DialougeClass::FreeWidgets clears it).
+    struct Conversation { gpr bg = 0; int answers = 0; };
+    Conversation conversation(uint8_t* rdram) {
+        Conversation c;
+        const uint32_t a = MEM_BU(0, kTrekState);
+        if ((a != 12 && a != 1) || heap_pointer(MEM_W(0, kTitleScreen))) return c;
+        const gpr dia = MEM_W(0, (gpr)(int32_t)0x800D964C);
+        const gpr menu = heap_pointer(dia) ? MEM_W(4, dia) : 0;
+        const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
+        const gpr bg = heap_pointer(sub) ? MEM_W(0xC, sub) : 0;
+        if (!heap_pointer(bg)) return c;
+        const gpr scroll = MEM_W(0x28, sub);
+        const gpr ssub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
+        c.bg = bg;
+        c.answers = heap_pointer(ssub) ? MEM_HU(0x20, ssub) : 0;
+        return c;
+    }
+}
+
+// For the input (aidyn::input::set_dialogue): 0 no conversation, 1 a line, 2 answers offered.
+int conversation_state(uint8_t* rdram) {
+    const Conversation c = conversation(rdram);
+    return c.bg == 0 ? 0 : c.answers > 0 ? 2 : 1;
+}
+
 gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
-    if (MEM_BU(0, kTrekState) != 12 || heap_pointer(MEM_W(0, kTitleScreen)) || aidyn::input::start_held() ||
-        !aidyn::settings::graphics().button_prompts) {
+    static bool was_skipping = false;
+    const bool skipping = aidyn::input::dialogue_skipping();
+    if (skipping && !was_skipping) notice("Skipping the conversation: View stops", 2500);
+    was_skipping = skipping;
+    const Conversation c = conversation(rdram);
+    if (c.bg == 0 || book_frames > 0 || aidyn::input::start_held() || !aidyn::settings::graphics().button_prompts) {
         return g;
     }
-    const gpr dia = MEM_W(0, (gpr)(int32_t)0x800D964C);
-    const gpr menu = heap_pointer(dia) ? MEM_W(4, dia) : 0;
-    const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
-    const gpr bg = heap_pointer(sub) ? MEM_W(0xC, sub) : 0;
-    if (!heap_pointer(bg)) return g;
+    const gpr bg = c.bg;
     const uint32_t alpha = MEM_BU(0x5B, bg);
     const float x0 = (int16_t)MEM_HU(kWidgetPosX, bg), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, bg);
     const float x1 = x0 + MEM_HU(0x74, bg), y1 = y0 + MEM_HU(0x72, bg);
-    const gpr scroll = MEM_W(0x28, sub);
-    const gpr ssub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
-    const int answers = heap_pointer(ssub) ? MEM_HU(0x20, ssub) : 0;
+    const int answers = c.answers;
     static const bool log = std::getenv("AIDYN_DIALOGUE_LOG") != nullptr;
     if (log) {
         static int frames = 0;
@@ -9956,7 +9992,9 @@ gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
         }
     }
     if (alpha < 128) return g;
-    const int image = branding_index(answers > 0 ? "dlg_choose" : "dlg_continue");  // the keyboard twin while keys are shown
+    // the keyboard twins while keys are shown
+    const int image = branding_index(skipping ? "dlg_stop" : answers > 0 ? "dlg_choose" : "dlg_continue");
+    const int skip = skipping || answers > 0 ? -1 : branding_index("dlg_skip");
     if (image < 0) return g;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     const float w = (float)ink_width(image);
@@ -9967,6 +10005,9 @@ gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = put_cmds(rdram, g, a, 2);
     g = prompt_state(rdram, g, (uint8_t)alpha);
     g = draw_rgba16(rdram, g, image, (x1 - 8.0f - w) * hs, (y1 - 13.0f) * vs, hs, vs);
+    if (skip >= 0) {
+        g = draw_rgba16(rdram, g, skip, (x1 - 8.0f - w - 10.0f - ink_width(skip)) * hs, (y1 - 13.0f) * vs, hs, vs);
+    }
     return hud_end(rdram, g);
 }
 

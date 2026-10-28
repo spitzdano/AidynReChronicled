@@ -1,4 +1,5 @@
 #include <atomic>
+#include <chrono>
 // Minimal input: the first SDL game controller, with the keyboard as a fallback so the game can
 // be tested without a pad. Everything feeds N64 port 1.
 //
@@ -45,6 +46,8 @@ namespace {
     std::atomic<float> captured_x{ 0.0f }, captured_y{ 0.0f };
     std::atomic_int card_mode{ 0 };   // aidyn::input::set_card_mode
     std::atomic_bool menu_mode{ false };  // aidyn::input::set_menu_mode
+    std::atomic_int dialogue_state{ 0 };  // aidyn::input::set_dialogue
+    std::atomic_bool dialogue_skip{ false };
     std::atomic_bool start{ false };
     std::atomic_int last_device{ -1 };  // 0 the pad, 1 the keyboard or mouse, -1 neither yet (the keyboard if there is no pad)
     std::atomic_bool pad_b{ false };  // the pad's B (not the keyboard's or the mouse's)
@@ -235,16 +238,36 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     static bool view_was_down = false, lb_was_down = false;
     const bool view = (b & CL) != 0, lb = (b & L) != 0;
     const int mode = card_mode.load(std::memory_order_relaxed);
+    const int dia = dialogue_state.load(std::memory_order_relaxed);  // a conversation up: View skips it (below)
     if (mode != 0) {
         if (lb && !lb_was_down) {
             const bool shown = !card_visible();
             card_state.store(shown ? 1 : 0, std::memory_order_relaxed);
             aidyn::settings::save_controls_card(shown);
         }
-        if (mode == 1 && view && !view_was_down) {
+        if (mode == 1 && dia == 0 && view && !view_was_down) {
             quicksave_pressed.store(true, std::memory_order_relaxed);
         }
         b &= ~(CL | L);
+    }
+    // In a conversation View skips it (spitzdano): A is pressed for the player, about eight times a second, so every line
+    // goes by and everything the conversation does still happens (a flag, an item, someone joining), until it offers
+    // answers (the player chooses: the skip ends) or it ends; View again stops it. The game side says which
+    // (set_dialogue, src/game/patches.cpp "Conversation hint"); there View is no C-left (the game has no use for it)
+    // and doesn't quicksave (talking to someone in the field is still the field to the game).
+    if (dia != 0 && mode != 2) {
+        if (view && !view_was_down && dia == 1) {
+            dialogue_skip.store(!dialogue_skip.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        b &= ~CL;
+    }
+    if (dia != 1) {
+        dialogue_skip.store(false, std::memory_order_relaxed);
+    }
+    if (dialogue_skip.load(std::memory_order_relaxed)) {
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+        if ((ms / 60) % 2 == 0) b |= A;  // 60 ms down, 60 up
     }
     view_was_down = view;
     lb_was_down = lb;
@@ -271,6 +294,14 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
 
 void aidyn::input::set_menu_mode(bool on) {
     menu_mode.store(on, std::memory_order_relaxed);
+}
+
+void aidyn::input::set_dialogue(int state) {
+    dialogue_state.store(state, std::memory_order_relaxed);
+}
+
+bool aidyn::input::dialogue_skipping() {
+    return dialogue_skip.load(std::memory_order_relaxed);
 }
 
 void aidyn::input::set_card_mode(int mode) {

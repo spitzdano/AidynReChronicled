@@ -546,6 +546,8 @@ IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back"
 # A conversation's hint (src/game/patches.cpp, "Conversation hint"): A moves it on, or picks the highlighted answer.
 IMAGES += [("dlg_continue", 64, 11, menu_hint("Continue", "A", light=True)), ("dlg_choose", 64, 11, menu_hint("Choose", "A", light=True)),
            ("dlg_back", 64, 11, menu_hint("Back", "B", light=True))]
+# View skips a conversation, line by line until it offers answers; View again stops it (src/main/input.cpp).
+IMAGES += [("dlg_skip", 48, 11, menu_hint("Skip", "CL", light=True)), ("dlg_stop", 48, 11, menu_hint("Stop", "CL", light=True))]
 # The inventory page's party switch: LT and RT beside the party's portraits (previous / next member; the port makes LT the
 # game's C-left in the pause menu, src/main/input.cpp).
 IMAGES += [("party_prev", 11, 11, page_prompt("Z")), ("party_next", 11, 11, page_prompt("CR"))]
@@ -870,6 +872,7 @@ IMAGES.append(("ach_bar", 8, 4, plain_bar))
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],
+                "dlg_skip": ["CL"], "dlg_stop": ["CL"],
                 "chint_choose": ["DPAD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
 ICON_BUTTONS.update({name: [button] for name, _, button in HINTS})
 ICON_BUTTONS.update({name: [b for pairs_ in pairs for b in pairs_[0] if b != "+"] for name, *pairs in CONTROLS})

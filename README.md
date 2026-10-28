@@ -280,8 +280,13 @@ frame `update_glyph_widths` sets those cells' widths in the font's tables to the
 originals come back with the pad). The Controls page's hints change too, and a cap covers the DETAILS button painted into
 the inventory page. The caps and mouse pictures are placeholders (`key_cap_*`, `key_mouse_*`). No two pictures may have
 the same pixels (the renderer stops on equal texture hashes: make_branding.py checks). The letters on the caps are pictures too (`key_g_<code>`, one per character, 12 texels high like the cap with the capitals centred on its face, `kKeyGlyphs` giving each ink's width): the game's text engine places a letter by whole units, which left them off the cap's centre by a different amount on each page.
-While a conversation is up, "Continue [A]" ("Choose" when it offers answers; the key bound to A while the keyboard
-was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AIDYN_DIALOGUE_LOG=1`).
+While a conversation is up (one the story starts, or talking to someone in the field: the game's own test,
+`gGlobals.diaClass`'s menu), "Continue [A]" ("Choose" when it offers answers; the key bound to A while the keyboard
+was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AIDYN_DIALOGUE_LOG=1`), with "Skip
+[View]": View skips the conversation by pressing A for you about eight times a second (`src/main/input.cpp`), so every
+line goes by and everything it does still happens, until it offers answers or ends; View again stops it ("Stop
+[View]"). In a conversation View doesn't quicksave. The game's four cinematics already skip with B or Start; the
+Help book (a conversation on the journal's page) keeps its own hints.
 `AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with
 `tools/dev/vpad.py` (a virtual Xbox pad for the real pad path), `AIDYN_CONTROLS_LOG=1` (mouse capture changes).
 
