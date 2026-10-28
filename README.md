@@ -405,8 +405,8 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 61 milestones in seven groups: Story (18), Side quests (4, optional), Bosses (11, eight of
-  them optional), Companions (15), Exploration (2), Growth (6) and Feats (5). Most are read from the event flags the game
+- **Achievements (#42).** 61 milestones in eight groups: Story (20), Side quests (2: Trahern's sword, Pandara's
+  amulet), Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (5). Most are read from the event flags the game
   keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, stats and skills), a few
   counted by the port (fights won, a flawless fight, a camp ambush survived, a fight fled, gold, levels, a full party).
   **Only what is done in play counts**: when a game starts or a save is loaded, what it already holds (flags, level,
@@ -415,7 +415,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   far. Each version (Original, Aidyn Patch, Aidyn Plus, Action Edition) keeps its own progress beside its saves
   (`achievements-<pak>.txt`, not in a save), so it adds up across playthroughs; nothing unlocks while the game's own
   Cheater flag is set. Each unlock shows a toast at the top right while walking about (the turn bar's pieces with the
-  group's medal, painted by Codex). Every locked one is hidden (`???`). The title menu's **Achievements** shows all four
+  group's medal, painted by Codex; its metal is the version's: bronze for Original, silver for Aidyn Patch, gold for
+  Aidyn Plus, rose copper for Action Edition). Every locked one is hidden (`???`). The title menu's **Achievements** shows all four
   versions with a progress bar and their counts, A opens one's list; the pause menu's ReChronicled page has this
   version's list: grouped, a medal and the day each was earned. `AIDYN_ACHIEVEMENTS=0` turns them off;
   `AIDYN_ACH_LOG=1` logs each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once (tests).

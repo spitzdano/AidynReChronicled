@@ -7664,14 +7664,19 @@ namespace {
     };
     // The groups the page lists them in (the side quests are optional ones among the story's journal entries), and each
     // group's medal (Codex's: kind names of art/hud/source/achievements/medal_<kind>.png).
-    enum AchCat : uint8_t { kCatStory, kCatSide, kCatBoss, kCatCompanion, kCatExplore, kCatGrowth, kCatFeat, kCatCount };
-    constexpr const char* kCatNames[kCatCount] = { "Story", "Side quests", "Bosses", "Companions", "Exploration", "Growth", "Feats" };
-    constexpr const char* kCatMedals[kCatCount] = { "story", "story", "boss", "companion", "explore", "growth", "feat" };
+    enum AchCat : uint8_t { kCatStory, kCatSide, kCatBoss, kCatBossOpt, kCatCompanion, kCatExplore, kCatGrowth, kCatFeat, kCatCount };
+    constexpr const char* kCatNames[kCatCount] = { "Story", "Side quests", "Bosses", "Optional bosses", "Companions",
+                                                   "Exploration", "Growth", "Feats" };
+    constexpr const char* kCatMedals[kCatCount] = { "story", "side", "boss", "boss", "companion", "explore", "growth", "feat" };
     AchCat ach_cat(const char* id) {
         const std::string s = id;
-        if (s == "story_sword" || s == "story_dinner" || s == "story_forest" || s == "story_light") return kCatSide;
+        // The side quests: Trahern's sword (a favour, the journal's 85/19/87) and Pandara's amulet (234). The lighthouse
+        // (Captain Amann's boat needs the port open) and Yeraza's dinner (the Stormbreaker for the voyage) are the story's.
+        if (s == "story_sword" || s == "story_forest") return kCatSide;
         if (s.rfind("story_", 0) == 0) return kCatStory;
-        if (s.rfind("boss_", 0) == 0) return kCatBoss;
+        // the three story bosses; the other eight (the journal doesn't mention them) are optional
+        if (s == "boss_kitarak" || s == "boss_shamsuk" || s == "boss_lugash") return kCatBoss;
+        if (s.rfind("boss_", 0) == 0) return kCatBossOpt;
         if (s.rfind("join_", 0) == 0 || s == "full_party" || s == "every_companion") return kCatCompanion;
         if (s == "cartographer" || s == "keymaster") return kCatExplore;
         if (s == "first_spell" || s == "brewer" || s == "peak_form" || s == "master" || s == "veteran" || s == "legend") return kCatGrowth;
@@ -8452,6 +8457,27 @@ extern "C" void aidyn_list_pointer(uint8_t* rdram, recomp_context* ctx) {
 // (hidden until earned), a header with each group's count.
 bool ach_shown() { return ach_enabled(); }
 
+namespace {
+    // 0 Original, 1 Aidyn Patch, 2 Aidyn Plus, 3 Action Edition: the version being played.
+    int running_version_index() {
+        switch (aidyn::settings::game().rom_patch) {
+            case aidyn::settings::RomPatch::AidynPatch: return 1;
+            case aidyn::settings::RomPatch::AidynPlus: return 2;
+            case aidyn::settings::RomPatch::ActionEdition: return 3;
+            default: return 0;
+        }
+    }
+
+    // A medal's picture: the group's, in the version's metal (bronze, silver, gold, rose copper); a group whose medal
+    // isn't painted yet (side quests) borrows the story's.
+    std::string ach_medal_name(const std::string& kind, int version) {
+        static const char* kMetals[4] = { "bronze", "silver", "gold", "rose" };
+        std::string n = "ach_medal_" + kind + "_" + kMetals[version & 3];
+        if (branding_index(n.c_str()) < 0) n = std::string("ach_medal_story_") + kMetals[version & 3];
+        return n;
+    }
+}
+
 gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (!ach.toast_on || ach.toasts.empty()) return g;
     const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - ach.toast_start).count();
@@ -8479,7 +8505,7 @@ gpr ach_toast(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = hud_begin(rdram, g, wide);
     g = prompt_state(rdram, g, (uint8_t)alpha);
     g = panel_bar(rdram, g, "tp_cap_l_plate", x0, x1, y0, kH, hs, vs);
-    g = panel_piece(rdram, g, ("ach_medal_" + toast.medal).c_str(), x0 + 10.5f * k, y0 + 5.0f * k, 20.0f * k, 20.0f * k, hs, vs);
+    g = panel_piece(rdram, g, ach_medal_name(toast.medal, running_version_index()).c_str(), x0 + 10.5f * k, y0 + 5.0f * k, 20.0f * k, 20.0f * k, hs, vs);
     g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
                                 MEM_HU(kVres1, (gpr)gGfxManager));
     GfxCommand a[2];
@@ -8556,7 +8582,7 @@ namespace {
 
     // `visible` rows of the list from `top`, the highlighted `row` pulsing in `highlight`, from y0 in rows kCtlRowStep apart.
     gpr ach_draw_list(uint8_t* rdram, recomp_context* ctx, gpr g, const std::vector<AchRow>& rows, const AchMap& unlocked,
-                      int row, int top, int visible, float left, float right, float y0, const AchInk& ink,
+                      int version, int row, int top, int visible, float left, float right, float y0, const AchInk& ink,
                       uint32_t highlight, int fade) {
         const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
         const int n = (int)rows.size();
@@ -8566,7 +8592,7 @@ namespace {
         for (int i = 0; i < visible && top + i < n; i++) {
             const AchRow& r = rows[top + i];
             if (r.a == nullptr) continue;
-            const std::string name = std::string("ach_medal_") + (unlocked.count(r.a->id) ? kCatMedals[r.cat] : "locked");
+            const std::string name = unlocked.count(r.a->id) ? ach_medal_name(kCatMedals[r.cat], version) : "ach_medal_locked";
             const int m = branding_index(name.c_str());
             if (m >= 0) g = draw_rgba16(rdram, g, m, left * hs, (y0 + kCtlRowStep * i - 0.8f) * vs, kMedal / 20.0f * hs, kMedal / 20.0f * vs);
         }
@@ -8652,7 +8678,7 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
     g = ctl_state(rdram, ctx, g);
     g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), right, top - 14.0f, 0.55f, kMenuInk,
                  rc.fade, true);
-    g = ach_draw_list(rdram, ctx, g, rows, ach.unlocked, ach_row, ach_top, kVisible, left, right, top - 2.0f,
+    g = ach_draw_list(rdram, ctx, g, rows, ach.unlocked, running_version_index(), ach_row, ach_top, kVisible, left, right, top - 2.0f,
                       { 0x442A22, kMenuInk, 0xA09090 }, rc_highlight(), rc.fade);
     const bool kb = aidyn::input::keyboard_last();
     const std::string back = kb ? keys_of(aidyn::controls::kB, false) : "B";
@@ -8670,14 +8696,6 @@ namespace {
         AchMap views[4];
     } ta;
 
-    int running_version_index() {
-        switch (aidyn::settings::game().rom_patch) {
-            case aidyn::settings::RomPatch::AidynPatch: return 1;
-            case aidyn::settings::RomPatch::AidynPlus: return 2;
-            case aidyn::settings::RomPatch::ActionEdition: return 3;
-            default: return 0;
-        }
-    }
 }
 
 void title_ach_open(uint8_t* rdram, recomp_context* ctx) {
@@ -8788,7 +8806,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = ctl_state(rdram, ctx, g);
         g = ctl_text(rdram, ctx, g, kAchVersions[ta.sel], kLeft, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade);
         g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), kRight, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade, true);
-        g = ach_draw_list(rdram, ctx, g, rows, view, ta.row, ta.top, kVisible, kLeft, kRight, kBodyTop + 14.0f,
+        g = ach_draw_list(rdram, ctx, g, rows, view, ta.sel, ta.row, ta.top, kVisible, kLeft, kRight, kBodyTop + 14.0f,
                           { 0xE8C060, 0xF2E6C8, 0x8C8470 }, ctl_highlight(h), fade);
     }
     const bool kb = aidyn::input::keyboard_last();

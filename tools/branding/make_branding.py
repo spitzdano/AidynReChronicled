@@ -791,16 +791,62 @@ for _f in sorted((KEYS_SOURCE / "caps").glob("cap_*.png")):
     KEY_CAP_LINES.append(f'        {{ "{_name}", {_painted} }},')
 
 # The achievement medals (Codex: art/hud/source/achievements/medal_<kind>.png, 160 x 160, brief in
-# ~/Work/aidyn-achievements-brief): ach_medal_<kind>, 20 x 20 texels, in the toast's plate and beside the list's rows
+# ~/Work/aidyn-achievements-brief): ach_medal_<kind>_<metal> (a metal for each version: ACH_METALS), 20 x 20 texels, in the toast's plate and beside the list's rows
 # (scaled to 9 there); and the progress bars' plain bar (ach_bar), tinted by the game.
 ACH_SOURCE = PROJECT / "art/hud/source/achievements"
 
 
-def medal_piece(kind):
+def _rgb2hsv(a):
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    mx = a.max(-1)
+    d = mx - a.min(-1)
+    m = d > 1e-6
+    dd = np.where(m, d, 1)
+    rc, gc, bc = (mx - r) / dd, (mx - g) / dd, (mx - b) / dd
+    h = np.where(mx == r, bc - gc, np.where(mx == g, 2 + rc - bc, 4 + gc - rc))
+    h = np.where(m, (h / 6) % 1.0, 0)
+    s_ = np.where(mx > 0, d / np.where(mx > 0, mx, 1), 0)
+    return h, s_, mx
+
+
+def _hsv2rgb(h, s_, v):
+    i = np.floor(h * 6).astype(int) % 6
+    f = h * 6 - np.floor(h * 6)
+    p, q, t = v * (1 - s_), v * (1 - f * s_), v * (1 - (1 - f) * s_)
+    return np.stack([np.choose(i, [v, q, p, p, t, v]), np.choose(i, [t, v, v, q, p, p]), np.choose(i, [p, p, t, v, v, q])], -1)
+
+
+# The version's metal: Original bronze, Aidyn Patch silver, Aidyn Plus gold (as painted), Action Edition rose copper. Only
+# the gold-hued pixels (the disc, its rim and the emblem) change; the ribbons keep their group's colour.
+ACH_METALS = ("bronze", "silver", "gold", "rose")
+
+
+def _metal(rgb, metal):
+    h, s_, v = _rgb2hsv(rgb)
+    deg = h * 360
+    gold = (deg > 18) & (deg < 62) & (s_ > 0.30) & (v > 0.15)
+    if metal == "bronze":
+        h = np.where(gold, (deg - 14) / 360, h)
+        v = np.where(gold, v * 0.80, v)
+    elif metal == "silver":
+        h = np.where(gold, 215 / 360, h)
+        s_ = np.where(gold, s_ * 0.16, s_)
+        v = np.where(gold, np.clip(v * 1.08, 0, 1), v)
+    elif metal == "rose":
+        h = np.where(gold, (deg - 34) / 360, h)
+        s_ = np.where(gold, np.clip(s_ * 0.85, 0, 1), s_)
+    return _hsv2rgb(h % 1.0, s_, v)
+
+
+def medal_piece(kind, metal=None):
     def draw(w, h):
         from pngio import read_png
         pw, ph, rgba = read_png(ACH_SOURCE / f"medal_{kind}.png")
         a = np.frombuffer(bytes(rgba), np.uint8).reshape(ph, pw, 4).astype(np.float32) / 255
+        if metal is not None:  # the disc only (a circle: the ribbon keeps its colours, whatever they are)
+            yy, xx = np.mgrid[0:ph, 0:pw]
+            disc = ((xx - 79.5) ** 2 + (yy - 93.0) ** 2 <= 60.0 ** 2)[..., None]
+            a[..., :3] = np.where(disc, _metal(a[..., :3], metal), a[..., :3])
         a[..., :3] *= a[..., 3:]  # premultiplied
         if a.shape[:2] != (h * SS, w * SS):
             sys.exit(f"make_branding.py: medal_{kind}.png is {pw}x{ph}, not {w * SS}x{h * SS}")
@@ -814,8 +860,11 @@ def plain_bar(w, h):
 
 
 if (ACH_SOURCE / "medal_story.png").exists():
-    for _kind in ("story", "boss", "companion", "explore", "growth", "feat", "locked"):
-        IMAGES.append((f"ach_medal_{_kind}", 20, 20, medal_piece(_kind)))
+    for _kind in ("story", "side", "boss", "companion", "explore", "growth", "feat"):
+        if (ACH_SOURCE / f"medal_{_kind}.png").exists():
+            for _metal_name in ACH_METALS:
+                IMAGES.append((f"ach_medal_{_kind}_{_metal_name}", 20, 20, medal_piece(_kind, _metal_name)))
+    IMAGES.append(("ach_medal_locked", 20, 20, medal_piece("locked")))
 IMAGES.append(("ach_bar", 8, 4, plain_bar))
 
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
