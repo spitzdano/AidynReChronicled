@@ -1009,3 +1009,22 @@ text = "extern void aidyn_voxel_chart_write(uint8_t* rdram, recomp_context* ctx)
 func = "some_monsterparty_checker"
 before_vram = 0x80056A58
 text = "extern int aidyn_beaten_for_good(uint8_t* rdram, recomp_context* ctx); if (aidyn_beaten_for_good(rdram, ctx)) return;"
+
+# Chests stay empty (Fair play): loot_func's entry notes whether a chest (not a plant) is being opened,
+# WriteTo_VoxelChart's entry (above) keeps it, and some_ref_obj_lookup_func's entry answers for one kept so.
+[[patches.hook]]
+func = "loot_func"
+before_vram = 0x800105EC
+text = "extern void aidyn_loot_open(uint8_t* rdram, recomp_context* ctx); aidyn_loot_open(rdram, ctx);"
+
+[[patches.hook]]
+func = "some_ref_obj_lookup_func"
+before_vram = 0x80056B38
+text = "extern int aidyn_emptied_for_good(uint8_t* rdram, recomp_context* ctx); if (aidyn_emptied_for_good(rdram, ctx)) return;"
+
+# The field's party portrait row (src/game/patches.cpp "Party portraits (field)"): Portraits::DrawParty's entry draws it
+# in the turn order bar's pieces while the redrawn art shows (the game's own frames and portraits then not drawn).
+[[patches.hook]]
+func = "func_8002583C"
+before_vram = 0x8002583C
+text = "extern int aidyn_party_row(uint8_t* rdram, recomp_context* ctx); if (aidyn_party_row(rdram, ctx)) return;"

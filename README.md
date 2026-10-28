@@ -411,10 +411,10 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 69 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
+- **Achievements (#42).** 70 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
   of the bog, Elisheva's tomb),
-  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (9: five, and the four
-  fair play ones). Most are read from the event flags the game
+  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (10: five, and the five
+  fair play ones; Action Edition has no Fair Trader). Most are read from the event flags the game
   keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, a spell learned, stats
   and skills), a few counted by the port (a potion brewed: `Party::CraftPotion`'s result; fights won, a flawless fight,
   a camp ambush survived, a fight fled, gold, levels, a full party).
@@ -433,15 +433,16 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   list: grouped, a medal and the day each was earned. `AIDYN_ACHIEVEMENTS=0` turns them off; `AIDYN_ACH_LOG=1` logs
   each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once and `AIDYN_SET_FLAGS=f,f` sets event flags as a game begins
   (tests).
-- **Fair play.** New Game opens a panel of four fixes for the original's loopholes and one help, each fixed for that
-  playthrough (shown on the ReChronicled page's Fair play row). The three rules are on by default and each has an
-  achievement for finishing the game with it on; the panel says that turning one off rules that achievement out:
+- **Fair play.** New Game opens a panel of five fixes for the original's loopholes and one help, each fixed for that
+  playthrough (shown on the ReChronicled page's Fair play row). The fixes are on by default; four have an achievement
+  for finishing the game with them on, and the panel says that turning one off rules that achievement out:
   - *Healer rule* (Honest Healer): a healer can't lay hands on someone who healed them since the party last rested
     (camping or an inn, `Party::CampHeal`), so two healers can't heal each other up for free (#33).
   - *Fair trade* (Fair Trader): a shop never sells an item for less than it would pay for it. The game prices with
     f = (the keeper's Merchant - the party's best) x 0.05, buying at price x markup x (1 + f) and selling at base price
     x (1 - f) / 2, so a party that out-ranks the keeper (by 7, or at all on half-price stock) could buy and sell back at
-    a profit for ever.
+    a profit for ever. Not offered in Action Edition (its shops are its own fix), so it has no Fair Trader; Aidyn Plus
+    keeps the original's shopkeepers and prices them the same way, so it has the rule.
   - *Honest alchemy* (True Alchemist): a potion sells for no more than its ingredients' base price (the original sold a
     Restore Potion brewed from 150 gold of reagents for about 1,200; Aidyn Patch and Action Edition repriced potions).
   - *Fights stay won* (on by default, no achievement): a group of monsters beaten stays beaten. The game brings back
@@ -449,14 +450,20 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
     townsfolk who fight once spoken to) after three trips through a door or to another map (its voxel chart). With the
     rule each such win over a group with no conversation is kept with the save (`battle_setup_func`,
     `WriteTo_VoxelChart`), and `some_monsterparty_checker` keeps that group away; townsfolk keep the game's way.
-    Camping still brings night ambushes, so there is always a fight to be had.
+    Camping still brings night ambushes, so there is always a fight to be had. Every other group (1,033 of 1,085) has
+    a "defeated" flag and never came back in the original either.
+  - *Chests stay empty* (Fair Finder): a chest emptied stays empty. A container with no "opened" flag of its own (46 of
+    them hold gold or items, two 3,000 and 5,000 gold) went on the voxel chart for 10 trips through a door or to
+    another map and was then full again. With the rule each such chest opened is kept with the save (`loot_func`,
+    `WriteTo_VoxelChart`) and `some_ref_obj_lookup_func` answers that it is still empty; herb, spice and gem patches
+    still regrow. `AIDYN_FAIR_TEST_LOOTED=key,key` starts a new game with those emptied (developers).
   - *Treasure sparkle* (off by default; Keen Eye for finishing the game without it): a pulsing star over every
     container within about 20 units still to be opened and holding something (chests, gold, herb, spice and gem
     patches), where the camera can see it: the game's `CheckCollision` on the line from the camera to it (a hit within
     a unit of it is its own wall). It can be turned on later on the ReChronicled page's Treasure sparkle row (chosen
     twice), never off. `AIDYN_SPARKLE=1` shows it always and `AIDYN_SPARKLE_DEBUG=1` logs it (developers).
   The choice goes with each save the port writes (`save-rules.txt` beside the saves, by the save's hash, with the
-  groups beaten for good); a save made before has none of the rules and its playthrough can't earn their
+  groups beaten and the chests emptied for good); a save made before has none of the rules and its playthrough can't earn their
   achievements. `AIDYN_FAIR_LOG=1` logs prices, fights and the voxel chart (developers). The game's cheat codes (typed as a
   name: `!cheater`, `!bingo`, `!slashing`, `!darkside`) stop all achievements in that playthrough.
 - **Sholeh's intelligence.** Saves keep intelligence, willpower, dexterity and strength in 5 bits (at most 31): Sholeh
@@ -588,6 +595,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   portraits at 21:9, 16 at 16:9), else the middle 4:3 (about 10). `turn_order` turns it off; `AIDYN_TURN_LOG=1`
   prints each round's list, the combat state, the targets and the next round shown, `AIDYN_TURN_TEST=n` repeats the
   shown turns up to n.
+- **Party portraits.** While walking about, the party's four portraits (`Portraits::DrawParty`) sit in the same bar:
+  its ends and a bronze slot per member, cut again at field size (`pr_*` in `turn_order.py`), the portraits opaque in
+  their windows and an empty place an empty slot, sliding and fading as the game's row did. With the redrawn art only
+  (F2 shows the game's own row: white glow frames, portraits half see-through).
 - **Aiming.** Aiming a bow or thrown weapon, or an area spell, the stick moves a marker on the ground and whoever
   stands within 1 unit of it is the target. The marker moved a fixed 0.8 a frame, paced for the N64's 20 or so
   frames a second, so at 60 it skipped past targets; it now moves a third of that, times how far the stick is pushed

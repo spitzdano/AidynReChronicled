@@ -35,6 +35,14 @@ PIECES = {
 }
 
 
+# The field's party portrait row (src/game/patches.cpp "Party portraits (field)"): the same pieces, cut again at
+# FIELD_SCALE times the texels so a bronze slot is 38 texels wide (the game's portraits are 38 units apart, drawn
+# 30 units square) and stays sharp drawn a texel a unit: the slot, and the right end twice (mirrored, the left end:
+# the turn bar's own left end carries the round's plate). Each under the 2048 texels one RGBA16 load can hold.
+FIELD_SCALE = 38 / 18
+FIELD_PIECES = {"pr_slot": ("to_slot", False), "pr_end_l": ("to_end_r", True), "pr_end_r": ("to_end_r", False)}
+
+
 def _load():
     from pngio import read_png
     w, h, rgba = read_png(CONCEPT)
@@ -95,6 +103,17 @@ def _fill_text(rgb, boxes, x0, y0):
 
 def cut(name):
     """(w texels, h texels, premultiplied RGBA float at full concept resolution, info) of a piece."""
+    if name in FIELD_PIECES:  # a field piece: its turn bar piece, scaled up (and mirrored)
+        base, mirror = FIELD_PIECES[name]
+        w, h, img, info = cut(base)
+        k = FIELD_SCALE
+        out = {"bar_mid": info["bar_mid"] * k}
+        if "window" in info:
+            wx0, wy0, wx1, wy1 = (v * k for v in info["window"])
+            out["window"] = (w * k - wx1, wy0, w * k - wx0, wy1) if mirror else (wx0, wy0, wx1, wy1)
+        if mirror:
+            img = img[:, ::-1].copy()
+        return max(1, round(img.shape[1] * TEXELS_PER_PX * k)), max(1, round(img.shape[0] * TEXELS_PER_PX * k)), img, out
     (x0, y0, x1, y1), kind, extra = PIECES[name]
     rgb = _load()[y0:y1, x0:x1].copy()
     H, W = rgb.shape[:2]
@@ -152,11 +171,13 @@ def draw(name, SS):
 def images(SS):
     """[(name, w, h, draw)] for make_branding's IMAGES, and the header lines for the pieces' bar middles and windows."""
     out, lines = [], []
-    for name in PIECES:
+    for name in list(PIECES) + list(FIELD_PIECES):
         w, h, img, info = cut(name)
+        k = FIELD_SCALE if name in FIELD_PIECES else 1.0
+        assert w * h <= 2048, f"turn_order.py: {name} is {w}x{h} texels, more than one load holds"
         out.append((name, w, h, draw(name, SS)))
         # The picture is made exactly w x h texels: its rows and columns scaled a little from the concept's.
-        fx, fy = w / (img.shape[1] * TEXELS_PER_PX), h / (img.shape[0] * TEXELS_PER_PX)
+        fx, fy = w / (img.shape[1] * TEXELS_PER_PX * k), h / (img.shape[0] * TEXELS_PER_PX * k)
         info["bar_mid"] *= fy
         win = info.get("window", (0, 0, 0, 0))
         win = (win[0] * fx, win[1] * fy, win[2] * fx, win[3] * fy)

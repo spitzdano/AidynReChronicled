@@ -4304,6 +4304,73 @@ extern "C" gpr aidyn_turn_strip(uint8_t* rdram, recomp_context* ctx, gpr g) {
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
+// ---- Party portraits (field) ----
+// While walking about the game draws the party's portraits in a row at the bottom (Portraits::DrawParty, func_8002583C:
+// a white glow frame at x 84, 122, 160, 198 and each portrait 30 units square 6 inside it, half see-through; the row
+// slides up into place, screen_bottom 0x800DB180 going from 240 to 185 by 4 a frame, and fades with the screen,
+// gGlobals.brightness +0x2040). With the redrawn art (spitzdano: like the turn order bar) the row is drawn here instead:
+// the turn bar's pieces at field size (tools/branding/turn_order.py pr_*: the ends and a bronze slot per member, 38
+// units each, so each portrait keeps its place), the portraits opaque in their windows on a dark backing, an empty
+// place an empty slot. gGlobals.party (0x800D9684) Members[0..3], each CharSheet's portrait at +0x44.
+namespace {
+    constexpr gpr kScreenBottom = (gpr)(int32_t)0x800DB180;  // u16
+}
+
+extern "C" int aidyn_party_row(uint8_t* rdram, recomp_context* ctx) {
+    if (!redesigned_card()) return 0;
+    const Piece& slot = piece("pr_slot");
+    const Piece& end_l = piece("pr_end_l");
+    const Piece& end_r = piece("pr_end_r");
+    if (slot.image < 0 || end_l.image < 0 || end_r.image < 0) return 0;
+    // The game's slide (its a1: 1 rising, 0 going down).
+    uint16_t bottom = MEM_HU(0, kScreenBottom);
+    if (ctx->r5 == 1 && bottom >= 0xBA) bottom -= 4;
+    else if (ctx->r5 == 0 && bottom < 0xF0) bottom += 4;
+    MEM_H(0, kScreenBottom) = (int16_t)bottom;
+    gpr g = ctx->r4;
+    const float bright = std::clamp(read_f32(rdram, (gpr)kGlobals + 0x2040), 0.0f, 1.0f);
+    const uint32_t shade = (uint32_t)std::lround(255.0f * bright);
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    // Each slot centred where the game's portrait is: x 90 + 38 i, y bottom + 6, 30 square.
+    const float wcx = (slot.x0 + slot.x1) / 2.0f, wcy = (slot.y0 + slot.y1) / 2.0f;
+    const float cy = bottom + 6.0f + 15.0f, top = cy - wcy;
+    auto slot_x = [&](int i) { return 90.0f + 38.0f * i + 15.0f - wcx; };
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+    g = rect_state(rdram, g);
+    for (int i = 0; i < 4; i++) {
+        const float x = slot_x(i);
+        g = rect(rdram, g, x + slot.x0 - 1.0f, top + slot.y0 - 1.0f, x + slot.x1 + 1.0f, top + slot.y1 + 1.0f,
+                 0x14141400u | shade, hs, vs);
+    }
+    g = (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                MEM_HU(kVres1, (gpr)gGfxManager));
+    for (int i = 0; i < 4 && heap_pointer(party); i++) {
+        const gpr member = MEM_W(4 * i, party);
+        const gpr img = heap_pointer(member) ? MEM_W(0x44, member) : 0;
+        if (!heap_pointer(img) || MEM_HU(0x0A, img) == 0 || MEM_HU(0x0C, img) == 0) continue;
+        // filling the window and a unit more all round, so its soft edges go under the frame
+        const float ps = std::max(slot.x1 - slot.x0, slot.y1 - slot.y0) + 1.0f;
+        const float x = slot_x(i), px = x + wcx - ps / 2.0f, py = top + wcy - ps / 2.0f;
+        g = (gpr)(int32_t)call_game_stack(rdram, ctx, Borg8_DrawSimple, (uint32_t)g, (uint32_t)img, f32_bits(px), f32_bits(py),
+                                          { f32_bits(ps / MEM_HU(0x0A, img)), f32_bits(ps / MEM_HU(0x0C, img)), shade, shade,
+                                            shade, 255 });
+    }
+    copy_branding(rdram);
+    auto draw_piece = [&](const Piece& pc, float x, float y) {
+        g = prompt_state(rdram, g, 255);
+        put(rdram, g, 0xFA000000, shade << 24 | shade << 16 | shade << 8 | 0xFF);
+        g = draw_rgba16(rdram, g, pc.image, x * hs, y * vs, hs, vs);
+    };
+    const float bar_y = top + slot.mid;  // the bar's middle row, for the ends
+    draw_piece(end_l, slot_x(0) - end_l.w, bar_y - end_l.mid);
+    for (int i = 0; i < 4; i++) {
+        draw_piece(slot, slot_x(i), top);
+    }
+    draw_piece(end_r, slot_x(3) + slot.w, bar_y - end_r.mid);
+    ctx->r2 = g;
+    return 1;
+}
+
 // ---- ReChronicled page ----
 // The pause menu's Menu page (WidgetOptionsMenu::MakeScrollList, func_8003F8C4: Load Game, Save Game, Options, Theater,
 // Credits, Help; in a battle Options and Flee) gets one more entry, "ReChronicled", below Theater (in a battle at the
@@ -7887,6 +7954,7 @@ namespace {
             { "fair_healer", "Honest Healer", kAchCount, {} },
             { "fair_trade", "Fair Trader", kAchCount, {} },
             { "fair_alchemy", "True Alchemist", kAchCount, {} },
+            { "fair_chests", "Fair Finder", kAchCount, {} },
             { "fair_keen_eye", "Keen Eye", kAchCount, {} },
         };
         return list;
@@ -7942,6 +8010,7 @@ namespace {
             { "fair_healer", "Finish the game with the Healer rule on (Fair Play, at New Game)." },
             { "fair_trade", "Finish the game with Fair trade on (Fair Play, at New Game)." },
             { "fair_alchemy", "Finish the game with Honest alchemy on (Fair Play, at New Game)." },
+            { "fair_chests", "Finish the game with Chests stay empty on (Fair Play, at New Game)." },
             { "fair_keen_eye", "Finish the game without the treasure sparkle (Fair Play, at New Game)." },
         };
         const auto it = kHow.find(id);
@@ -8030,8 +8099,8 @@ namespace {
         std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&t));
         ach.unlocked[id] = when;
         if (id == "story_named") {  // the ending: the fair play rules kept all game
-            static const char* kFair[4] = { "fair_healer", "fair_trade", "fair_alchemy", "fair_keen_eye" };
-            for (int i = 0; i < 4; i++) {
+            static const char* kFair[5] = { "fair_healer", "fair_trade", "fair_alchemy", "fair_keen_eye", "fair_chests" };
+            for (int i = 0; i < 5; i++) {
                 if (fair_rule_kept(i)) ach_unlock(kFair[i]);
             }
         }
@@ -8779,27 +8848,28 @@ namespace {
         return out;
     }
 
-    // A hidden achievement shows nothing until it is earned (no ??? row, not in the group's header or the totals). None
-    // is hidden now (spitzdano: the side quests and optional bosses show as ??? so they can be counted); kept so one can
-    // be again.
-    bool ach_hidden(const Achievement&) { return false; }
+    // A hidden achievement shows nothing until it is earned (no ??? row, not in the group's header or the totals). Only
+    // one that a version can't earn is: Fair Trader in Action Edition (spitzdano: its shops are its own fix, so Fair
+    // play's Fair trade isn't offered there). The side quests and optional bosses show as ??? so they can be counted.
+    bool ach_hidden(const Achievement& a, int version) {
+        return version == 3 && std::strcmp(a.id, "fair_trade") == 0;
+    }
 
     // What a version has earned, and the total it is out of (every achievement but the hidden ones not yet earned).
     struct AchCount { int earned, total; };
-    AchCount ach_count(const AchMap& m) {
+    AchCount ach_count(const AchMap& m, int version) {
         AchCount c{ 0, 0 };
         for (const Achievement& a : achievements()) {
             const bool got = m.count(a.id) != 0;
             c.earned += got ? 1 : 0;
-            c.total += (got || !ach_hidden(a)) ? 1 : 0;
+            c.total += (got || !ach_hidden(a, version)) ? 1 : 0;
         }
         return c;
     }
-    int ach_earned(const AchMap& m) { return ach_count(m).earned; }
 
     // The list's rows: each group's header (a == nullptr) and its achievements.
     struct AchRow { const Achievement* a; int cat, earned, total; };
-    std::vector<AchRow> ach_rows(const AchMap& unlocked) {
+    std::vector<AchRow> ach_rows(const AchMap& unlocked, int version) {
         std::vector<AchRow> rows;
         for (int c = 0; c < kCatCount; c++) {
             int total = 0, earned = 0;
@@ -8807,12 +8877,12 @@ namespace {
                 if (ach_cat(a.id) != c) continue;
                 const bool got = unlocked.count(a.id) != 0;
                 earned += got ? 1 : 0;
-                total += (got || !ach_hidden(a)) ? 1 : 0;
+                total += (got || !ach_hidden(a, version)) ? 1 : 0;
             }
             if (total == 0) continue;  // a hidden group with nothing found yet isn't there
             rows.push_back({ nullptr, c, earned, total });
             for (const Achievement& a : achievements()) {
-                if (ach_cat(a.id) == c && (unlocked.count(a.id) || !ach_hidden(a))) rows.push_back({ &a, c, 0, 0 });
+                if (ach_cat(a.id) == c && (unlocked.count(a.id) || !ach_hidden(a, version))) rows.push_back({ &a, c, 0, 0 });
             }
         }
         return rows;
@@ -8920,7 +8990,7 @@ void ach_open(uint8_t* rdram, recomp_context* ctx) {
 
 // The pause menu's page: this version's list.
 gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, uint32_t pressed, uint32_t act) {
-    const std::vector<AchRow> rows = ach_rows(ach.unlocked);
+    const std::vector<AchRow> rows = ach_rows(ach.unlocked, running_version_index());
     const int n = (int)rows.size();
     constexpr int kVisible = 12;  // and two lines of the highlighted one's description under them
     if (!rc.closing && rc.fade == 255) {
@@ -8960,7 +9030,7 @@ gpr achievements_page(uint8_t* rdram, recomp_context* ctx, gpr g, uint32_t b, ui
             g = draw_rgba16(rdram, g, tr, centre * hs, (top - 31.0f) * vs, hs, vs);
         }
     }
-    const AchCount counts = ach_count(ach.unlocked);
+    const AchCount counts = ach_count(ach.unlocked, running_version_index());
     const int earned = counts.earned, total = counts.total;
     g = ach_bar(rdram, g, left, top - 6.0f, right - left, 3.0f, (float)earned / (float)total, 0x9A5A2A, 0xC8B494, rc.fade);
     g = ctl_state(rdram, ctx, g);
@@ -9016,7 +9086,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     ta.repeat = dirs != 0 ? ta.repeat + 1 : 0;
     const uint32_t act = pressed | ((ta.repeat > 24 && ta.repeat % 6 == 0) ? dirs : 0);
     const AchMap& view = ta.views[ta.sel];
-    const std::vector<AchRow> rows = ach_rows(view);
+    const std::vector<AchRow> rows = ach_rows(view, ta.sel);
     const int n = (int)rows.size();
     constexpr int kVisible = 7;  // and two lines of the highlighted one's description under them
     constexpr float kLeft = 58.0f, kRight = 262.0f, kBodyTop = 59.0f, kVersionStep = 27.0f;
@@ -9067,7 +9137,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (ta.level == 0) {
         for (int i = 0; i < 4; i++) {
             const float y = kBodyTop + kVersionStep * i;
-            const int earned = ach_count(ta.views[i]).earned, total = ach_count(ta.views[i]).total;
+            const int earned = ach_count(ta.views[i], i).earned, total = ach_count(ta.views[i], i).total;
             if (i == ta.sel) {  // the title's copper marker
                 const int mark = branding_index("ver_mark");
                 if (mark >= 0) {
@@ -9080,7 +9150,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = ctl_state(rdram, ctx, g);
         for (int i = 0; i < 4; i++) {
             const float y = kBodyTop + kVersionStep * i;
-            const int earned = ach_count(ta.views[i]).earned, total = ach_count(ta.views[i]).total;
+            const int earned = ach_count(ta.views[i], i).earned, total = ach_count(ta.views[i], i).total;
             const uint32_t ink = i == ta.sel ? ctl_highlight(h) : 0xF2E6C8;
             g = ctl_text(rdram, ctx, g, kAchVersions[i], kLeft + 4.0f, y, 0.8f, ink, fade);
             if (i == running_version_index()) {
@@ -9090,7 +9160,7 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
             g = ctl_text(rdram, ctx, g, std::to_string(earned) + " / " + std::to_string(total), kRight, y, 0.8f, 0xE8C060, fade, true);
         }
     } else {
-        const int earned = ach_count(view).earned, total = ach_count(view).total;
+        const int earned = ach_count(view, ta.sel).earned, total = ach_count(view, ta.sel).total;
         g = ach_bar(rdram, g, kLeft, kBodyTop + 10.0f, kRight - kLeft, 3.0f, (float)earned / (float)total, 0xE8B850, 0x20282E, fade);
         g = ctl_state(rdram, ctx, g);
         g = ctl_text(rdram, ctx, g, kAchVersions[ta.sel], kLeft, kBodyTop - 1.0f, 0.7f, 0xE8C060, fade);
@@ -9295,24 +9365,32 @@ namespace {
         bool on[3] = { true, true, true };
         bool sparkle = false;
         bool stay_won = true;
+        bool chests = true;
         std::set<uint32_t> beaten;  // groups beaten for good: voxel index << 24 | map (mapDatA, the cell's x, y)
+        std::set<uint32_t> looted;  // containers emptied for good: the same keys
     };
     FairRules fair;             // this playthrough's
     FairRules fair_pending;     // the panel's choice, for the game about to begin
     std::map<uint64_t, FairRules> fair_records;
     bool fair_records_loaded = false;
-    // The panel's rows: the three rules, fights stay won, the sparkle.
-    constexpr int kFairRows = 5, kStayWonRow = 3, kSparkleRow = 4;
+    // The panel's rows: the three rules, fights stay won, chests stay empty, the sparkle.
+    constexpr int kFairRows = 6, kStayWonRow = 3, kChestsRow = 4, kSparkleRow = 5;
     constexpr const char* kFairNames[kFairRows] = { "Healer rule", "Fair trade", "Honest alchemy", "Fights stay won",
-                                                     "Treasure sparkle" };
-    constexpr const char* kFairAch[kFairRows] = { "Honest Healer", "Fair Trader", "True Alchemist", nullptr, "Keen Eye" };
+                                                     "Chests stay empty", "Treasure sparkle" };
+    constexpr const char* kFairAch[kFairRows] = { "Honest Healer", "Fair Trader", "True Alchemist", nullptr, "Fair Finder",
+                                                   "Keen Eye" };
     constexpr const char* kFairWhy[kFairRows][2] = {
         { "A healer can't lay hands on someone who", "healed them since the party last rested." },
         { "A shop never sells an item for less than", "it would pay you for it." },
         { "A potion sells for no more than", "its ingredients cost." },
         { "Monsters you have beaten don't come back", "when you return (the original's few did)." },
+        { "A chest you have emptied stays empty (the", "original refilled a few; plants regrow)." },
         { "A star shows the chests and hidden treasure", "near you that you can see, until opened." },
     };
+    // Action Edition's shops are its own fix (spitzdano): Fair trade isn't offered there, nor Fair Trader.
+    bool fair_trade_offered() {
+        return aidyn::settings::game().rom_patch != aidyn::settings::RomPatch::ActionEdition;
+    }
     constexpr gpr kFairText = (gpr)(int32_t)0x80F82000;  // the healer rule's message for the game (0x100 bytes)
 
     std::filesystem::path fair_path() { return save_dir / "save-rules.txt"; }
@@ -9324,40 +9402,47 @@ namespace {
         std::string line;
         while (std::getline(in, line)) {
             std::istringstream words(line);
-            std::string hex, bits, beaten;
+            std::string hex, bits;
             if (!(words >> hex >> bits)) continue;
             FairRules r;
             r.known = !bits.empty() && bits[0] != 'x';
             for (int i = 0; i < 3 && i < (int)bits.size(); i++) r.on[i] = bits[i] == '1';
             r.sparkle = bits.size() > 3 && bits[3] == '1';
             r.stay_won = bits.size() > 4 && bits[4] == '1';
-            if (words >> beaten && beaten != "-") {
-                std::istringstream keys(beaten);
-                for (std::string k; std::getline(keys, k, ',');) {
-                    if (!k.empty()) r.beaten.insert((uint32_t)std::stoul(k, nullptr, 16));
+            r.chests = bits.size() > 5 && bits[5] == '1';
+            auto keys = [&](std::set<uint32_t>& into) {
+                std::string list;
+                if (!(words >> list) || list == "-") return;
+                std::istringstream in(list);
+                for (std::string k; std::getline(in, k, ',');) {
+                    if (!k.empty()) into.insert((uint32_t)std::stoul(k, nullptr, 16));
                 }
-            }
+            };
+            keys(r.beaten);
+            keys(r.looted);
             fair_records[std::stoull(hex, nullptr, 16)] = r;
         }
     }
 
-    // The record's 0/1s (also the log's): the rules, the sparkle, fights stay won.
+    // The record's 0/1s (also the log's): the rules, the sparkle, fights stay won, chests stay empty.
     std::string fair_bits(const FairRules& r) {
         std::string b;
         for (int i = 0; i < 3; i++) b += r.known ? "01"[r.on[i]] : 'x';
         b += "01"[r.sparkle];
         b += r.known ? "01"[r.stay_won] : 'x';
+        b += r.known ? "01"[r.chests] : 'x';
         return b;
     }
 
     // A rule in force now.
-    bool fair_on(int i) { return fair.known && fair.on[i]; }
+    bool fair_on(int i) { return fair.known && fair.on[i] && (i != 1 || fair_trade_offered()); }
 
     // (healer ID, target ID) pairs since the last rest.
     std::set<std::pair<uint16_t, uint16_t>> healed_since_rest;
 }
 
-bool fair_rule_kept(int i) { return i < 3 ? fair_on(i) : fair.known && !fair.sparkle; }  // 3: Keen Eye
+// 0-2 the rules, 3 Keen Eye (never the sparkle), 4 chests stay empty.
+bool fair_rule_kept(int i) { return i < 3 ? fair_on(i) : i == 3 ? fair.known && !fair.sparkle : fair.known && fair.chests; }
 bool sparkle_on() { return fair.sparkle; }
 
 // The ReChronicled page's Treasure sparkle row (A): on for the rest of this playthrough, once A is pressed twice (the
@@ -9391,22 +9476,26 @@ void fair_note_save(uint64_t hash) {
     std::ofstream out(fair_path(), std::ios::app);
     char head[32];
     snprintf(head, sizeof head, "%016llx ", (unsigned long long)hash);
-    std::string beaten;
-    for (const uint32_t k : fair.beaten) {
-        char key[16];
-        snprintf(key, sizeof key, "%s%x", beaten.empty() ? "" : ",", k);
-        beaten += key;
-    }
-    out << head << fair_bits(fair) << " " << (beaten.empty() ? "-" : beaten) << "\n";
+    auto list = [](const std::set<uint32_t>& keys) {
+        std::string l;
+        for (const uint32_t k : keys) {
+            char key[16];
+            snprintf(key, sizeof key, "%s%x", l.empty() ? "" : ",", k);
+            l += key;
+        }
+        return l.empty() ? std::string("-") : l;
+    };
+    out << head << fair_bits(fair) << " " << list(fair.beaten) << " " << list(fair.looted) << "\n";
 }
 
 void fair_loaded_save(uint64_t hash) {
     fair_load_records();
     const auto it = fair_records.find(hash);
-    fair = it != fair_records.end() ? it->second : FairRules{ false, { false, false, false }, false, false };
+    fair = it != fair_records.end() ? it->second : FairRules{ false, { false, false, false }, false, false, false };
     healed_since_rest.clear();
-    fprintf(stdout, "Fair play: loaded save %016llx, %s, %zu groups beaten for good\n", (unsigned long long)hash,
-            it != fair_records.end() ? ("rules " + fair_bits(fair)).c_str() : "no record (none on)", fair.beaten.size());
+    fprintf(stdout, "Fair play: loaded save %016llx, %s, %zu groups beaten and %zu containers emptied for good\n",
+            (unsigned long long)hash, it != fair_records.end() ? ("rules " + fair_bits(fair)).c_str() : "no record (none on)",
+            fair.beaten.size(), fair.looted.size());
     fflush(stdout);
 }
 
@@ -9432,8 +9521,28 @@ extern "C" void aidyn_battle_setup(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// Chests stay empty. loot_func's entry (a0 the container's voxel): whether what is being opened is a chest (not a herb,
+// spice or gem patch, LootType 4-6 at +0x3A: plants regrow).
+namespace {
+    bool chest_to_keep = false;
+    constexpr gpr kEmptiedEntry = (gpr)(int32_t)0x80F814C0;  // a stand-in chart entry (0x10 bytes) for lookups
+}
+
+extern "C" void aidyn_loot_open(uint8_t* rdram, recomp_context* ctx) {
+    const gpr v = ctx->r4;
+    const uint32_t type = heap_pointer(v) ? MEM_HU(0x3A, v) : 0;
+    chest_to_keep = heap_pointer(v) && !(type >= 4 && type <= 6);
+    static const bool log = std::getenv("AIDYN_FAIR_LOG") != nullptr;
+    if (log && heap_pointer(v)) {
+        fprintf(stdout, "Fair play: a container opened, opened flag %u, loot type %u%s\n", MEM_HU(0x30, v), type,
+                chest_to_keep ? " (a chest)" : " (a plant)");
+        fflush(stdout);
+    }
+}
+
 // WriteTo_VoxelChart's entry (index, mapDatA, x, y; BCD, type, count on the stack): a monster group (5) beaten
-// (CombatStateFunc_12's count, 3) is kept for good.
+// (CombatStateFunc_12's count, 3) is kept for good, and a chest (1) with no opened flag of its own, emptied (loot_func's
+// count, 10).
 extern "C" void aidyn_voxel_chart_write(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t bcd = MEM_BU(0x13, ctx->r29), type = MEM_BU(0x17, ctx->r29), count = MEM_BU(0x1B, ctx->r29);
     static const bool log = std::getenv("AIDYN_FAIR_LOG") != nullptr;
@@ -9442,6 +9551,15 @@ extern "C" void aidyn_voxel_chart_write(uint8_t* rdram, recomp_context* ctx) {
                 (uint32_t)ctx->r5 & 0xFF, (uint32_t)ctx->r6 & 0xFF, (uint32_t)ctx->r7 & 0xFF, bcd, type, count);
         fflush(stdout);
     }
+    if (type == 1 && count == 10 && chest_to_keep && fair.known && fair.chests) {
+        chest_to_keep = false;
+        const uint32_t key = beaten_key((uint32_t)ctx->r4 & 0xFFFF, (uint32_t)ctx->r5, (uint32_t)ctx->r6, (uint32_t)ctx->r7, bcd);
+        if (fair.looted.insert(key).second) {
+            fprintf(stdout, "Fair play: container %08x emptied for good\n", key);
+            fflush(stdout);
+        }
+        return;
+    }
     if (type != 5 || count != 3 || !fight_to_keep || !(fair.known && fair.stay_won)) return;
     fight_to_keep = false;
     const uint32_t key = beaten_key((uint32_t)ctx->r4 & 0xFFFF, (uint32_t)ctx->r5, (uint32_t)ctx->r6, (uint32_t)ctx->r7, bcd);
@@ -9449,6 +9567,29 @@ extern "C" void aidyn_voxel_chart_write(uint8_t* rdram, recomp_context* ctx) {
         fprintf(stdout, "Fair play: group %08x beaten for good\n", key);
         fflush(stdout);
     }
+}
+
+// some_ref_obj_lookup_func's entry (the same arguments): for a container (1) emptied for good, a chart entry (a stand-in:
+// its callers only test it), so loot_func and exploding_container_check leave it open and empty.
+extern "C" int aidyn_emptied_for_good(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t bcd = MEM_BU(0x13, ctx->r29), type = MEM_BU(0x17, ctx->r29);
+    static const bool log = std::getenv("AIDYN_FAIR_LOG") != nullptr;
+    if (log && type == 1) {
+        static int shown = 0;
+        if (shown++ < 40) {
+            fprintf(stdout, "Fair play: a container still empty? voxel %u map %u cell %u,%u bcd %02x\n", (uint32_t)ctx->r4 & 0xFFFF,
+                    (uint32_t)ctx->r5 & 0xFF, (uint32_t)ctx->r6 & 0xFF, (uint32_t)ctx->r7 & 0xFF, bcd);
+            fflush(stdout);
+        }
+    }
+    if (!(fair.known && fair.chests) || fair.looted.empty()) return 0;
+    if (type != 1) return 0;
+    if (!fair.looted.count(beaten_key((uint32_t)ctx->r4 & 0xFFFF, (uint32_t)ctx->r5, (uint32_t)ctx->r6, (uint32_t)ctx->r7, bcd))) {
+        return 0;
+    }
+    for (int k = 0; k < 0x10; k += 4) MEM_W(k, kEmptiedEntry) = 0;
+    ctx->r2 = kEmptiedEntry;
+    return 1;
 }
 
 // some_monsterparty_checker's entry (the same arguments, type for count): true for a group beaten for good, which
@@ -9611,7 +9752,8 @@ namespace {
 
 namespace {
     bool& fair_pick(int row) {
-        return row < 3 ? fair_pending.on[row] : row == kStayWonRow ? fair_pending.stay_won : fair_pending.sparkle;
+        return row < 3 ? fair_pending.on[row] : row == kStayWonRow ? fair_pending.stay_won
+             : row == kChestsRow ? fair_pending.chests : fair_pending.sparkle;
     }
 }
 
@@ -9622,6 +9764,7 @@ bool fair_panel_open(uint8_t* rdram, recomp_context* ctx) {
     fp.menu = (uint32_t)ctx->r4;
     fp.widget = (uint32_t)ctx->r5;
     fair_pending = FairRules{};
+    fair_pending.on[1] = fair_trade_offered();
     aidyn::input::set_capture(true);
     return true;
 }
@@ -9645,14 +9788,22 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const uint32_t dirs = b & 0x0F00;
     fp.repeat = dirs != 0 ? fp.repeat + 1 : 0;
     const uint32_t act = pressed | ((fp.repeat > 24 && fp.repeat % 6 == 0) ? dirs : 0);
-    constexpr float kLeft = 50.0f, kRight = 270.0f, kTop = 60.0f, kStep = 13.0f;
+    constexpr float kLeft = 50.0f, kRight = 270.0f, kTop = 58.0f, kStep = 12.0f;
     if (!fp.closing && fp.fade == 255) {
         static uint32_t seen = 0;
         const PointerPick p = pointer_pick(kTop - 2.0f, kStep, kFairRows, kLeft - 8.0f, kRight + 4.0f, seen);
         if (p.row >= 0 && p.row != fp.row) { fp.row = p.row; rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0800) { fp.row = (fp.row + kFairRows - 1) % kFairRows; rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0400) { fp.row = (fp.row + 1) % kFairRows; rc_sound(rdram, ctx, 0x73B, 30); }
-        if (act & 0x0300) { bool& v = fair_pick(fp.row); v = !v; rc_sound(rdram, ctx, 0x740, 60); }
+        if (act & 0x0300) {
+            if (fp.row == 1 && !fair_trade_offered()) {
+                rc_sound(rdram, ctx, 0x741, 60);
+            } else {
+                bool& v = fair_pick(fp.row);
+                v = !v;
+                rc_sound(rdram, ctx, 0x740, 60);
+            }
+        }
         if (pressed & 0x8000) { fp.begin = true; fp.closing = true; rc_sound(rdram, ctx, 0x740, 60); }
         else if (pressed & (0x4000 | 0x1000)) { fp.closing = true; rc_sound(rdram, ctx, 0x741, 60); }
     }
@@ -9665,6 +9816,13 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
         if (begin) {  // the game's own New Game now (its name entry), this choice the new playthrough's
             fair = fair_pending;
             fair.known = true;
+            // developers: AIDYN_FAIR_TEST_LOOTED=key,key (hex, as save-rules.txt has them) starts with those emptied
+            if (const char* t = std::getenv("AIDYN_FAIR_TEST_LOOTED")) {
+                std::istringstream in(t);
+                for (std::string k; std::getline(in, k, ',');) {
+                    if (!k.empty()) fair.looted.insert((uint32_t)std::stoul(k, nullptr, 16));
+                }
+            }
             healed_since_rest.clear();
             fprintf(stdout, "Fair play: new game, rules %s\n", fair_bits(fair).c_str());
             fflush(stdout);
@@ -9686,16 +9844,17 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
     for (int i = 0; i < kFairRows; i++) {
         const float y = kTop + kStep * i;
         const uint32_t ink = i == fp.row ? ctl_highlight(h) : 0xF2E6C8;
-        const bool on = fair_pick(i);
-        g = ctl_text(rdram, ctx, g, kFairNames[i], kLeft, y, 0.7f, ink, fade);
-        g = ctl_text(rdram, ctx, g, on ? "On" : "Off", kRight, y, 0.7f, on ? 0xE8C060 : 0x8C8470, fade, true);
+        const bool on = fair_pick(i), offered = i != 1 || fair_trade_offered();
+        g = ctl_text(rdram, ctx, g, kFairNames[i], kLeft, y, 0.7f, offered ? ink : 0x8C8470, fade);
+        g = ctl_text(rdram, ctx, g, !offered ? "Not here" : on ? "On" : "Off", kRight, y, 0.7f, on ? 0xE8C060 : 0x8C8470, fade, true);
     }
-    const float dy = kTop + kStep * kFairRows + 4.0f;
+    const float dy = kTop + kStep * kFairRows + 3.0f;
     g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][0], centre, dy, 0.55f, 0xF2E6C8, fade, false, true);
     g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][1], centre, dy + 9.0f, 0.55f, 0xF2E6C8, fade, false, true);
     const bool help = fp.row == kSparkleRow;  // the sparkle: on loses its achievement, and stays on
     const std::string warn = help ? std::string("On (for good): the achievement ") + kFairAch[kSparkleRow] + " can't be earned."
                            : fp.row == kStayWonRow ? std::string("Off: a few groups come back after three doors.")
+                           : fp.row == 1 && !fair_trade_offered() ? std::string("Action Edition's shops are its own fix.")
                            : std::string("Off: the achievement ") + kFairAch[fp.row] + " can't be earned in this game.";
     g = ctl_text(rdram, ctx, g, warn, centre, dy + 21.0f, 0.5f, fair_pick(fp.row) != help ? 0x8C8470 : 0xE8A050, fade, false, true);
     const bool kb = aidyn::input::keyboard_last();
@@ -9710,10 +9869,10 @@ void fair_show(uint8_t* rdram, recomp_context* ctx) {
     // Short: the notice is one line. The rules on, then the sparkle if it is.
     std::string t = "Fair play: none (an older game)";
     if (fair.known) {
-        const char* names[4] = { "Healer", "Trade", "Alchemy", "Stay won" };
-        const bool on[4] = { fair.on[0], fair.on[1], fair.on[2], fair.stay_won };
+        const char* names[5] = { "Healer", "Trade", "Alchemy", "Stay won", "Chests" };
+        const bool on[5] = { fair.on[0], fair_on(1), fair.on[2], fair.stay_won, fair.chests };
         std::string list;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             if (on[i]) list += std::string(list.empty() ? "" : ", ") + names[i];
         }
         t = "Fair play: " + (list.empty() ? std::string("none") : list);
