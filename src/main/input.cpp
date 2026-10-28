@@ -238,7 +238,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     static bool view_was_down = false, lb_was_down = false;
     const bool view = (b & CL) != 0, lb = (b & L) != 0;
     const int mode = card_mode.load(std::memory_order_relaxed);
-    const int dia = dialogue_state.load(std::memory_order_relaxed);  // a conversation up: View skips it (below)
+    const int dia = dialogue_state.load(std::memory_order_relaxed);  // a conversation up: Start skips it (below)
     if (mode != 0) {
         if (lb && !lb_was_down) {
             const bool shown = !card_visible();
@@ -250,17 +250,27 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         }
         b &= ~(CL | L);
     }
-    // In a conversation View skips it (spitzdano): A is pressed for the player, about eight times a second, so every line
-    // goes by and everything the conversation does still happens (a flag, an item, someone joining), until it offers
-    // answers (the player chooses: the skip ends) or it ends; View again stops it. The game side says which
-    // (set_dialogue, src/game/patches.cpp "Conversation hint"); there View is no C-left (the game has no use for it)
-    // and doesn't quicksave (talking to someone in the field is still the field to the game).
+    // In a conversation Start skips it (spitzdano: as Start skips the cinematics): A is pressed for the player, about
+    // eight times a second, so every line goes by and everything the conversation does still happens (a flag, an item,
+    // someone joining), until it offers answers (the player chooses: the skip ends) or it ends; Start again stops it.
+    // The game side says which (set_dialogue, src/game/patches.cpp "Conversation hint"). There the game sees neither
+    // Start (kept from it until let go, so one held past the conversation's end doesn't open the pause menu) nor View
+    // (no quicksave: talking to someone in the field is still the field to the game).
+    static bool start_was_down = false, start_swallowed = false;
+    const bool start_now = (b & START) != 0;
     if (dia != 0 && mode != 2) {
-        if (view && !view_was_down && dia == 1) {
+        if (start_now && !start_was_down && dia == 1) {
             dialogue_skip.store(!dialogue_skip.load(std::memory_order_relaxed), std::memory_order_relaxed);
         }
+        if (start_now) start_swallowed = true;
         b &= ~CL;
     }
+    if (!start_now) start_swallowed = false;
+    if (start_swallowed) {
+        b &= ~START;
+        start.store(false, std::memory_order_relaxed);
+    }
+    start_was_down = start_now;
     if (dia != 1) {
         dialogue_skip.store(false, std::memory_order_relaxed);
     }

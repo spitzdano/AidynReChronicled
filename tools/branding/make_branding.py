@@ -512,7 +512,7 @@ RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_v
             ("rc_stick_camera", "Right-stick camera"), ("rc_invert_x", "Invert camera turning"),
             ("rc_invert_y", "Invert camera tilt"),
             ("rc_on", "On"), ("rc_off", "Off"), ("rc_dd_1", "Original"), ("rc_dd_15", "1.5x"), ("rc_dd_2", "2x"),
-            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_controls", "Controls"), ("rc_achievements", "Achievements"), ("rc_fair_play", "Fair play"), ("rc_ws_125", "1.25x"),
+            ("rc_dd_25", "2.5x"), ("rc_dd_3", "3x"), ("rc_walk_speed", "Walk speed"), ("rc_report", "Report a problem"), ("rc_controls", "Controls"), ("rc_achievements", "Achievements"), ("rc_fair_play", "Fair play"), ("rc_sparkle", "Treasure sparkle"), ("rc_ws_125", "1.25x"),
             ("rc_ws_175", "1.75x"), ("rc_window", "Window"), ("rc_windowed", "Windowed"), ("rc_borderless", "Borderless"),
             ("rc_sound", "Sound"), ("rc_enhanced", "Enhanced"),
             ("rc_combat_speed", "Combat speed"), ("rc_enemy_turns", "Enemy turns"), ("rc_x4", "4x"),
@@ -547,7 +547,7 @@ IMAGES += [("rc_hint_change", 60, 11, menu_hint("Change", "A")), ("rc_hint_back"
 IMAGES += [("dlg_continue", 64, 11, menu_hint("Continue", "A", light=True)), ("dlg_choose", 64, 11, menu_hint("Choose", "A", light=True)),
            ("dlg_back", 64, 11, menu_hint("Back", "B", light=True))]
 # View skips a conversation, line by line until it offers answers; View again stops it (src/main/input.cpp).
-IMAGES += [("dlg_skip", 48, 11, menu_hint("Skip", "CL", light=True)), ("dlg_stop", 48, 11, menu_hint("Stop", "CL", light=True))]
+IMAGES += [("dlg_skip", 48, 11, menu_hint("Skip", "START", light=True)), ("dlg_stop", 48, 11, menu_hint("Stop", "START", light=True))]
 # The inventory page's party switch: LT and RT beside the party's portraits (previous / next member; the port makes LT the
 # game's C-left in the pause menu, src/main/input.cpp).
 IMAGES += [("party_prev", 11, 11, page_prompt("Z")), ("party_next", 11, 11, page_prompt("CR"))]
@@ -892,7 +892,7 @@ IMAGES.append(("sparkle", 16, 16, sparkle))
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],
-                "dlg_skip": ["CL"], "dlg_stop": ["CL"],
+                "dlg_skip": ["START"], "dlg_stop": ["START"],
                 "chint_choose": ["DPAD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
 ICON_BUTTONS.update({name: [button] for name, _, button in HINTS})
 ICON_BUTTONS.update({name: [b for pairs_ in pairs for b in pairs_[0] if b != "+"] for name, *pairs in CONTROLS})

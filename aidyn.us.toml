@@ -991,3 +991,21 @@ text = "extern void aidyn_potion_brewed(uint8_t* rdram, recomp_context* ctx); ai
 func = "func_800357A0"
 before_vram = 0x800358D8
 text = "extern void aidyn_shop_price(uint8_t* rdram, recomp_context* ctx); aidyn_shop_price(rdram, ctx);"
+
+# Fights stay won (Fair play, src/game/patches.cpp): battle_setup_func's entry notes whether the group is one to keep
+# once beaten, WriteTo_VoxelChart's entry keeps it when the win writes it to the voxel chart, and
+# some_monsterparty_checker's entry says a group kept so is still beaten (true), so it never comes back.
+[[patches.hook]]
+func = "battle_setup_func"
+before_vram = 0x800094B4
+text = "extern void aidyn_battle_setup(uint8_t* rdram, recomp_context* ctx); aidyn_battle_setup(rdram, ctx);"
+
+[[patches.hook]]
+func = "WriteTo_VoxelChart"
+before_vram = 0x800567D0
+text = "extern void aidyn_voxel_chart_write(uint8_t* rdram, recomp_context* ctx); aidyn_voxel_chart_write(rdram, ctx);"
+
+[[patches.hook]]
+func = "some_monsterparty_checker"
+before_vram = 0x80056A58
+text = "extern int aidyn_beaten_for_good(uint8_t* rdram, recomp_context* ctx); if (aidyn_beaten_for_good(rdram, ctx)) return;"

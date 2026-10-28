@@ -220,7 +220,7 @@ to the original ROM:
 | Aidyn Plus | `a72109e848aff75e` | `d57f9459a77c66490ff09b3d9d97545c7a65fad2` |
 | Action Edition (`AidynActionFeb072026.z64`) | `802056dbbadc0fc0` | `4bbb9fcd0f3124b145b8b54e7be927baae4e262e` |
 
-**Action Edition** is a data mod of its own (faster combat, a rebalanced economy and items, shops stocked to their themes,
+**Action Edition**, by MDoulos, is a data mod of its own (faster combat, a rebalanced economy and items, shops stocked to their themes,
 spell schools redistributed among the party; see its page): a whole ROM, not a patch, so it is used as it is, and a new
 release of it has another hash and needs a new release of the port. Like the others it changes only game data (its
 differences from the 1.0 ROM are in the same places as the other two's), so it runs on the same recompiled code.
@@ -283,10 +283,11 @@ the same pixels (the renderer stops on equal texture hashes: make_branding.py ch
 While a conversation is up (one the story starts, or talking to someone in the field: the game's own test,
 `gGlobals.diaClass`'s menu), "Continue [A]" ("Choose" when it offers answers; the key bound to A while the keyboard
 was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AIDYN_DIALOGUE_LOG=1`), with "Skip
-[View]": View skips the conversation by pressing A for you about eight times a second (`src/main/input.cpp`), so every
-line goes by and everything it does still happens, until it offers answers or ends; View again stops it ("Stop
-[View]"). In a conversation View doesn't quicksave. The game's four cinematics already skip with B or Start; the
-Help book (a conversation on the journal's page) keeps its own hints.
+[Start]": Start (as in the game's four cinematics, which skip with B or Start) skips the conversation by pressing A for
+you about eight times a second (`src/main/input.cpp`), so every line goes by and everything it does still happens, until
+it offers answers or ends; Start again stops it ("Stop [Start]"). In a conversation the game sees neither Start (held
+past the end, it doesn't open the pause menu) nor View (no quicksave). The Help book (a conversation on the journal's
+page) keeps its own hints.
 `AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with
 `tools/dev/vpad.py` (a virtual Xbox pad for the real pad path), `AIDYN_CONTROLS_LOG=1` (mouse capture changes).
 
@@ -410,9 +411,9 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 68 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
+- **Achievements (#42).** 69 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
   of the bog, Elisheva's tomb),
-  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (8: five, and the three
+  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (9: five, and the four
   fair play ones). Most are read from the event flags the game
   keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, a spell learned, stats
   and skills), a few counted by the port (a potion brewed: `Party::CraftPotion`'s result; fights won, a flawless fight,
@@ -432,9 +433,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   list: grouped, a medal and the day each was earned. `AIDYN_ACHIEVEMENTS=0` turns them off; `AIDYN_ACH_LOG=1` logs
   each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once and `AIDYN_SET_FLAGS=f,f` sets event flags as a game begins
   (tests).
-- **Fair play.** New Game opens a panel of three fixes for the original's loopholes, each on by default and fixed for
-  that playthrough (shown, not changeable, on the ReChronicled page's Fair play row); each has an achievement for
-  finishing the game with it on, and the panel says that turning it off rules that achievement out:
+- **Fair play.** New Game opens a panel of four fixes for the original's loopholes and one help, each fixed for that
+  playthrough (shown on the ReChronicled page's Fair play row). The three rules are on by default and each has an
+  achievement for finishing the game with it on; the panel says that turning one off rules that achievement out:
   - *Healer rule* (Honest Healer): a healer can't lay hands on someone who healed them since the party last rested
     (camping or an inn, `Party::CampHeal`), so two healers can't heal each other up for free (#33).
   - *Fair trade* (Fair Trader): a shop never sells an item for less than it would pay for it. The game prices with
@@ -443,8 +444,20 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
     a profit for ever.
   - *Honest alchemy* (True Alchemist): a potion sells for no more than its ingredients' base price (the original sold a
     Restore Potion brewed from 150 gold of reagents for about 1,200; Aidyn Patch and Action Edition repriced potions).
-  The choice goes with each save the port writes (`save-rules.txt` beside the saves, by the save's hash); a save made
-  before has none of the rules and its playthrough can't earn their achievements. The game's cheat codes (typed as a
+  - *Fights stay won* (on by default, no achievement): a group of monsters beaten stays beaten. The game brings back
+    the groups that have no "defeated" flag of their own (52 of its 1,085, such as the Gwernia inn cellar's bats, and
+    townsfolk who fight once spoken to) after three trips through a door or to another map (its voxel chart). With the
+    rule each such win over a group with no conversation is kept with the save (`battle_setup_func`,
+    `WriteTo_VoxelChart`), and `some_monsterparty_checker` keeps that group away; townsfolk keep the game's way.
+    Camping still brings night ambushes, so there is always a fight to be had.
+  - *Treasure sparkle* (off by default; Keen Eye for finishing the game without it): a pulsing star over every
+    container within about 20 units still to be opened and holding something (chests, gold, herb, spice and gem
+    patches), where the camera can see it: the game's `CheckCollision` on the line from the camera to it (a hit within
+    a unit of it is its own wall). It can be turned on later on the ReChronicled page's Treasure sparkle row (chosen
+    twice), never off. `AIDYN_SPARKLE=1` shows it always and `AIDYN_SPARKLE_DEBUG=1` logs it (developers).
+  The choice goes with each save the port writes (`save-rules.txt` beside the saves, by the save's hash, with the
+  groups beaten for good); a save made before has none of the rules and its playthrough can't earn their
+  achievements. `AIDYN_FAIR_LOG=1` logs prices, fights and the voxel chart (developers). The game's cheat codes (typed as a
   name: `!cheater`, `!bingo`, `!slashing`, `!darkside`) stop all achievements in that playthrough.
 - **Sholeh's intelligence.** Saves keep intelligence, willpower, dexterity and strength in 5 bits (at most 31): Sholeh
   starts with 35 intelligence (the original, Aidyn Patch) and came back from every save with 3. A stat whose starting
