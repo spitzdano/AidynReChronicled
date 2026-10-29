@@ -6,8 +6,9 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) with the
 [RT64](https://github.com/rt64/rt64) renderer.
 
-**Now a collaboration.** Aidyn ReChronicled is now made together with MDoulos, author of the Action Edition mod. Its
-name will change on the way to 1.0.0.
+**Working with MDoulos.** MDoulos, author of the Action Edition mod, is working on a project of his own built on a new
+engine. The two stay separate and share art, fixes and findings. Aidyn ReChronicled remains the original game and its
+mods, fixed and improved.
 
 ![Aidyn Chronicles: The First Mage, ReChronicled](docs/banner.jpg)
 
@@ -826,7 +827,7 @@ start), for checking sound changes without listening.
   the original (not included: each player applies them to their own ROM).
 - **Action Edition** by MDoulos: the community mod the port can run as a fourth version (not included: each player
   brings their own ROM of it).
-- **MDoulos** ([mdoulos](https://github.com/mdoulos)): co-maintainer.
+- **MDoulos** ([mdoulos](https://github.com/mdoulos)): a collaborator, sharing art, fixes and findings with his own project.
 - **Fonts** (SIL Open Font License 1.1, licences beside them): Marcellus SC, Kanit, Uncial Antiqua, Alegreya Sans.
 - **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)**: the upscaler behind the HD texture packs (a tool, not part
   of the game).
