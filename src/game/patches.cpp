@@ -9562,7 +9562,7 @@ namespace {
         bool sparkle = false;
         bool stay_won = true;
         bool chests = true;
-        bool shops = true;  // Better shops: Action Edition's stock (the Original only)
+        bool shops = false;  // Better shops: Action Edition's stock (the Original only, off by default)
         std::set<uint32_t> beaten;  // groups beaten for good: voxel index << 24 | map (mapDatA, the cell's x, y)
         std::set<uint32_t> looted;  // containers emptied for good: the same keys
     };
@@ -9982,7 +9982,6 @@ bool fair_panel_open(uint8_t* rdram, recomp_context* ctx) {
     fp.widget = (uint32_t)ctx->r5;
     fair_pending = FairRules{};
     fair_pending.on[1] = fair_trade_offered();
-    fair_pending.shops = fair_shops_offered();
     aidyn::input::set_capture(true);
     return true;
 }
@@ -10103,7 +10102,7 @@ void fair_show(uint8_t* rdram, recomp_context* ctx) {
 }
 
 // ---- Better shops ----
-// Fair play's Better shops (the Original only, on by default; off earns Old Stock): the game's 75 shops stock what
+// Fair play's Better shops (the Original only, off by default; finishing with it off earns Old Stock): the game's 75 shops stock what
 // Action Edition (MDoulos's mod) stocks them with, as he agreed (2026-10-29), credited. The original's shops are thin;
 // Action Edition's are fuller and fit each trade. The game reads its shop table from the ROM into gShopDBP (0x800E2B20:
 // ShopDB {total, pad, shop_ram* shops}; shop_ram 108 bytes: the shopkeeper, stock[23] as ItemIDs, multi[3][20] the three

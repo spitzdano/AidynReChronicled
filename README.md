@@ -467,7 +467,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
     patches), where the camera can see it: the game's `CheckCollision` on the line from the camera to it (a hit within
     a unit of it is its own wall). It can be turned on later on the ReChronicled page's Treasure sparkle row (chosen
     twice), never off. `AIDYN_SPARKLE=1` shows it always and `AIDYN_SPARKLE_DEBUG=1` logs it (developers).
-  - *Better shops* (the Original only, on by default; Old Stock for finishing the game with it off, the original's own
+  - *Better shops* (the Original only, off by default; Old Stock for finishing the game with it off, the original's own
     shops): the 75 shops stock what Action Edition stocks them with (MDoulos's mod, with his agreement), fuller and
     fitting each trade, in place of the original's thin stock. The same shops, shopkeepers and only items the original
     has (checked by `tools/data/action_shops.py`, which writes `src/game/action_shops.h` from the Action Edition ROM);
