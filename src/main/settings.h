@@ -64,6 +64,7 @@ namespace aidyn::settings {
         bool button_prompts = true;  // the port's other prompts: menu hints (Equip, Lists, Take...), LB / RB at page arrows, party switch
         bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's
         bool combat_log = true;      // combat: the log of the fight's messages at the bottom left
+        bool combat_descriptions = true;  // combat: what the highlighted spell or item does, beside its menu
         bool fps_counter = false;    // the frames shown a second, at the top left (the Display page)
         bool textures = true;        // every custom texture: the packs below, HD save pictures, redrawn page words, the HD letters' spacing (false: as the N64)
         bool vsync = true;           // wait for the display's refresh (no tearing); false: show each frame as soon as it's drawn (G-Sync / FreeSync)
