@@ -9,8 +9,9 @@ and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 > so playtests and problem reports from further along are very welcome (see "Found a problem?" below);
 > I'll work on them when I can.
 
-**Now a collaboration.** Aidyn ReChronicled is now made together with MDoulos, author of the Action Edition mod. Its
-name will change on the way to 1.0.0.
+**Working with MDoulos.** MDoulos, author of the Action Edition mod, is working on a project of his own built on a new
+engine. The two stay separate and share art, fixes and findings. Aidyn ReChronicled remains the original game and its
+mods, fixed and improved.
 
 **What's new:** `RELEASE-NOTES.md`, next to this file, has what each release changed, newest first.
 
@@ -192,7 +193,8 @@ All in the data folder (see "Your ROM and the data folder"):
 Made by statically recompiling the game with N64Recomp, running on N64ModernRuntime and the RT64 renderer.
 Unofficial: not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. GPL-3.0 (see `LICENSE`).
 Built on blackgamma7's Aidyn Chronicles decompilation (https://github.com/blackgamma7/Aidyn). Aidyn Patch and Aidyn
-Plus are halibabica's, Action Edition is MDoulos's; MDoulos is now co-maintainer of this project.
+Plus are halibabica's, Action Edition is MDoulos's; MDoulos collaborates on this project, sharing art, fixes and
+findings with his own.
 
 Made with heavy AI involvement: nearly all of the code was written by an AI coding assistant (Claude Code), directed
 and play-tested by Spitzdano, and the redrawn portraits, icons and world textures were made with an AI image
