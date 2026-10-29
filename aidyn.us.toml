@@ -1054,3 +1054,11 @@ text = "extern void aidyn_model_init(uint8_t* rdram, recomp_context* ctx); aidyn
 func = "getBorgItem"
 before_vram = 0x80098D14
 text = "extern void aidyn_asset_request(uint8_t* rdram, recomp_context* ctx); aidyn_asset_request(rdram, ctx);"
+
+# The conversation behind a shop (src/game/patches.cpp, "Conversation hint"): draw_screenshot_background, before its
+# return (v0 the display list), covers the conversation's band in the picture of the screen a shop or trainer is drawn
+# over; its last line showed under the shop page's torn bottom edge.
+[[patches.hook]]
+func = "draw_screenshot_background"
+before_vram = 0x80048718
+text = "extern void aidyn_snapshot_drawn(uint8_t* rdram, recomp_context* ctx); aidyn_snapshot_drawn(rdram, ctx);"

@@ -10565,6 +10565,32 @@ namespace {
     }
 }
 
+// A shop or trainer opened from a conversation (gameStateA 7 or 5) is drawn over a picture of the screen taken as it
+// opens (GetSnapshot_), with the conversation's band and its last line in it: they showed under the shop page's torn
+// bottom edge. The conversation is gone by then, so its band's place is kept while it is up (draw_dialogue_hint, each
+// frame); when the game turns to a shop or trainer within a few frames of one, draw_screenshot_background's end covers
+// that place in black (the page's edges then show dark, as they do over the sky) until it leaves the shop.
+namespace {
+    struct BandSeen { float x0 = 0, y0 = 0, x1 = 0, y1 = 0; uint32_t frame = 0; bool any = false; } band_seen;
+    uint32_t band_frames = 0;  // draw_dialogue_hint's calls: one a frame
+}
+
+extern "C" void aidyn_snapshot_drawn(uint8_t* rdram, recomp_context* ctx) {
+    static bool cover = false;
+    static uint32_t was = 0;
+    const uint32_t a = MEM_BU(0, kTrekState);
+    const bool shop = a == 7 || a == 5;
+    if (shop && was != a) cover = band_seen.any && band_frames - band_seen.frame < 20;
+    was = a;
+    if (!shop || !cover) return;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    gpr g = ctx->r2;
+    g = rect_state(rdram, g);
+    g = rect(rdram, g, std::max(0.0f, band_seen.x0 - 1.0f), std::max(0.0f, band_seen.y0 - 1.0f),
+             std::min(320.0f, band_seen.x1 + 1.0f), std::min(240.0f, band_seen.y1 + 1.0f), 0x000000FFu, hs, vs);
+    ctx->r2 = g;
+}
+
 // For the input (aidyn::input::set_dialogue): 0 no conversation, 1 a line, 2 answers offered.
 int conversation_state(uint8_t* rdram) {
     const Conversation c = conversation(rdram);
@@ -10577,6 +10603,11 @@ gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
     if (skipping && !was_skipping) notice("Skipping the conversation: Start stops", 2500);
     was_skipping = skipping;
     const Conversation c = conversation(rdram);
+    band_frames++;
+    if (c.bg != 0) {  // its place, for a shop opened from it (aidyn_snapshot_drawn)
+        const float bx0 = (int16_t)MEM_HU(kWidgetPosX, c.bg), by0 = (int16_t)MEM_HU(kWidgetPosX + 2, c.bg);
+        band_seen = { bx0, by0, bx0 + MEM_HU(0x74, c.bg), by0 + MEM_HU(0x72, c.bg), band_frames, true };
+    }
     if (c.bg == 0 || book_frames > 0 || aidyn::input::start_held() || !aidyn::settings::graphics().button_prompts) {
         return g;
     }
