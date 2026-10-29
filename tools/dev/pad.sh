@@ -13,7 +13,8 @@
 #   pad.sh dell             move the game window to the Dell's workspace (start does this)
 #   pad.sh close            close the test game (only the one this script started, never spitzdano's)
 #   pad.sh where            print the dev folder and the log's path
-# Test runs use no anti-aliasing or supersampling (AIDYN_TEST_LIGHT=1, src/main/settings.cpp; AIDYN_TEST_LIGHT=0 turns it off).
+# Test runs use no anti-aliasing or supersampling (AIDYN_TEST_LIGHT=1, src/main/settings.cpp; AIDYN_TEST_LIGHT=0 turns it off),
+# are capped at 60 frames a second (AIDYN_TEST_FPS) and silent (SDL_AUDIODRIVER=dummy; SDL_AUDIODRIVER= for sound).
 # The window is moved to the test workspace (4, AIDYN_TEST_WS) on start and checked (pad.sh dell does it again); never fullscreen it.
 P=$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")
 if [[ -n ${AIDYN_DEV_DIR:-} ]]; then D=$AIDYN_DEV_DIR
@@ -72,9 +73,10 @@ case $1 in
          { echo '#!/usr/bin/env bash'; printf 'cd %q || exit 1\n' "$P"
            for v in $(compgen -e | grep -E '^(AIDYN_|SDL_AUDIO|XDG_DATA_HOME)'); do printf 'export %s=%q\n' "$v" "${!v}"; done
            printf 'export AIDYN_PAD_FILE=%q AIDYN_WINDOWED=1 AIDYN_TEST_LIGHT=${AIDYN_TEST_LIGHT-1}\n' "$F"
+           printf 'export AIDYN_TEST_FPS=%q SDL_AUDIODRIVER=%q\n' "${AIDYN_TEST_FPS-60}" "${SDL_AUDIODRIVER-dummy}"
            printf 'exec stdbuf -oL -eL build/cmake/AidynReChronicled >%q 2>&1\n' "$LOG"; } >"$L"
          if [[ -n $ws && $L != *[\"\\]* ]] && [[ $(hyprctl dispatch "hl.dsp.exec_cmd(\"bash $L\", { workspace = \"$ws silent\" })" 2>&1) == ok ]]; then :
-         else (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 AIDYN_TEST_LIGHT=${AIDYN_TEST_LIGHT-1} setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$LOG" 2>&1 &); fi
+         else (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 AIDYN_TEST_LIGHT=${AIDYN_TEST_LIGHT-1} AIDYN_TEST_FPS=${AIDYN_TEST_FPS-60} SDL_AUDIODRIVER=${SDL_AUDIODRIVER-dummy} setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$LOG" 2>&1 &); fi
          to_dell ;;
   close) pid=$(test_pid) && hyprctl dispatch "hl.dsp.window.close({ window = \"pid:$pid\" })" >/dev/null
          for _ in $(seq 1 20); do test_pid >/dev/null || exit 0; sleep 0.5; done
