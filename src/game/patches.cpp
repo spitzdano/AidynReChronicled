@@ -1899,6 +1899,14 @@ namespace {
         }
         return g;
     }
+
+    // Button prompts (a word and its button: Unequip A, Lists, Change, Back, the conversations' Continue...) are drawn at
+    // 85% (spitzdano, 2026-10-28: a bit smaller all round), each kept centred on the row the full-size one filled.
+    constexpr float kPromptScale = 0.85f;
+    gpr draw_prompt(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy) {
+        const float drop = aidyn::branding::kImages[index].h * (1.0f - kPromptScale) / 2.0f;
+        return draw_rgba16(rdram, g, index, x, y + drop * sy, sx * kPromptScale, sy * kPromptScale);
+    }
 }
 
 // The version, bottom left of the title screen: the one running (aidyn::settings::game().rom_patch) with a copper
@@ -3163,13 +3171,13 @@ namespace {
     gpr draw_hint_row(uint8_t* rdram, gpr g, const TitleSeen& origin, const int* row, int n, float x, float y,
                       bool centred) {
         float width = 0.0f;
-        for (int k = 0; k < n; k++) width += row[k] < 0 ? 0.0f : ink_width(row[k]) + 6.0f;
+        for (int k = 0; k < n; k++) width += row[k] < 0 ? 0.0f : ink_width(row[k]) * kPromptScale + 6.0f;
         if (centred) x -= (width - 6.0f) / 2.0f;
         g = prompt_state(rdram, g, origin.alpha);
         for (int k = 0; k < n; k++) {
             if (row[k] < 0) continue;
-            g = draw_rgba16(rdram, g, row[k], origin.x + x * origin.sx, origin.y + y * origin.sy, origin.sx, origin.sy);
-            x += ink_width(row[k]) + 6.0f;
+            g = draw_prompt(rdram, g, row[k], origin.x + x * origin.sx, origin.y + y * origin.sy, origin.sx, origin.sy);
+            x += ink_width(row[k]) * kPromptScale + 6.0f;
         }
         return g;
     }
@@ -3674,14 +3682,14 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         auto draw_row = [&](std::initializer_list<int> row, float row_y) {
             float width = 0.0f;
             for (int i : row) {
-                width += i < 0 ? 0.0f : ink_width(i) + 6.0f;
+                width += i < 0 ? 0.0f : ink_width(i) * kPromptScale + 6.0f;
             }
             float x = t.x + (80.0f - 48.0f - (width - 6.0f) / 2.0f) * t.sx;
             const float y = t.y + (row_y - 68.0f) * t.sy;
             for (int i : row) {
                 if (i >= 0) {
-                    g = draw_rgba16(rdram, g, i, x, y, t.sx, t.sy);
-                    x += (ink_width(i) + 6.0f) * t.sx;
+                    g = draw_prompt(rdram, g, i, x, y, t.sx, t.sy);
+                    x += (ink_width(i) * kPromptScale + 6.0f) * t.sx;
                 }
             }
         };
@@ -3728,12 +3736,13 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false);
             g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 204.0f, false);
         }
-        // DETAILS and its X are painted into the page (art/pages, tools/hdui/labels.json: the button at texel 281, 205, 11 square):
-        // with the keyboard in use a cap covers it.
+        // DETAILS and its X are painted into the page (art/pages, tools/hdui/scroll_pages.py: the button 9.4 texels square at
+        // 282.6, 205.75, 85% of the game's): with the keyboard in use a cap covers it, centred on it.
         if (aidyn::input::keyboard_last()) {
             const TitleSeen& o = inventory_page;
             g = prompt_state(rdram, g, o.alpha);
-            g = draw_button_cap(rdram, g, "CD", o.x + 280.0f * o.sx, o.y + 205.0f * o.sy, o.sx, o.sy, 13.0f, 11.0f, true);
+            g = draw_button_cap(rdram, g, "CD", o.x + 281.8f * o.sx, o.y + 205.75f * o.sy, o.sx, o.sy, 13.0f * kPromptScale,
+                                11.0f * kPromptScale, true);
         }
         // The party switch beside the portraits (their frames span x 21..150, y 25..66).
         const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party
@@ -4818,10 +4827,10 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = prompt_state(rdram, g, (uint8_t)rc.fade);
     const int change = branding_index("rc_hint_change"), back = branding_index("rc_hint_back");
     if (change >= 0 && back >= 0) {
-        const float gap = 24.0f, x = centre - (ink_width(change) + gap + ink_width(back)) / 2.0f;
+        const float gap = 24.0f, x = centre - (ink_width(change) + ink_width(back)) * kPromptScale / 2.0f - gap / 2.0f;
         const float y = kRowsTop + kRcStep * shown + 6.0f;
-        word("rc_hint_change", x, y, false);
-        word("rc_hint_back", x + ink_width(change) + gap, y, false);
+        g = draw_prompt(rdram, g, change, x * hs, y * vs, hs, vs);
+        g = draw_prompt(rdram, g, back, (x + ink_width(change) * kPromptScale + gap) * hs, y * vs, hs, vs);
     }
     return g;
 }
@@ -7739,6 +7748,10 @@ namespace {
     }
 }
 
+// A title written over the panel's top bar (Fair Play, Controls): the letters' top this far down, so the 0.9 scale title
+// sits in the bar's middle (at 26 it rode the bar's upper rail).
+constexpr float kPanelTitleY = 33.0f;
+
 // The panel from (x0, y0) to (x1, y1), faded by alpha: the slate body with its rails, the top bar (28 units, behind a
 // title) and the closing bar (16).
 gpr title_panel(uint8_t* rdram, recomp_context* ctx, gpr g, float x0, float y0, float x1, float y1, uint32_t alpha) {
@@ -7807,6 +7820,13 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     if (alpha != 0) {
         float x0 = (int16_t)MEM_HU(kWidgetPosX, w), y0 = (int16_t)MEM_HU(kWidgetPosX + 2, w);
         float x1 = x0 + MEM_HU(0x74, w), y1 = y0 + MEM_HU(0x72, w);
+        static const bool box_log = std::getenv("AIDYN_BOX_LOG") != nullptr;  // each new box's size, for fitting
+        static float logged[4] = {};
+        if (box_log && (logged[0] != x0 || logged[1] != y0 || logged[2] != x1 || logged[3] != y1)) {
+            fprintf(stdout, "Title box: %g,%g to %g,%g\n", x0, y0, x1, y1);
+            fflush(stdout);
+            logged[0] = x0, logged[1] = y0, logged[2] = x1, logged[3] = y1;
+        }
         // The Options page's box is sized down to its Game row (Rename Character), which the title screen hides: it
         // ran off the bottom of the screen. A box that would leave the screen ends just under the Music slider
         // instead (the page's fixed layout: 116 units from the box's top, and room for the closing bar).
@@ -7814,9 +7834,16 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
         // Load, Delete and Exit row on the closing one: the panel takes a little more room, up and down and at the sides.
         if (x0 == 51.0f && y0 == 24.0f && x1 == 270.0f && y1 == 216.0f) {
             x0 = 45.0f;
-            y0 = 11.0f;
+            y0 = 16.0f;  // the top bar behind the title picture (at 11 the picture hung over the bar's lower rail)
             x1 = 276.0f;
             y1 = 232.0f;
+        }
+        // The name entry (New Game: a box of 52,43 to 260,179) has its fourth row of letters where the closing bar goes:
+        // the panel runs 13 units further down, and 4 wider each side for the grid's last column.
+        if (x0 == 52.0f && y0 == 43.0f && x1 == 260.0f && y1 == 179.0f) {
+            x0 = 48.0f;
+            x1 = 264.0f;
+            y1 = 192.0f;
         }
         if (y1 > 232.0f) y1 = std::min(y1, y0 + 140.0f);
         if (options_box_shifted(rdram) && x1 - x0 == 208.0f) {  // the Options page's box follows its rows: kept centred
@@ -8761,15 +8788,15 @@ namespace {
         }
         h.pulse++;
         // Where things go.
-        const float left = h.title ? 54.0f : kRowsLeft, right = h.title ? 266.0f : kRowsRight, top = h.title ? 52.0f : kRowsTop;
+        const float left = h.title ? 54.0f : kRowsLeft, right = h.title ? 266.0f : kRowsRight, top = h.title ? 58.0f : kRowsTop;
         const float col0 = h.title ? 152.0f : 168.0f, col1 = h.title ? 212.0f : 230.0f;
         const uint32_t ink_normal = h.title ? 0xF2E6C8 : kMenuInk, ink_empty = h.title ? 0x8C8470 : 0xA09090;
         const float centre = (left + right) / 2.0f;
         if (h.title) {
-            g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 194.0f, (uint32_t)h.fade);
+            g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 200.0f, (uint32_t)h.fade);  // room for 12 rows and the hint
         }
         g = ctl_state(rdram, ctx, g);
-        g = ctl_text(rdram, ctx, g, "Controls", centre, h.title ? 26.0f : top - 30.0f, h.title ? 0.9f : 1.0f,
+        g = ctl_text(rdram, ctx, g, "Controls", centre, h.title ? kPanelTitleY : top - 30.0f, h.title ? 0.9f : 1.0f,
                      h.title ? 0xE8C060 : kMenuInk, h.fade, false, true);
         for (int i = 0; i < kCtlVisible && ctl.top + i < n; i++) {
             const int k = ctl.top + i;
@@ -8800,7 +8827,7 @@ namespace {
                                  : rows[ctl.row].kind == CtlRow::kBinding ? a_key + ": bind   " + y_key + ": clear   " + b_key + ": back"
                                                                           : a_key + " / left / right: change   " + b_key + ": back";
         g = ctl_text(rdram, ctx, g, hint, centre, hint_y, kCtlScale, ink_normal, h.fade, false, true);
-        g = ctl_text(rdram, ctx, g, std::to_string(ctl.row + 1) + " / " + std::to_string(n), right, top - (h.title ? 24.0f : 30.0f),
+        g = ctl_text(rdram, ctx, g, std::to_string(ctl.row + 1) + " / " + std::to_string(n), right, h.title ? kPanelTitleY + 2.0f : top - 30.0f,
                      0.55f, ink_normal, h.fade, true);
         return false;
     }
@@ -10000,7 +10027,7 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const float centre = 160.0f;
     g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 194.0f, (uint32_t)fade);
     g = ctl_state(rdram, ctx, g);
-    g = ctl_text(rdram, ctx, g, "Fair Play", centre, 26.0f, 0.9f, 0xE8C060, fade, false, true);
+    g = ctl_text(rdram, ctx, g, "Fair Play", centre, kPanelTitleY, 0.9f, 0xE8C060, fade, false, true);
     g = ctl_text(rdram, ctx, g, "Fixes for the original's loopholes, and a help, set for the whole game.", centre, 46.0f, 0.5f,
                  0xC8BFA8, fade, false, true);
     for (int i = 0; i < kFairRows; i++) {
@@ -10478,16 +10505,16 @@ gpr draw_dialogue_hint(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const int skip = skipping || answers > 0 ? -1 : branding_index("dlg_skip");
     if (image < 0) return g;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-    const float w = (float)ink_width(image);
+    const float w = ink_width(image) * kPromptScale;
     copy_branding(rdram);
     g = hud_begin(rdram, g, false);
     GfxCommand a[2];
     gEXSetRectAlign(&a[0], G_EX_ORIGIN_CENTER, G_EX_ORIGIN_CENTER, -160 * 4, 0, -160 * 4, 0);  // the 4:3 picture's own units
     g = put_cmds(rdram, g, a, 2);
     g = prompt_state(rdram, g, (uint8_t)alpha);
-    g = draw_rgba16(rdram, g, image, (x1 - 8.0f - w) * hs, (y1 - 13.0f) * vs, hs, vs);
+    g = draw_prompt(rdram, g, image, (x1 - 8.0f - w) * hs, (y1 - 13.0f) * vs, hs, vs);
     if (skip >= 0) {
-        g = draw_rgba16(rdram, g, skip, (x1 - 8.0f - w - 10.0f - ink_width(skip)) * hs, (y1 - 13.0f) * vs, hs, vs);
+        g = draw_prompt(rdram, g, skip, (x1 - 8.0f - w - 10.0f - ink_width(skip) * kPromptScale) * hs, (y1 - 13.0f) * vs, hs, vs);
     }
     return hud_end(rdram, g);
 }
