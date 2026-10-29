@@ -1905,7 +1905,9 @@ namespace {
     constexpr float kPromptScale = 0.85f;
     gpr draw_prompt(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy) {
         const float drop = aidyn::branding::kImages[index].h * (1.0f - kPromptScale) / 2.0f;
-        return draw_rgba16(rdram, g, index, x, y + drop * sy, sx * kPromptScale, sy * kPromptScale);
+        // At whole pixels: RT64 snaps a rectangle's top and left edges to them, and a picture starting between pixels
+        // lost its top row (the button's rim, cut flat).
+        return draw_rgba16(rdram, g, index, std::round(x), std::round(y + drop * sy), sx * kPromptScale, sy * kPromptScale);
     }
 }
 
@@ -3741,7 +3743,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         if (aidyn::input::keyboard_last()) {
             const TitleSeen& o = inventory_page;
             g = prompt_state(rdram, g, o.alpha);
-            g = draw_button_cap(rdram, g, "CD", o.x + 281.8f * o.sx, o.y + 205.75f * o.sy, o.sx, o.sy, 13.0f * kPromptScale,
+            g = draw_button_cap(rdram, g, "CD", std::round(o.x + 281.8f * o.sx), std::round(o.y + 205.75f * o.sy), o.sx, o.sy, 13.0f * kPromptScale,
                                 11.0f * kPromptScale, true);
         }
         // The party switch beside the portraits (their frames span x 21..150, y 25..66).
