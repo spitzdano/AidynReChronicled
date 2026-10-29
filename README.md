@@ -416,10 +416,10 @@ reason. On Hyprland, Omarchy's default window opacity lets the desktop show thro
 
 All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
-- **Achievements (#42).** 71 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
+- **Achievements (#42).** 72 milestones in eight groups: Story (21), Side quests (5: Trahern's sword, Pandara's amulet, a strange letter, the wild man
   of the bog, Elisheva's tomb),
-  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (11: five, and the six
-  fair play ones; Action Edition has no Fair Trader). Most are read from the event flags the game
+  Bosses (3), Optional bosses (8), Companions (15), Exploration (2), Growth (6) and Feats (12: five, and the seven
+  fair play ones; Action Edition has no Fair Trader, and only the Original has Old Stock). Most are read from the event flags the game
   keeps in its saves (journal entries, bosses' "killed" flags, companions joining, maps, keys, a spell learned, stats
   and skills), a few counted by the port (a potion brewed: `Party::CraftPotion`'s result; fights won, a flawless fight,
   a camp ambush survived, a fight fled, gold, levels, a full party).
@@ -438,7 +438,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   list: grouped, a medal and the day each was earned. `AIDYN_ACHIEVEMENTS=0` turns them off; `AIDYN_ACH_LOG=1` logs
   each unlock; `AIDYN_ACH_FORCE=id,id` unlocks those once and `AIDYN_SET_FLAGS=f,f` sets event flags as a game begins
   (tests).
-- **Fair play.** New Game opens a panel of five fixes for the original's loopholes and one help, each fixed for that
+- **Fair play.** New Game opens a panel of five fixes for the original's loopholes, one help and better shops, each fixed for that
   playthrough (shown on the ReChronicled page's Fair play row). The fixes are on by default and each has an achievement
   for finishing the game with it on, and the panel says that turning one off rules that achievement out:
   - *Healer rule* (Honest Healer): a healer can't lay hands on someone who healed them since the party last rested
@@ -467,6 +467,13 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
     patches), where the camera can see it: the game's `CheckCollision` on the line from the camera to it (a hit within
     a unit of it is its own wall). It can be turned on later on the ReChronicled page's Treasure sparkle row (chosen
     twice), never off. `AIDYN_SPARKLE=1` shows it always and `AIDYN_SPARKLE_DEBUG=1` logs it (developers).
+  - *Better shops* (the Original only, on by default; Old Stock for finishing the game with it off, the original's own
+    shops): the 75 shops stock what Action Edition stocks them with (MDoulos's mod, with his agreement), fuller and
+    fitting each trade, in place of the original's thin stock. The same shops, shopkeepers and only items the original
+    has (checked by `tools/data/action_shops.py`, which writes `src/game/action_shops.h` from the Action Edition ROM);
+    the game's shop table in memory (`gShopDBP`) holds them while the rule is in force and its own otherwise. Not
+    offered in the mods: each stocks its shops its own way (Aidyn Patch 34 of the 75, Plus 52), and Action Edition's
+    are where the stock comes from. `AIDYN_BETTER_SHOPS_TEST=1` puts them in any version and game (developers).
   The choice goes with each save the port writes (`save-rules.txt` beside the saves, by the save's hash, with the
   groups beaten and the chests emptied for good); a save made before has none of the rules and its playthrough can't earn their
   achievements. `AIDYN_FAIR_LOG=1` logs prices, fights and the voxel chart (developers). The game's cheat codes (typed as a
@@ -827,7 +834,7 @@ start), for checking sound changes without listening.
 - **Aidyn Patch** and **Aidyn Plus** by halibabica (u/halibabica): the community rebalances the port can run instead of
   the original (not included: each player applies them to their own ROM).
 - **Action Edition** by MDoulos: the community mod the port can run as a fourth version (not included: each player
-  brings their own ROM of it).
+  brings their own ROM of it); its shop stock is the Original's Better shops (Fair play), with his agreement.
 - **MDoulos** ([mdoulos](https://github.com/mdoulos)): a collaborator, sharing art, fixes and findings with his own project.
 - **Fonts** (SIL Open Font License 1.1, licences beside them): Marcellus SC, Kanit, Uncial Antiqua, Alegreya Sans.
 - **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)**: the upscaler behind the HD texture packs (a tool, not part

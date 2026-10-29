@@ -4427,6 +4427,7 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g);
 void fair_show(uint8_t* rdram, recomp_context* ctx);
 void fair_fix_stats(uint8_t* rdram, recomp_context* ctx);
 bool fair_rule_kept(int i);
+void better_shops_tick(uint8_t* rdram);                            // "Better shops"
 bool sparkle_on();                                                // "Treasure sparkle": this playthrough has it
 void sparkle_turn_on(uint8_t* rdram, recomp_context* ctx);
 
@@ -8145,6 +8146,7 @@ namespace {
             { "fair_stay_won", "Settled Scores", kAchCount, {} },
             { "fair_chests", "Fair Finder", kAchCount, {} },
             { "fair_keen_eye", "Keen Eye", kAchCount, {} },
+            { "fair_shops", "Old Stock", kAchCount, {} },
         };
         return list;
     }
@@ -8202,6 +8204,7 @@ namespace {
             { "fair_stay_won", "Finish the game with Fights stay won on (Fair Play, at New Game)." },
             { "fair_chests", "Finish the game with Chests stay empty on (Fair Play, at New Game)." },
             { "fair_keen_eye", "Finish the game without the treasure sparkle (Fair Play, at New Game)." },
+            { "fair_shops", "Finish the Original with its own shops: Better shops off (Fair Play, at New Game)." },
         };
         const auto it = kHow.find(id);
         if (it != kHow.end()) return it->second;
@@ -8289,9 +8292,9 @@ namespace {
         std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&t));
         ach.unlocked[id] = when;
         if (id == "story_named") {  // the ending: the fair play rules kept all game
-            static const char* kFair[6] = { "fair_healer", "fair_trade", "fair_alchemy", "fair_keen_eye", "fair_chests",
-                                            "fair_stay_won" };
-            for (int i = 0; i < 6; i++) {
+            static const char* kFair[7] = { "fair_healer", "fair_trade", "fair_alchemy", "fair_keen_eye", "fair_chests",
+                                            "fair_stay_won", "fair_shops" };
+            for (int i = 0; i < 7; i++) {
                 if (fair_rule_kept(i)) ach_unlock(kFair[i]);
             }
         }
@@ -8470,6 +8473,7 @@ gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     watch_tick(rdram);
     achievements_tick(rdram, ctx);
     fair_fix_stats(rdram, ctx);
+    better_shops_tick(rdram);
     g = ach_toast(rdram, ctx, g);
     const gpr font = MEM_W(0, kFontPtr);
     const auto now = std::chrono::steady_clock::now();
@@ -9040,10 +9044,11 @@ namespace {
     }
 
     // A hidden achievement shows nothing until it is earned (no ??? row, not in the group's header or the totals). Only
-    // one that a version can't earn is: Fair Trader in Action Edition (spitzdano: its shops are its own fix, so Fair
-    // play's Fair trade isn't offered there). The side quests and optional bosses show as ??? so they can be counted.
+    // ones that a version can't earn are: Fair Trader in Action Edition (spitzdano: its shops are its own fix, so Fair
+    // play's Fair trade isn't offered there) and Old Stock in the mods (Better shops is the Original's only). The side quests and optional bosses show as ??? so they can be counted.
     bool ach_hidden(const Achievement& a, int version) {
-        return version == 3 && std::strcmp(a.id, "fair_trade") == 0;
+        return (version == 3 && std::strcmp(a.id, "fair_trade") == 0) ||
+               (version != 0 && std::strcmp(a.id, "fair_shops") == 0);  // Better shops is the Original's only
     }
 
     // What a version has earned, and the total it is out of (every achievement but the hidden ones not yet earned).
@@ -9557,6 +9562,7 @@ namespace {
         bool sparkle = false;
         bool stay_won = true;
         bool chests = true;
+        bool shops = true;  // Better shops: Action Edition's stock (the Original only)
         std::set<uint32_t> beaten;  // groups beaten for good: voxel index << 24 | map (mapDatA, the cell's x, y)
         std::set<uint32_t> looted;  // containers emptied for good: the same keys
     };
@@ -9564,12 +9570,12 @@ namespace {
     FairRules fair_pending;     // the panel's choice, for the game about to begin
     std::map<uint64_t, FairRules> fair_records;
     bool fair_records_loaded = false;
-    // The panel's rows: the three rules, fights stay won, chests stay empty, the sparkle.
-    constexpr int kFairRows = 6, kStayWonRow = 3, kChestsRow = 4, kSparkleRow = 5;
+    // The panel's rows: the three rules, fights stay won, chests stay empty, the sparkle, better shops.
+    constexpr int kFairRows = 7, kStayWonRow = 3, kChestsRow = 4, kSparkleRow = 5, kShopsRow = 6;
     constexpr const char* kFairNames[kFairRows] = { "Healer rule", "Fair trade", "Honest alchemy", "Fights stay won",
-                                                     "Chests stay empty", "Treasure sparkle" };
+                                                     "Chests stay empty", "Treasure sparkle", "Better shops" };
     constexpr const char* kFairAch[kFairRows] = { "Honest Healer", "Fair Trader", "True Alchemist", "Settled Scores",
-                                                   "Fair Finder", "Keen Eye" };
+                                                   "Fair Finder", "Keen Eye", "Old Stock" };
     constexpr const char* kFairWhy[kFairRows][2] = {
         { "A healer can't lay hands on someone who", "healed them since the party last rested." },
         { "A shop never sells an item for less than", "it would pay you for it." },
@@ -9577,10 +9583,19 @@ namespace {
         { "Monsters you have beaten don't come back", "when you return (the original's few did)." },
         { "A chest you have emptied stays empty (the", "original refilled a few; plants regrow)." },
         { "A star shows the chests and hidden treasure", "near you that you can see, until opened." },
+        { "Shops carry Action Edition's stock (by MDoulos):", "fuller, and fitting each trade." },
     };
     // Action Edition's shops are its own fix (spitzdano): Fair trade isn't offered there, nor Fair Trader.
     bool fair_trade_offered() {
         return aidyn::settings::game().rom_patch != aidyn::settings::RomPatch::ActionEdition;
+    }
+    // Better shops is the Original's only: each mod stocks its shops its own way (Aidyn Patch 34 of the 75, Plus 52,
+    // Action Edition is where the stock comes from), and MDoulos asked that they keep theirs.
+    bool fair_shops_offered() {
+        return aidyn::settings::game().rom_patch == aidyn::settings::RomPatch::None;
+    }
+    bool fair_offered(int row) {
+        return row == 1 ? fair_trade_offered() : row == kShopsRow ? fair_shops_offered() : true;
     }
     constexpr gpr kFairText = (gpr)(int32_t)0x80F82000;  // the healer rule's message for the game (0x100 bytes)
 
@@ -9601,6 +9616,7 @@ namespace {
             r.sparkle = bits.size() > 3 && bits[3] == '1';
             r.stay_won = bits.size() > 4 && bits[4] == '1';
             r.chests = bits.size() > 5 && bits[5] == '1';
+            r.shops = bits.size() > 6 && bits[6] == '1';  // a record from before Better shops: the original's
             auto keys = [&](std::set<uint32_t>& into) {
                 std::string list;
                 if (!(words >> list) || list == "-") return;
@@ -9615,13 +9631,14 @@ namespace {
         }
     }
 
-    // The record's 0/1s (also the log's): the rules, the sparkle, fights stay won, chests stay empty.
+    // The record's 0/1s (also the log's): the rules, the sparkle, fights stay won, chests stay empty, better shops.
     std::string fair_bits(const FairRules& r) {
         std::string b;
         for (int i = 0; i < 3; i++) b += r.known ? "01"[r.on[i]] : 'x';
         b += "01"[r.sparkle];
         b += r.known ? "01"[r.stay_won] : 'x';
         b += r.known ? "01"[r.chests] : 'x';
+        b += r.known ? "01"[r.shops] : 'x';
         return b;
     }
 
@@ -9632,9 +9649,16 @@ namespace {
     std::set<std::pair<uint16_t, uint16_t>> healed_since_rest;
 }
 
-// 0-2 the rules, 3 Keen Eye (never the sparkle), 4 chests stay empty, 5 fights stay won.
+// 0-2 the rules, 3 Keen Eye (never the sparkle), 4 chests stay empty, 5 fights stay won, 6 Old Stock (the Original
+// with its own shops: Better shops off).
 bool fair_rule_kept(int i) {
-    return i < 3 ? fair_on(i) : i == 3 ? fair.known && !fair.sparkle : i == 4 ? fair.known && fair.chests : fair.known && fair.stay_won;
+    return i < 3 ? fair_on(i) : i == 3 ? fair.known && !fair.sparkle : i == 4 ? fair.known && fair.chests
+         : i == 5 ? fair.known && fair.stay_won : fair.known && !fair.shops && fair_shops_offered();
+}
+// Better shops in force now (Action Edition's stock in the Original's shops: "Better shops", below).
+bool better_shops_on() {
+    static const bool test = std::getenv("AIDYN_BETTER_SHOPS_TEST") != nullptr;  // developers: in any version, any game
+    return test || (fair.known && fair.shops && fair_shops_offered());
 }
 bool sparkle_on() { return fair.sparkle; }
 
@@ -9684,7 +9708,7 @@ void fair_note_save(uint64_t hash) {
 void fair_loaded_save(uint64_t hash) {
     fair_load_records();
     const auto it = fair_records.find(hash);
-    fair = it != fair_records.end() ? it->second : FairRules{ false, { false, false, false }, false, false, false };
+    fair = it != fair_records.end() ? it->second : FairRules{ false, { false, false, false }, false, false, false, false };
     healed_since_rest.clear();
     fprintf(stdout, "Fair play: loaded save %016llx, %s, %zu groups beaten and %zu containers emptied for good\n",
             (unsigned long long)hash, it != fair_records.end() ? ("rules " + fair_bits(fair)).c_str() : "no record (none on)",
@@ -9946,7 +9970,7 @@ namespace {
 namespace {
     bool& fair_pick(int row) {
         return row < 3 ? fair_pending.on[row] : row == kStayWonRow ? fair_pending.stay_won
-             : row == kChestsRow ? fair_pending.chests : fair_pending.sparkle;
+             : row == kChestsRow ? fair_pending.chests : row == kShopsRow ? fair_pending.shops : fair_pending.sparkle;
     }
 }
 
@@ -9958,6 +9982,7 @@ bool fair_panel_open(uint8_t* rdram, recomp_context* ctx) {
     fp.widget = (uint32_t)ctx->r5;
     fair_pending = FairRules{};
     fair_pending.on[1] = fair_trade_offered();
+    fair_pending.shops = fair_shops_offered();
     aidyn::input::set_capture(true);
     return true;
 }
@@ -9981,7 +10006,7 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const uint32_t dirs = b & 0x0F00;
     fp.repeat = dirs != 0 ? fp.repeat + 1 : 0;
     const uint32_t act = pressed | ((fp.repeat > 24 && fp.repeat % 6 == 0) ? dirs : 0);
-    constexpr float kLeft = 50.0f, kRight = 270.0f, kTop = 58.0f, kStep = 12.0f;
+    constexpr float kLeft = 50.0f, kRight = 270.0f, kTop = 58.0f, kStep = 11.0f;
     if (!fp.closing && fp.fade == 255) {
         static uint32_t seen = 0;
         const PointerPick p = pointer_pick(kTop - 2.0f, kStep, kFairRows, kLeft - 8.0f, kRight + 4.0f, seen);
@@ -9989,7 +10014,7 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
         if (act & 0x0800) { fp.row = (fp.row + kFairRows - 1) % kFairRows; rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0400) { fp.row = (fp.row + 1) % kFairRows; rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0300) {
-            if (fp.row == 1 && !fair_trade_offered()) {
+            if (!fair_offered(fp.row)) {
                 rc_sound(rdram, ctx, 0x741, 60);
             } else {
                 bool& v = fair_pick(fp.row);
@@ -10037,16 +10062,19 @@ gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g) {
     for (int i = 0; i < kFairRows; i++) {
         const float y = kTop + kStep * i;
         const uint32_t ink = i == fp.row ? ctl_highlight(h) : 0xF2E6C8;
-        const bool on = fair_pick(i), offered = i != 1 || fair_trade_offered();
+        const bool on = fair_pick(i), offered = fair_offered(i);
         g = ctl_text(rdram, ctx, g, kFairNames[i], kLeft, y, 0.7f, offered ? ink : 0x8C8470, fade);
         g = ctl_text(rdram, ctx, g, !offered ? "Not here" : on ? "On" : "Off", kRight, y, 0.7f, on ? 0xE8C060 : 0x8C8470, fade, true);
     }
     const float dy = kTop + kStep * kFairRows + 3.0f;
     g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][0], centre, dy, 0.55f, 0xF2E6C8, fade, false, true);
     g = ctl_text(rdram, ctx, g, kFairWhy[fp.row][1], centre, dy + 9.0f, 0.55f, 0xF2E6C8, fade, false, true);
-    const bool help = fp.row == kSparkleRow;  // the sparkle: on loses its achievement, and stays on
-    const std::string warn = help ? std::string("On (for good): the achievement ") + kFairAch[kSparkleRow] + " can't be earned."
-                           : fp.row == 1 && !fair_trade_offered() ? std::string("Action Edition's shops are its own fix.")
+    // The sparkle and better shops: on loses their achievement (the sparkle's stays on for good).
+    const bool help = fp.row == kSparkleRow || fp.row == kShopsRow;
+    const bool mod_shops = !fair_offered(fp.row) && aidyn::settings::game().rom_patch != aidyn::settings::RomPatch::ActionEdition;
+    const std::string warn = !fair_offered(fp.row) ? std::string(mod_shops ? "This version keeps its own shops." : "Action Edition's shops are its own fix.")
+                           : fp.row == kSparkleRow ? std::string("On (for good): the achievement ") + kFairAch[kSparkleRow] + " can't be earned."
+                           : fp.row == kShopsRow ? std::string("On: the achievement ") + kFairAch[kShopsRow] + " can't be earned in this game."
                            : std::string("Off: the achievement ") + kFairAch[fp.row] + " can't be earned in this game.";
     g = ctl_text(rdram, ctx, g, warn, centre, dy + 21.0f, 0.5f, fair_pick(fp.row) != help ? 0x8C8470 : 0xE8A050, fade, false, true);
     const bool kb = aidyn::input::keyboard_last();
@@ -10061,10 +10089,10 @@ void fair_show(uint8_t* rdram, recomp_context* ctx) {
     // Short: the notice is one line. The rules on, then the sparkle if it is.
     std::string t = "Fair play: none (an older game)";
     if (fair.known) {
-        const char* names[5] = { "Healer", "Trade", "Alchemy", "Stay won", "Chests" };
-        const bool on[5] = { fair.on[0], fair_on(1), fair.on[2], fair.stay_won, fair.chests };
+        const char* names[6] = { "Healer", "Trade", "Alchemy", "Stay won", "Chests", "Shops" };
+        const bool on[6] = { fair.on[0], fair_on(1), fair.on[2], fair.stay_won, fair.chests, better_shops_on() };
         std::string list;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             if (on[i]) list += std::string(list.empty() ? "" : ", ") + names[i];
         }
         t = "Fair play: " + (list.empty() ? std::string("none") : list);
@@ -10072,6 +10100,69 @@ void fair_show(uint8_t* rdram, recomp_context* ctx) {
     if (fair.sparkle) t += " + sparkle";
     notice(t.c_str(), 6000);
     rc_sound(rdram, ctx, 0x740, 60);
+}
+
+// ---- Better shops ----
+// Fair play's Better shops (the Original only, on by default; off earns Old Stock): the game's 75 shops stock what
+// Action Edition (MDoulos's mod) stocks them with, as he agreed (2026-10-29), credited. The original's shops are thin;
+// Action Edition's are fuller and fit each trade. The game reads its shop table from the ROM into gShopDBP (0x800E2B20:
+// ShopDB {total, pad, shop_ram* shops}; shop_ram 108 bytes: the shopkeeper, stock[23] as ItemIDs, multi[3][20] the three
+// price bytes of the first 20) once, and every shop opened reads from there. Each frame: while the rule is in force the
+// table holds Action Edition's records (src/game/action_shops.h, tools/data/action_shops.py: the same shops, shopkeepers
+// and only items the original has), converted as ShopDB::Load converts the ROM's; otherwise the game's own, put back.
+// A new table (the game making it again) starts as the game's own.
+#include "action_shops.h"
+
+namespace {
+    constexpr gpr kShopDBPtr = (gpr)(int32_t)0x800E2B20;  // gShopDBP
+    constexpr int kShopRam = 108;
+    struct ShopsState {
+        gpr shops = 0;
+        bool applied = false;
+        std::vector<uint8_t> original;  // the game's own table, while Action Edition's is in it
+    } shops_state;
+
+    void shops_write(uint8_t* rdram, gpr shop, const uint8_t* rec) {
+        int pos = 2;  // after the shopkeeper (kept: the same in both)
+        for (int k = 0; k < 23; k++) {
+            MEM_H(2 + 2 * k, shop) = (int16_t)(rec[pos] | rec[pos + 1] << 8);
+            pos += 2;
+            if (k < 20) {
+                for (int m = 0; m < 3; m++) MEM_B(48 + 20 * m + k, shop) = (int8_t)rec[pos++];
+            }
+        }
+    }
+}
+
+void better_shops_tick(uint8_t* rdram) {
+    const gpr db = MEM_W(0, kShopDBPtr);
+    if (!heap_pointer(db)) {
+        shops_state = {};
+        return;
+    }
+    const gpr shops = MEM_W(4, db);
+    if (!heap_pointer(shops) || MEM_BU(0, db) != aidyn::action_shops::kShops) return;
+    if (shops != shops_state.shops) {
+        shops_state = {};
+        shops_state.shops = shops;
+    }
+    const bool want = better_shops_on();
+    if (want == shops_state.applied) return;
+    const int n = aidyn::action_shops::kShops;
+    if (want) {
+        for (int i = 0; i < n; i++) {  // the same shops in the same order: else leave the game's alone
+            const uint8_t* rec = aidyn::action_shops::kRecords[i];
+            if (MEM_HU(kShopRam * i, shops) != (uint16_t)(rec[0] | rec[1] << 8)) return;
+        }
+        shops_state.original.resize((size_t)n * kShopRam);
+        for (int k = 0; k < n * kShopRam; k++) shops_state.original[k] = (uint8_t)MEM_B(k, shops);
+        for (int i = 0; i < n; i++) shops_write(rdram, shops + kShopRam * i, aidyn::action_shops::kRecords[i]);
+    } else if (shops_state.original.size() == (size_t)n * kShopRam) {
+        for (int k = 0; k < n * kShopRam; k++) MEM_B(k, shops) = (int8_t)shops_state.original[k];
+    }
+    shops_state.applied = want;
+    fprintf(stdout, "Better shops: %s\n", want ? "Action Edition's stock" : "the game's own");
+    fflush(stdout);
 }
 
 // ---- Keys on the prompts (#44) ----
