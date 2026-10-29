@@ -115,6 +115,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["button_prompts"] = g_graphics.button_prompts;
         j["graphics"]["turn_order"] = g_graphics.turn_order;
         j["graphics"]["combat_log"] = g_graphics.combat_log;
+        j["graphics"]["combat_descriptions"] = g_graphics.combat_descriptions;
         j["graphics"]["fps_counter"] = g_graphics.fps_counter;
         j["graphics"]["textures"] = g_graphics.textures;
         j["graphics"]["vsync"] = g_graphics.vsync;
@@ -167,6 +168,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.button_prompts = gfx.value("button_prompts", g_graphics.button_prompts);
         g_graphics.turn_order = gfx.value("turn_order", g_graphics.turn_order);
         g_graphics.combat_log = gfx.value("combat_log", g_graphics.combat_log);
+        g_graphics.combat_descriptions = gfx.value("combat_descriptions", g_graphics.combat_descriptions);
         g_graphics.fps_counter = gfx.value("fps_counter", g_graphics.fps_counter);
         g_graphics.textures = gfx.value("textures", g_graphics.textures);
         g_graphics.vsync = gfx.value("vsync", g_graphics.vsync);

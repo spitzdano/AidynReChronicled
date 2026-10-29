@@ -4541,6 +4541,7 @@ namespace {
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
             { "rc_combat_log", &gfx.combat_log, "combat_log", nullptr },
+            { "rc_combat_info", &gfx.combat_descriptions, "combat_descriptions", nullptr },
             { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
@@ -5527,7 +5528,8 @@ gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, flo
 // with the combat log's soft shadow. The menu (gCombatCVertMenu, its box from aidyn_combat_menu_drawn): its scroll
 // list +0x7C, that list's substruct +0x40 (rows +0x18, highlight +0x1E, count +0x20); each row's kind and what it
 // holds: combat_entry_key. Aidyn Patch and Aidyn Plus keep the 1.0's texts (the same bytes, even for the spells
-// they change). settings.json graphics.combat_log off hides it too.
+// they change). settings.json graphics.combat_descriptions (the ReChronicled page's Combat descriptions) off hides it;
+// it used to follow the combat log, which hid the descriptions for anyone who turned the log off.
 extern "C" void func_romstrings(uint8_t* rdram, recomp_context* ctx);  // RomString::Load(rom, size)
 extern "C" void Entity__CheckSpellWizard(uint8_t* rdram, recomp_context* ctx);
 extern "C" void CharSkills__getModdedSkill(uint8_t* rdram, recomp_context* ctx);
@@ -5723,7 +5725,7 @@ gpr draw_spell_info(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const auto box = spell_info_box;
     spell_info_box.seen = false;
     const gpr font = MEM_W(0, kFontPtr);
-    if (!box.seen || !aidyn::settings::graphics().combat_log || !heap_pointer(font)) {
+    if (!box.seen || !aidyn::settings::graphics().combat_descriptions || !heap_pointer(font)) {
         return g;
     }
     gpr spell = 0;
