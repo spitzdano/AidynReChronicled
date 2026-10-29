@@ -3,7 +3,7 @@
 # live in the dev folder: AIDYN_DEV_DIR, else a Claude session's own <CLAUDE_JOB_DIR>/tmp/aidyn-dev (so sessions can
 # test side by side), else build/dev with the log in build/play.log (by hand). Builds are still shared: build/cmake.
 #   pad.sh start            launch, always windowed (AIDYN_WINDOWED) and deaf to real controllers (with AIDYN_PAD_FILE
-#                           the game opens none), opened straight on the Dell's workspace; every AIDYN_* variable passes
+#                           the game opens none), opened straight on workspace 4 (AIDYN_TEST_WS), out of sight; every AIDYN_* variable passes
 #                           through (AIDYN_MPK, AIDYN_SETTINGS_DIR, AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS...)
 #   pad.sh tap BTN...       A B Z START DU DD DL DR L R CU CD CL CR R3 L3 F2 (the key: redrawn art off / on) (TAPGAP=seconds between taps, default 0.5)
 #   pad.sh hold SECS BTN [X Y [RX RY]]   hold a button (NONE for sticks only), left stick X Y -80..80,
@@ -14,7 +14,7 @@
 #   pad.sh close            close the test game (only the one this script started, never spitzdano's)
 #   pad.sh where            print the dev folder and the log's path
 # Test runs use no anti-aliasing or supersampling (AIDYN_TEST_LIGHT=1, src/main/settings.cpp; AIDYN_TEST_LIGHT=0 turns it off).
-# The window is moved to the Dell's workspace on start and checked (pad.sh dell does it again); never fullscreen it.
+# The window is moved to the test workspace (4, AIDYN_TEST_WS) on start and checked (pad.sh dell does it again); never fullscreen it.
 P=$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")
 if [[ -n ${AIDYN_DEV_DIR:-} ]]; then D=$AIDYN_DEV_DIR
 elif [[ -n ${CLAUDE_JOB_DIR:-} ]]; then D=$CLAUDE_JOB_DIR/tmp/aidyn-dev
@@ -37,9 +37,12 @@ test_window() {
 for c in json.load(sys.stdin):
     if c["pid"] == int(sys.argv[1]): print(c["workspace"]["name"] if sys.argv[2] == "ws" else c.get("stableId", ""))' "$1" "$2"
 }
-# Tests run on the Dell (spitzdano plays on the other screens): the window goes to the workspace the Dell shows and stays
-# off fullscreen; checked until it's there (a move sent as the window maps can be lost).
+# Tests run out of sight on workspace 4 (spitzdano, 2026-10-29: the Dell's workspace 1 is where he works), off
+# fullscreen; checked until it's there (a move sent as the window maps can be lost). AIDYN_TEST_WS=<n> picks another
+# workspace, AIDYN_TEST_WS=dell the one the Dell shows (to watch a test).
 dell_ws() {
+  local w=${AIDYN_TEST_WS:-4}
+  if [[ $w != dell ]]; then echo "$w"; return; fi
   hyprctl monitors -j | python3 -c 'import json,sys
 for m in json.load(sys.stdin):
     if "DELL" in m["description"].upper(): print(m["activeWorkspace"]["name"])'
@@ -61,7 +64,7 @@ to_dell() {
 case $1 in
   start) if test_pid >/dev/null; then echo "pad.sh: a test game is already running (pad.sh close)" >&2; exit 1; fi
          echo "0 0 0" >"$F"
-         # Opened by Hyprland straight on the Dell's workspace, without taking the focus (exec_cmd's window rules), so
+         # Opened by Hyprland straight on the test workspace, without taking the focus (exec_cmd's window rules), so
          # it never shows on spitzdano's screen first. Hyprland's own environment is used, so the caller's AIDYN_* settings
          # go into a small launcher script. Without Hyprland or the Dell: started here and moved after.
          ws=$(dell_ws 2>/dev/null)
