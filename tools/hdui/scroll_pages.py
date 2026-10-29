@@ -69,6 +69,9 @@ STATS_LINES = [(79, 161, 318), (97, 171, 308)]
 # The page's bottom row (the hints along it hung off the torn edge): DETAILS and its button 4 texels higher than the
 # game's own (the port's Unequip and Lists hints move with them, src/game/patches.cpp "Inventory page hints").
 DETAILS_UP = 4
+# DETAILS and its button at 85% (spitzdano, 2026-10-28: the button prompts a bit smaller all round, as the port draws its
+# own: src/game/patches.cpp kPromptScale), the button's right edge kept, both centred on the row as before.
+DETAILS_SCALE = 0.85
 MAP_ARROW = (136, 190, 184, 210)
 
 
@@ -383,6 +386,27 @@ def as_float(W, H, rgba):
     return np.frombuffer(bytes(rgba), np.uint8).reshape(H, W, 4).astype(np.float32) / 255
 
 
+def draw_details(stats):
+    """DETAILS and its X button on the equipment page (pixels, rgba floats), DETAILS_SCALE of the game's, in pixels:
+    the button's right edge where the game's is, the word the same gap (scaled) to its left, both centred on the row."""
+    (wx, wy, ww, wh, _), = [w for w in STATS_LABELS["words"] if w[4] == "DETAILS"]
+    (bx, by, bw, bh, button), = STATS_LABELS["buttons"]
+    wy, by = wy - DETAILS_UP, by - DETAILS_UP
+    k = DETAILS_SCALE
+    mid = (by + bh / 2) * S
+    size = round(bh * k * S)
+    left, top = round((bx + bw) * S - size), round(mid - size / 2)
+    right = left - round((bx - (wx + ww)) * k * S)
+    word_h = round(wh * k * S)
+    box = (right - round(ww * k * S), round(mid - word_h / 2), round(ww * k * S), word_h)
+    H, W = stats.shape[:2]
+    out = bytearray((np.clip(stats, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
+    out = repaint.draw_word(W, H, out, box, "Details", (0x94, 0x5A, 0x4A), FONT, 1)
+    stats = as_float(W, H, out)
+    composite(stats, as_float(size, size, buttons.icon_for(button, size, size, 1)), left, top)
+    return stats
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--rom", type=Path, default=PROJECT / "baserom.z64")
@@ -418,17 +442,10 @@ def main():
     stats = bytearray((np.clip(pages[1], 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
     for x0, y0, bw, bh, text in STATS_LABELS["words"]:
         colour = repaint.word_colour(orig["PauseBGStats"], (x0, y0, bw, bh))
-        if text == "DETAILS":
-            y0 -= DETAILS_UP
-            # A button hint like the menus' (make_branding.py menu_hint: "Sell", "Switch"): small capitals in their
-            # ink, not the original's all-capitals in the page's lighter brown.
-            text, colour = "Details", (0x94, 0x5A, 0x4A)
+        if text == "DETAILS":  # a button hint like the menus' (make_branding.py menu_hint: "Sell", "Switch"), below
+            continue
         stats = repaint.draw_word(W, H, stats, (x0, y0, bw, bh), text, colour, FONT, S)
-    pages[1] = as_float(W, H, stats)
-    for x0, y0, bw, bh, button in STATS_LABELS["buttons"]:
-        y0 -= DETAILS_UP
-        icon = as_float(bw * S, bh * S, buttons.icon_for(button, bw, bh, S))
-        composite(pages[1], icon, x0 * S, y0 * S)
+    pages[1] = draw_details(as_float(W, H, stats))
     draw_rings(pages[2], calendar_rings(orig["PauseBGMap"]), orig["PauseBGMap"])
     _, numbers = repaint.clean(orig["PauseBGMap"], MAP_LABELS["numbers"])
     mp = bytearray((np.clip(pages[2], 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
