@@ -163,7 +163,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         }
     }
 
-    const bool pad_used = b != 0 || std::fabs(sx) > 0.3f || std::fabs(sy) > 0.3f || std::fabs(rx) > 0.3f || std::fabs(ry) > 0.3f;
+    bool pad_used = b != 0 || std::fabs(sx) > 0.3f || std::fabs(sy) > 0.3f || std::fabs(rx) > 0.3f || std::fabs(ry) > 0.3f;
     bool keyboard_used = false;
     // Keyboard and mouse: whatever the Controls page has bound (src/main/controls.cpp; WASD, Z X C... by default).
     {
@@ -198,6 +198,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         float fx = 0.0f, fy = 0.0f, frx = 0.0f, fry = 0.0f;
         if (f >> std::hex >> fb >> std::dec >> fx >> fy) {
             b |= static_cast<uint16_t>(fb);
+            pad_used = pad_used || fb != 0 || fx != 0.0f || fy != 0.0f;  // a pad's press: its button icons, not key caps
             click = click || (fb & 0x10000) != 0;
             l3 = l3 || (fb & 0x20000) != 0;
             static bool f2_was = false;  // 0x40000: F2 (redrawn art off / on)
