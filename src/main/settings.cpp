@@ -262,6 +262,11 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.msaa = 0;
         g_graphics.supersampling = 1;
     }
+    // AIDYN_TEST_FPS=<n> (pad.sh: 60): this run's frame-rate cap, likewise only in memory, so a test in the background
+    // costs less.
+    if (const char* fps = std::getenv("AIDYN_TEST_FPS"); fps != nullptr && std::atoi(fps) >= 30) {
+        g_graphics.fps_limit = std::atoi(fps);
+    }
     if (!(g_graphics.walk_speed >= 1.0f && g_graphics.walk_speed <= 2.0f)) {
         bad(path, "graphics.walk_speed must be 1 (original) to 2");
     }
