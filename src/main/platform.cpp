@@ -45,6 +45,8 @@ fs::path aidyn::platform::data_home() {
     return out.empty() ? fs::current_path() : out;
 }
 
+bool aidyn::platform::under_gamescope() { return false; }  // Windows (under Proton, gamescope is seen as Linux's)
+
 std::vector<std::string> aidyn::platform::home_dirs() {
     std::vector<std::string> out;
     if (const char* p = std::getenv("USERPROFILE")) {
@@ -142,6 +144,11 @@ fs::path aidyn::platform::data_home() {
     }
     const char* home = std::getenv("HOME");
     return fs::path(home != nullptr ? home : ".") / ".local" / "share";
+}
+
+bool aidyn::platform::under_gamescope() {
+    const char* desktop = std::getenv("XDG_CURRENT_DESKTOP");
+    return std::getenv("GAMESCOPE_WAYLAND_DISPLAY") != nullptr || (desktop != nullptr && std::string(desktop) == "gamescope");
 }
 
 std::vector<std::string> aidyn::platform::home_dirs() {

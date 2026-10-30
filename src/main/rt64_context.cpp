@@ -588,6 +588,20 @@ void aidyn::RT64Context::send_dl(const OSTask* task) {
         app->updateUserConfig(true);
     }
     app->sharedQueueResources->gapFillHorizon = gap_fill_horizon.load(std::memory_order_relaxed);
+    // The display's refresh rate as RT64 has it, logged when it changes; under gamescope (Game Mode) its XWayland says
+    // 60 Hz whatever the screen, which held every frame rate to 60: there the rate set is used as it is (gamescope and
+    // Steam's own limiter keep to the screen).
+    {
+        static uint32_t logged = UINT32_MAX;
+        const uint32_t rate = app->sharedQueueResources->swapChainRate;
+        static const bool gamescope = aidyn::platform::under_gamescope();
+        if (rate != logged && rate != 0) {
+            logged = rate;
+            fprintf(stdout, "Display: %u Hz as RT64 reads it%s; frame rate %d (0 unlimited)\n", rate,
+                    gamescope ? " (gamescope: not used)" : "", aidyn::settings::graphics().fps_limit);
+        }
+        if (gamescope) app->sharedQueueResources->swapChainRate = 0;
+    }
     if (redrawn_art_reload.exchange(false)) {  // F2 or the textures switch: the packs again (a few seconds), or none
         app->textureCache->loadReplacementDirectories(texture_packs(redrawn_art_on, false));
         if (aidyn::settings::graphics().textures) {

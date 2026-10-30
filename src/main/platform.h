@@ -11,6 +11,9 @@ namespace aidyn::platform {
     // under Wine also the Linux home, as Z:\home\<name> and /home/<name>.
     std::vector<std::string> home_dirs();
     std::string os_description();       // e.g. "Arch Linux, kernel 6.x (x86_64)" or "Windows 10.0.26100 (x86_64)"
+    // Under gamescope (SteamOS / Bazzite Game Mode, or a gamescope session): its XWayland reports 60 Hz whatever the
+    // screen runs at, so the display's rate it gives isn't the real one (src/main/rt64_context.cpp).
+    bool under_gamescope();
     // Starts this program again with these arguments (args[0] the program) in place of this one. Returns only if it
     // couldn't.
     void restart(const std::vector<std::string>& args);

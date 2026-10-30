@@ -78,6 +78,15 @@ static void message_box(const char* msg) {
 static ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+#ifndef _WIN32
+    // Wayland first where there is one (the release's own SDL 2 prefers X11): through XWayland the display's refresh
+    // rate reads 60 Hz on a faster screen, and the frame rate is held to it (Bazzite's Desktop Mode on a 100 Hz TV).
+    // Not under gamescope (Game Mode), which gives games X11 only; SDL_VIDEODRIVER, if set, still decides.
+    if (std::getenv("SDL_VIDEODRIVER") == nullptr && std::getenv("WAYLAND_DISPLAY") != nullptr &&
+        !aidyn::platform::under_gamescope()) {
+        SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland,x11");
+    }
+#endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
         fatal("Failed to initialize SDL2: %s", SDL_GetError());
     }
@@ -363,6 +372,21 @@ void aidyn::set_antialiasing(int msaa, int supersampling) {
                                    : ultramodern::renderer::Antialiasing::None;
     ultramodern::renderer::set_graphics_config(config);
     aidyn::refresh_aspect();
+}
+
+int aidyn::fps_target() {
+    const int fps = aidyn::settings::graphics().fps_limit;
+    return fps == 0 ? 1000 : fps;
+}
+
+void aidyn::set_fps_limit(int fps) {
+    aidyn::settings::graphics_rw().fps_limit = fps;
+    aidyn::settings::save_number("graphics", "fps_limit", fps);
+    ultramodern::renderer::GraphicsConfig config = ultramodern::renderer::get_graphics_config();
+    config.rr_option = ultramodern::renderer::RefreshRate::Manual;
+    config.rr_manual_value = aidyn::fps_target();
+    ultramodern::renderer::set_graphics_config(config);
+    aidyn::refresh_aspect();  // the user configuration again on the next frame
 }
 
 // The title screen's Quit Game (game thread): an SDL_QUIT for update_gfx, the way the window's close button ends it.
@@ -732,11 +756,11 @@ int main(int argc, char** argv) {
         default: graphics.msaa_option = ultramodern::renderer::Antialiasing::None; break;
     }
     // Above the game's 60 frames a second RT64 draws in-between frames, matching the camera and each object's matrices
-    // between two game frames and interpolating them. fps_limit 0 = as fast as the display refreshes.
-    const int fps_limit = aidyn::settings::graphics().fps_limit;
-    graphics.rr_option = fps_limit == 0 ? ultramodern::renderer::RefreshRate::Display : ultramodern::renderer::RefreshRate::Manual;
+    // between two game frames and interpolating them. fps_limit 0 = unlimited: as fast as the display refreshes
+    // (RT64 holds a set rate to the display's; under gamescope it doesn't know it: rt64_context.cpp).
+    graphics.rr_option = ultramodern::renderer::RefreshRate::Manual;
     graphics.hpfb_option = ultramodern::renderer::HighPrecisionFramebuffer::Auto;
-    graphics.rr_manual_value = fps_limit == 0 ? 60 : fps_limit;
+    graphics.rr_manual_value = aidyn::fps_target();
     graphics.ds_option = 1;
     ultramodern::renderer::set_graphics_config(graphics);
 
