@@ -337,7 +337,7 @@ these defaults on the first run:
         "aspect": "16:9",
         "widescreen": true,
         "msaa": 4,
-        "supersampling": 2,
+        "supersampling": 1,
         "fps_limit": 240,
         "draw_distance": 3.0,
         "walk_speed": 1.5,
@@ -394,8 +394,8 @@ these defaults on the first run:
 
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, after Flee), each a page
 of the switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `fullscreen` as
-Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, and Anti-aliasing: `msaa` and
-`supersampling` together, Off 0 / 1, Low 2 / 1, Medium 4 / 2, High 8 / 2) and **ReChronicled** (`enhanced` as Sound,
+Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, Anti-aliasing as `msaa` (Off, 2x, 4x, 8x) and
+Supersampling as `supersampling` (Off, 2x; 3 and 4 only in the file)) and **ReChronicled** (`enhanced` as Sound,
 `restored_samples` as Instruments, `turn_order`, `walk_speed` from 1 to 2 in quarters, `combat_party_speed` as Combat
 speed, `combat_enemy_speed` as Enemy turns, `controls_card`, `button_prompts`, `combat_log`,
 `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, and Report a problem).
@@ -561,7 +561,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   report when one was made). `AIDYN_FREEZE_TEST=1` stops the game thread for 25 s after 10 s of walking about (`=start`:
   20 s after the first frame); `AIDYN_CRASH_TEST=native` tries the crash handlers.
 - **Out of graphics memory** (#47, `graphics_memory_fallback` in `src/main/main.cpp`). A small or shared graphics card
-  (an integrated AMD Radeon at the defaults: 1080 lines, 4x MSAA and 2x supersampling) can't make the renderer's
+  (an integrated AMD Radeon at 1080 lines, 4x MSAA and 2x supersampling, the defaults then) can't make the renderer's
   images, and the game crashes as the title screen opens ("vmaCreateImage failed with error code 0xFFFFFFFE" in the
   log). The next start finds that in `logs/previous-run.log` and turns the graphics down a step, each in
   `settings.json`: anti-aliasing and supersampling off, then 720 lines, then 480, then the new textures off; a note

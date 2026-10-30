@@ -4547,13 +4547,16 @@ namespace {
 
     constexpr float kDistances[] = { 1.0f, 1.5f, 2.0f, 2.5f, 3.0f };
     constexpr const char* kDistanceWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_25", "rc_dd_3" };
-    // Anti-aliasing's steps: MSAA and supersampling together (src/main/main.cpp set_antialiasing). No step above 8x
-    // and 2x: 3x supersampling (an "Ultra" 8x / 3) took an RTX 3090 at 3440x1440 to 16-20 frames a second in the pause
-    // menu (the game's picture behind the scroll is copied at the full supersampled size), High holds 100.
-    constexpr float kAaSteps[] = { 0.0f, 1.0f, 2.0f, 3.0f };
-    constexpr const char* kAaWords[] = { "rc_off", "rc_aa_low", "rc_aa_medium", "rc_aa_high" };
-    constexpr int kAaMsaa[] = { 0, 2, 4, 8 }, kAaSupersampling[] = { 1, 1, 2, 2 };
-    float aa_step = 2.0f;  // the row's value, from settings.json's msaa and supersampling when the page lists its rows
+    // Anti-aliasing (MSAA) and Supersampling, two rows (spitzdano, 2026-10-30; one row of four levels before, which tied
+    // MSAA 4x to supersampling 2x): the Ally X's Radeon 890M holds 120 with MSAA 4x alone and drops to the game's own 60
+    // with supersampling 2x (RT64 skips every in-between frame it can't finish in time). Each row sets its own half
+    // (src/main/main.cpp set_antialiasing). Supersampling stops at 2x: 3x took an RTX 3090 at 3440x1440 to 16-20 frames
+    // a second in the pause menu (the game's picture behind the scroll is copied at the full supersampled size).
+    constexpr float kMsaaSteps[] = { 0.0f, 2.0f, 4.0f, 8.0f };
+    constexpr const char* kMsaaWords[] = { "rc_off", "rc_dd_2", "rc_x4", "rc_x8" };
+    constexpr float kSupersamplingSteps[] = { 1.0f, 2.0f };
+    constexpr const char* kSupersamplingWords[] = { "rc_off", "rc_dd_2" };
+    float msaa_step = 4.0f, supersampling_step = 2.0f;  // the rows' values, from settings.json when the page lists its rows
     // Frame rate (spitzdano, 2026-10-30): settings.json's fps_limit, 0 unlimited (aidyn::set_fps_limit). Nothing below
     // 60: the game makes 60 frames a second and the limit only holds back RT64's in-between ones (30 still showed 60).
     constexpr float kFpsSteps[] = { 60.0f, 90.0f, 100.0f, 120.0f, 144.0f, 175.0f, 240.0f, 0.0f };
@@ -4575,13 +4578,11 @@ namespace {
         static const RcSteps party = { &game.combat_party_speed, kPartySpeeds, kPartySpeedWords, (int)std::size(kPartySpeeds) };
         static const RcSteps enemy = { &game.combat_enemy_speed, kEnemySpeeds, kEnemySpeedWords, (int)std::size(kEnemySpeeds) };
         if (kind == kRcDisplay) {
-            static const RcSteps aa = { &aa_step, kAaSteps, kAaWords, (int)std::size(kAaSteps) };
-            int best = 0;  // the step nearest what settings.json has (it may hold any mix)
-            for (int i = 0; i < (int)std::size(kAaSteps); i++) {
-                const auto off = [&](int k) { return std::abs(kAaMsaa[k] - gfx.msaa) + 4 * std::abs(kAaSupersampling[k] - gfx.supersampling); };
-                if (off(i) < off(best)) best = i;
-            }
-            aa_step = kAaSteps[best];
+            static const RcSteps msaa = { &msaa_step, kMsaaSteps, kMsaaWords, (int)std::size(kMsaaSteps) };
+            static const RcSteps supersampling = { &supersampling_step, kSupersamplingSteps, kSupersamplingWords,
+                                                   (int)std::size(kSupersamplingSteps) };
+            msaa_step = (float)gfx.msaa;  // shown as the nearest step (settings.json may hold 3x or 4x supersampling)
+            supersampling_step = (float)gfx.supersampling;
             static const RcSteps fps = { &fps_step, kFpsSteps, kFpsWords, (int)std::size(kFpsSteps) };
             {  // the step nearest settings.json's fps_limit (it may hold any rate)
                 const int have = gfx.fps_limit;
@@ -4603,9 +4604,11 @@ namespace {
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
                 { "rc_anti_aliasing", nullptr, "", [](uint8_t*) {
-                      const int i = (int)aa_step;
-                      aidyn::set_antialiasing(kAaMsaa[i], kAaSupersampling[i]);
-                  }, nullptr, &aa },
+                      aidyn::set_antialiasing((int)msaa_step, aidyn::settings::graphics().supersampling);
+                  }, nullptr, &msaa },
+                { "rc_supersampling", nullptr, "", [](uint8_t*) {
+                      aidyn::set_antialiasing(aidyn::settings::graphics().msaa, (int)supersampling_step);
+                  }, nullptr, &supersampling },
             };
         }
         auto& sound = aidyn::settings::audio_rw();
@@ -4691,7 +4694,7 @@ namespace {
         } else {
             const RcSteps& s = *r.steps;
             *s.value = s.steps[(step_index(s) + step + s.n) % s.n];
-            if (*r.key != '\0') {  // (Anti-aliasing saves its own two settings)
+            if (*r.key != '\0') {  // (Anti-aliasing and Supersampling save through set_antialiasing)
                 aidyn::settings::save_number(r.section, r.key, *s.value);
             }
         }

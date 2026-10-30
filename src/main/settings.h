@@ -50,7 +50,8 @@ namespace aidyn::settings {
         int msaa = 4;                // 0, 2, 4 or 8 (capped to what the GPU supports)
         float draw_distance = 3.0f; // field view: multiplies the far clip (and the fog with it); 1 = original, up to 3
         float walk_speed = 1.5f;    // field: Alaron's walk and run cycles (and so his pace) this many times faster; 1 = original, up to 2
-        int supersampling = 2;       // 1 (off), 2, 3 or 4: render that many times render_height and scale down (smoother edges)
+        int supersampling = 1;       // 1 (off), 2, 3 or 4: render that many times render_height and scale down (smoother edges);
+                                     // off by default since 2x held the Ally X's Radeon 890M to 60 fps
         int fps_limit = 240;         // frames shown a second (RT64 interpolates between the game's 60), never above the display's rate; 0 = the display's rate
         bool fullscreen = false;
         bool menus_4_3 = true;       // with 16:9/window: show the pause menu, inventory and shops in 4:3 (their layouts break widened)
