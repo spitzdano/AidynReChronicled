@@ -93,8 +93,10 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
 #else
     constexpr Uint32 kWindowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN;
 #endif
-    window = SDL_CreateWindow("Aidyn ReChronicled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              1280, 960, kWindowFlags);
+    // AIDYN_WINDOW_TITLE (developers: test runs under Proton, whose window a Hyprland rule sends out of sight by it).
+    const char* title = std::getenv("AIDYN_WINDOW_TITLE");
+    window = SDL_CreateWindow(title != nullptr && *title != '\0' ? title : "Aidyn ReChronicled", SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED, 1280, 960, kWindowFlags);
     if (window == nullptr) {
         fatal("Failed to create window: %s", SDL_GetError());
     }
