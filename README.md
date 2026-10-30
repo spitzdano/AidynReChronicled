@@ -257,7 +257,7 @@ Switching versions:
 | Control stick | Left stick | W A S D, arrows | walk, move in combat, menus |
 | (camera) | Right stick | mouse; [ ] ; ' | turn the camera around the party (left/right), tilt it up or down (up/down), both at the same speed, 30 degrees each way from its resting height; once turned, the camera keeps that direction while walking (`camera_invert_x` / `camera_invert_y` flip them) |
 | (camera) | Right stick click | middle mouse button | camera back behind the party at its resting height (the original follow camera) |
-| (fast-forward) | Left stick click | hold Tab | fast-forward on / off: everything runs `fast_forward_speed` times faster (3); a marker shows at the top right |
+| (fast-forward) | Left stick click | hold Tab | fast-forward on / off: everything runs `fast_forward_speed` times faster (3); a marker shows at the top right. In combat it doesn't add to Combat speed / Enemy turns: the faster of the two is used |
 | A | A | Z, left mouse button | talk, open, confirm; in combat: attack, then act on the target |
 | B | B | X, right mouse button | back, cancel; walking: show the party's portraits; title menu: back to the title card |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
@@ -359,7 +359,7 @@ these defaults on the first run:
 |---|---|
 | `rom_patch` | `"none"` (the 1.0 ROM), `"aidyn-patch"`, `"aidyn-plus"` or `"action-edition"` (see Aidyn Patch and Aidyn Plus above); the title screen's version list writes it |
 | `skip_intro` | `false` puts back the start-up screens: Expansion Pak notice, copyright, Nintendo, THQ and H2O logos |
-| `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on |
+| `fast_forward_speed` | 2 to 6: how much faster the game runs while fast-forward (left stick click, held Tab) is on. In combat the faster of this and `combat_enemy_speed` / `combat_party_speed` is used, not both multiplied |
 | `combat_enemy_speed` | 1 (off) to 6: enemy turns in combat run this much faster on their own (the ReChronicled page's Enemy turns: Original, 2x, 3x, 4x) |
 | `combat_party_speed` | 1 (off) to 3: the party's turns in combat run this much faster while they move and act, never while you choose (the ReChronicled page's Combat speed: Original, 1.5x, 2x, 3x) |
 | `enhanced` (audio) | `false`: the sound exactly as the game makes it. `true` (the ReChronicled page's Sound, Enhanced): louder, with a little more treble, through a limiter that holds the peaks at -1 dBFS (`src/main/audio.cpp`) |
@@ -525,7 +525,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   real sample is followed by quiet copies of it (same stick and held buttons, no new presses), so the game takes that
   many ticks a frame and no press is handled twice; enemy turns in combat get `combat_enemy_speed` the same way, and
   the party's moves and attacks `combat_party_speed` (not while a menu or a target is being chosen; a fraction is
-  carried to the next frame).
+  carried to the next frame). The speeds don't multiply: each frame takes the larger of fast-forward's and the combat
+  one's, so with Enemy turns at 4x fast-forward (3x) changes nothing on an enemy's turn.
   `AIDYN_FPS=1` prints the game ticks a second (60, or 180 at 3x).
 - **Save backups.** The Controller Pak is copied to `backups/` when the game starts and before each save (the first
   write after 30 s without writes), unless the copy would be the same as the newest one; the newest `save_backups`
@@ -596,8 +597,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   or replaces at once: turns, attacks, hits, misses, damage, kills, spells, healing, potions, fleeing, with "Round N"
   as each round begins. Names are in their side's colour (the party blue, enemies red), hit points lost orange and
   gained green. The last seven lines show, older ones fainter, in the game's own letters with a soft shadow (no
-  backing; the controls card has none either), in the corner when the picture is wide enough to clear the message
-  box, else above it, and above the controls card. The latest fight is also written to `combat-log.txt` in the data
+  backing; the controls card has none either), in the corner, above the controls card. With `hud_at_edges` the message
+  box's portrait and text slide right into a wide picture's extra width, just far enough for the log to fit (at 16:9
+  about 50 units; none at 21:9, where it fits already), its dark band still across the whole picture; at 4:3 the log
+  goes above the message box. Placement uses the window's real shape with `aspect: "window"`. The latest fight is also written to `combat-log.txt` in the data
   folder. All messages go through `copy_string_to_textbox` (hooked); a message repeated in the same turn is left out.
   `combat_log` (the ReChronicled page) turns it off; `AIDYN_COMBAT_LOG_DEBUG=1` prints each message.
 - **Turn order.** In combat an ornate bar across the top (pieces cut from Spitzdano's concept, `art/turn-order`, by

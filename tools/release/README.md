@@ -150,7 +150,7 @@ An Xbox-style controller, or the keyboard:
 | LT / RT | C / L, mouse back / forward button | Sneak (walking), end turn (combat); previous / next party member (pause menu, shops, trainers) |
 | LB / RB | Q / E | Show / hide the controls card (walking, combat); previous / next page (pause menu) |
 | Menu | Enter | Pause menu |
-| Left stick click | hold Tab | Fast-forward on / off (3x; enemy turns in combat are 2x on their own) |
+| Left stick click | hold Tab | Fast-forward on / off (3x). In combat, Combat speed and Enemy turns (ReChronicled page) speed each side up on their own; fast-forward doesn't add to them: the faster of the two is used |
 | | F2 | The newly painted art off / on, to compare with what was there before |
 | | F11, Alt+Enter / Shift+Esc | Windowed or borderless full screen (also the Display page's Window row; remembered) / quit (as Quit Game on the title's menu) |
 
