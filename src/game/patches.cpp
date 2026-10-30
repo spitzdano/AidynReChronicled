@@ -5013,8 +5013,9 @@ namespace {
             "Click the left stick to make everything run three times faster: long walks, fights and scenes. Click it "
             "again to go back to normal speed. Two chevrons at the top right of the screen show when it is on. "
             "In a conversation, \\x85 skips it until you are asked something.",
-            "In combat, the enemies' turns also run twice as fast on their own, so you spend less time waiting for "
-            "your next turn. Combat speed and Enemy turns on the ReChronicled page set how fast each side goes." } },
+            "In combat, Combat speed and Enemy turns on the ReChronicled page make each side's turns faster on "
+            "their own. They don't add up with fast-forward: whichever is faster is used, so with Enemy turns at "
+            "4x, fast-forward (3x) doesn't speed up the enemies any more." } },
         { "Controls Card", {
             "While you walk and in combat, a card at the left edge of the screen lists what the buttons do there. "
             "Press LB to hide it or show it again; your choice is remembered.",
