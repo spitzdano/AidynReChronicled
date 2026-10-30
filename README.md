@@ -394,8 +394,8 @@ these defaults on the first run:
 
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, after Flee), each a page
 of the switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `fullscreen` as
-Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, and Anti-aliasing: `msaa` and
-`supersampling` together, Off 0 / 1, Low 2 / 1, Medium 4 / 2, High 8 / 2) and **ReChronicled** (`enhanced` as Sound,
+Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, Anti-aliasing as `msaa` (Off, 2x, 4x, 8x) and
+Supersampling as `supersampling` (Off, 2x; 3 and 4 only in the file)) and **ReChronicled** (`enhanced` as Sound,
 `restored_samples` as Instruments, `turn_order`, `walk_speed` from 1 to 2 in quarters, `combat_party_speed` as Combat
 speed, `combat_enemy_speed` as Enemy turns, `controls_card`, `button_prompts`, `combat_log`,
 `smooth_animation_loops`, `right_stick_camera`, `camera_invert_x` and `_y`, and Report a problem).

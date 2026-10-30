@@ -521,7 +521,7 @@ RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_v
             ("rc_sound", "Sound"), ("rc_enhanced", "Enhanced"),
             ("rc_combat_speed", "Combat speed"), ("rc_enemy_turns", "Enemy turns"), ("rc_x4", "4x"),
             ("rc_instruments", "Instruments"), ("rc_restored", "Restored"),
-            ("rc_anti_aliasing", "Anti-aliasing"), ("rc_aa_low", "Low"), ("rc_aa_medium", "Medium"), ("rc_aa_high", "High")]
+            ("rc_anti_aliasing", "Anti-aliasing"), ("rc_supersampling", "Supersampling"), ("rc_x8", "8x")]
 # The title is wider than one load of TMEM (4 KB) allows: two halves, drawn side by side.
 RC_TITLE_W = (int(ink_width("ReChronicled", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 
