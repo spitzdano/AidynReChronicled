@@ -4582,11 +4582,11 @@ namespace {
             static const RcSteps fps = { &fps_step, kFpsSteps, kFpsWords, (int)std::size(kFpsSteps) };
             {  // the step nearest settings.json's fps_limit (it may hold any rate)
                 const int have = gfx.fps_limit;
-                int near = (int)std::size(kFpsSteps) - 1;
+                int pick = (int)std::size(kFpsSteps) - 1;  // not "near": a macro in windows.h
                 for (int i = 0; have != 0 && i < (int)std::size(kFpsSteps) - 1; i++) {
-                    if (near == (int)std::size(kFpsSteps) - 1 || std::abs(kFpsSteps[i] - have) < std::abs(kFpsSteps[near] - have)) near = i;
+                    if (pick == (int)std::size(kFpsSteps) - 1 || std::abs(kFpsSteps[i] - have) < std::abs(kFpsSteps[pick] - have)) pick = i;
                 }
-                fps_step = kFpsSteps[near];
+                fps_step = kFpsSteps[pick];
             }
             return {
                 { "rc_widescreen", &gfx.widescreen, "widescreen",
