@@ -2012,8 +2012,8 @@ namespace {
 }
 
 // The version number, bottom right above the credit: the build's (aidyn_version.h, written by tools/version.cmake:
-// "v0.4.0" for a release, "v0.4.0 dev" for a build after its tag, "v0.8.2 beta.1" for a test build, "dev" without either) put together from
-// make_branding.py's verno_* pictures (a character each, and the word "dev"), right-aligned at x 309 (320x240), dimmed
+// "v0.4.0" for a release, "v0.4.0 dev" for a build after its tag, "v0.8.2 beta.1" for a test build, "v0.9.1 patch1" for a patch, "dev" without either) put together from
+// make_branding.py's verno_* pictures (a character each, and the words "dev", "beta" and "patch"), right-aligned at x 309 (320x240), dimmed
 // and faded with the card like the version list.
 #include "aidyn_version.h"
 
@@ -2028,6 +2028,9 @@ namespace {
             } else if (text.compare(i, 4, "beta") == 0) {  // a test build: "0.8.2-beta.1"
                 pieces.push_back(title_image("verno_beta"));
                 i += 3;
+            } else if (text.compare(i, 5, "patch") == 0) {  // a patch: "0.9.1-patch1"
+                pieces.push_back(title_image("verno_patch"));
+                i += 4;
             } else if (text[i] == ' ' || text[i] == '-') {
                 pieces.push_back(-1);
             } else {
