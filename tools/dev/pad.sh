@@ -3,7 +3,7 @@
 # live in the dev folder: AIDYN_DEV_DIR, else a Claude session's own <CLAUDE_JOB_DIR>/tmp/aidyn-dev (so sessions can
 # test side by side), else build/dev with the log in build/play.log (by hand). Builds are still shared: build/cmake.
 #   pad.sh start            launch, always windowed (AIDYN_WINDOWED) and deaf to real controllers (with AIDYN_PAD_FILE
-#                           the game opens none), opened straight on workspace 4 (AIDYN_TEST_WS), out of sight; every AIDYN_* variable passes
+#                           the game opens none), opened straight on workspace G1 (AIDYN_TEST_WS), out of sight; every AIDYN_* variable passes
 #                           through (AIDYN_MPK, AIDYN_SETTINGS_DIR, AIDYN_DUMP_TEXTURES, AIDYN_UI_LOG, AIDYN_FPS...)
 #   pad.sh tap BTN...       A B Z START DU DD DL DR L R CU CD CL CR R3 L3 F2 (the key: redrawn art off / on) (TAPGAP=seconds between taps, default 0.5)
 #   pad.sh hold SECS BTN [X Y [RX RY]]   hold a button (NONE for sticks only), left stick X Y -80..80,
@@ -14,8 +14,10 @@
 #   pad.sh close            close the test game (only the one this script started, never spitzdano's)
 #   pad.sh where            print the dev folder and the log's path
 # Test runs use no anti-aliasing or supersampling (AIDYN_TEST_LIGHT=1, src/main/settings.cpp; AIDYN_TEST_LIGHT=0 turns it off),
-# are capped at 60 frames a second (AIDYN_TEST_FPS) and silent (SDL_AUDIODRIVER=dummy; SDL_AUDIODRIVER= for sound).
-# The window is moved to the test workspace (4, AIDYN_TEST_WS) on start and checked (pad.sh dell does it again); never fullscreen it.
+# are capped at 60 frames a second (AIDYN_TEST_FPS), silent (SDL_AUDIODRIVER=dummy and AIDYN_MUTE=1; AIDYN_MUTE=0 and
+# SDL_AUDIODRIVER= for sound) and titled "Aidyn ReChronicled (test)", which a runtime Hyprland rule keeps rendering
+# at full rate while out of sight (render_unfocused: else a hidden window can drop to a few frames a second).
+# The window is moved to the test workspace (G1, AIDYN_TEST_WS) on start and checked (pad.sh dell does it again); never fullscreen it.
 P=$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")
 if [[ -n ${AIDYN_DEV_DIR:-} ]]; then D=$AIDYN_DEV_DIR
 elif [[ -n ${CLAUDE_JOB_DIR:-} ]]; then D=$CLAUDE_JOB_DIR/tmp/aidyn-dev
@@ -38,11 +40,11 @@ test_window() {
 for c in json.load(sys.stdin):
     if c["pid"] == int(sys.argv[1]): print(c["workspace"]["name"] if sys.argv[2] == "ws" else c.get("stableId", ""))' "$1" "$2"
 }
-# Tests run out of sight on workspace 4 (spitzdano, 2026-10-29: the Dell's workspace 1 is where he works), off
-# fullscreen; checked until it's there (a move sent as the window maps can be lost). AIDYN_TEST_WS=<n> picks another
-# workspace, AIDYN_TEST_WS=dell the one the Dell shows (to watch a test).
+# Tests run out of sight on the named workspace G1 (spitzdano, 2026-10-30; the bar shows it after 1-5), off fullscreen;
+# checked until it's there (a move sent as the window maps can be lost). AIDYN_TEST_WS=<n> or name:<name> picks another
+# workspace, AIDYN_TEST_WS=dell the one the Dell shows (to watch a test). Hyprland takes "name:G1" and reports "G1".
 dell_ws() {
-  local w=${AIDYN_TEST_WS:-4}
+  local w=${AIDYN_TEST_WS:-name:G1}
   if [[ $w != dell ]]; then echo "$w"; return; fi
   hyprctl monitors -j | python3 -c 'import json,sys
 for m in json.load(sys.stdin):
@@ -56,7 +58,7 @@ to_dell() {
   for _ in $(seq 1 60); do
     pid=$(test_pid) || { sleep 0.5; continue; }
     mon=$(test_window "$pid" ws)
-    [[ $mon == "$ws" ]] && return 0
+    [[ $mon == "${ws#name:}" ]] && return 0
     [[ -n $mon ]] && hyprctl dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"pid:$pid\" })" >/dev/null
     sleep 0.5
   done
@@ -73,10 +75,13 @@ case $1 in
          { echo '#!/usr/bin/env bash'; printf 'cd %q || exit 1\n' "$P"
            for v in $(compgen -e | grep -E '^(AIDYN_|SDL_AUDIO|XDG_DATA_HOME)'); do printf 'export %s=%q\n' "$v" "${!v}"; done
            printf 'export AIDYN_PAD_FILE=%q AIDYN_WINDOWED=1 AIDYN_TEST_LIGHT=${AIDYN_TEST_LIGHT-1}\n' "$F"
-           printf 'export AIDYN_TEST_FPS=%q SDL_AUDIODRIVER=%q\n' "${AIDYN_TEST_FPS-60}" "${SDL_AUDIODRIVER-dummy}"
+           printf 'export AIDYN_TEST_FPS=%q SDL_AUDIODRIVER=%q AIDYN_MUTE=%q AIDYN_WINDOW_TITLE=%q\n' "${AIDYN_TEST_FPS-60}" "${SDL_AUDIODRIVER-dummy}" "${AIDYN_MUTE-1}" "Aidyn ReChronicled (test)"
            printf 'exec stdbuf -oL -eL build/cmake/AidynReChronicled >%q 2>&1\n' "$LOG"; } >"$L"
+         # Test windows (titled "Aidyn ReChronicled (test)", the Proton test's too) go to the test workspace without the
+         # focus and keep rendering at full rate while out of sight: a rule made at run time, not in the config.
+         hyprctl eval "hl.window_rule({ name = \"aidyn-test\", match = { title = \"^Aidyn ReChronicled \\\\(test\\\\)\$\" }, workspace = \"$ws silent\", no_initial_focus = true, render_unfocused = true })" >/dev/null 2>&1
          if [[ -n $ws && $L != *[\"\\]* ]] && [[ $(hyprctl dispatch "hl.dsp.exec_cmd(\"bash $L\", { workspace = \"$ws silent\" })" 2>&1) == ok ]]; then :
-         else (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 AIDYN_TEST_LIGHT=${AIDYN_TEST_LIGHT-1} AIDYN_TEST_FPS=${AIDYN_TEST_FPS-60} SDL_AUDIODRIVER=${SDL_AUDIODRIVER-dummy} setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$LOG" 2>&1 &); fi
+         else (cd "$P" && AIDYN_PAD_FILE=$F AIDYN_WINDOWED=1 AIDYN_TEST_LIGHT=${AIDYN_TEST_LIGHT-1} AIDYN_TEST_FPS=${AIDYN_TEST_FPS-60} SDL_AUDIODRIVER=${SDL_AUDIODRIVER-dummy} AIDYN_MUTE=${AIDYN_MUTE-1} setsid stdbuf -oL -eL build/cmake/AidynReChronicled >"$LOG" 2>&1 &); fi
          to_dell ;;
   close) pid=$(test_pid) && hyprctl dispatch "hl.dsp.window.close({ window = \"pid:$pid\" })" >/dev/null
          for _ in $(seq 1 20); do test_pid >/dev/null || exit 0; sleep 0.5; done

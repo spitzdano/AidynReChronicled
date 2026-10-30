@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -235,6 +236,12 @@ void aidyn::audio::queue_samples(int16_t* audio_data, size_t sample_count) {
     }
 
     note_dry();
+
+    // AIDYN_MUTE=1 (test runs: tools/dev/pad.sh, the Proton test): silence in place of the sound, through the same
+    // device and queue, so the game's timing (paced by the queue) is as ever. SDL_AUDIODRIVER=dummy does the same on
+    // Linux, but the Windows build's SDL under Proton still opened the real device.
+    static const bool mute = [] { const char* m = std::getenv("AIDYN_MUTE"); return m != nullptr && *m != '\0' && *m != '0'; }();
+    if (mute) std::memset(samples_to_queue, 0, num_bytes_to_queue);
 
     // Queue the swapped audio data.
     // Offset the data start by only half the discarded frame count as the other half of the discarded frames are at the end of the buffer.
