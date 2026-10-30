@@ -13,8 +13,8 @@ namespace aidyn::input {
     bool c_down_held();                     // N64 C-down held (X, keyboard K), as last polled (title screen: switch version)
     bool c_up_held();                       // N64 C-up held (Y, keyboard I), as last polled (title screen: switch version)
     void set_menu_mode(bool on);            // the pause menu, a trainer or a shop: LT is C-left there, View nothing
-    void set_card_mode(int mode);           // 1 field, 2 combat, 0 elsewhere: there LB shows / hides the controls card
-    bool quicksave_asked();                 // View pressed in the field since last asked (src/game/patches.cpp)
+    void set_card_mode(int mode);           // 1 field, 2 combat, 0 elsewhere: there View shows / hides the controls card
+    bool quicksave_asked();                 // LB pressed in the field since last asked (src/game/patches.cpp)
     void set_dialogue(int state);           // a conversation: 0 none, 1 a line to move on from, 2 answers offered
     bool dialogue_skipping();               // View skipping the conversation (A pressed for the player, line by line)
     bool controls_card();                   // the controls card shown (settings.json graphics.controls_card)

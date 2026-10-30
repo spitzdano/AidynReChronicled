@@ -373,8 +373,8 @@ ReChronicled page, changes any key or mouse button.</p>
 <tr><td><kbd class="pad">≡</kbd> Menu</td><td><kbd>Enter</kbd></td><td>Pause the game (the pause menu)</td></tr>
 <tr><td><kbd class="pad">LT</kbd> + left stick</td><td><kbd>C</kbd> + W A S D</td><td>Sneak</td></tr>
 <tr><td><kbd class="pad">RB</kbd> + left stick</td><td><kbd>E</kbd> + W A S D</td><td>The game's own camera control</td></tr>
-<tr><td><kbd class="pad">View</kbd></td><td><kbd>J</kbd></td><td>Quicksave (see <a href="#quicksaves">Quicksaves and Autosaves</a>)</td></tr>
-<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Show or hide the controls card (top left: what the buttons do)</td></tr>
+<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Quicksave (see <a href="#quicksaves">Quicksaves and Autosaves</a>)</td></tr>
+<tr><td><kbd class="pad">View</kbd></td><td><kbd>J</kbd></td><td>Show or hide the controls card (top left: what the buttons do)</td></tr>
 </tbody></table>
 
 <h3>Combat Mode</h3>
@@ -386,7 +386,7 @@ ReChronicled page, changes any key or mouse button.</p>
 <tr><td><kbd class="pad y">Y</kbd></td><td><kbd>I</kbd></td><td>Use an item or potion: hold to list them, pick one with the stick and let go</td></tr>
 <tr><td><kbd class="pad">LT</kbd></td><td><kbd>C</kbd></td><td>End this character's turn</td></tr>
 <tr><td><kbd class="pad">RB</kbd> + left stick</td><td><kbd>E</kbd> + W A S D</td><td>Camera control</td></tr>
-<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Show or hide the controls card (bottom left)</td></tr>
+<tr><td><kbd class="pad">View</kbd></td><td><kbd>J</kbd></td><td>Show or hide the controls card (bottom left)</td></tr>
 </tbody></table>
 <h4>Choosing a target</h4>
 <table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
@@ -481,7 +481,7 @@ load from the main menu or the pause menu, during a fight too.</p>
   while the game is closed.</p>
 </div>
 <h4 id="quicksaves">Quicksaves and Autosaves</h4>
-<p>Press <kbd class="pad">View</kbd> (<kbd>J</kbd>) while walking about to quicksave; "Quicksaved" shows at the top of
+<p>Press <kbd class="pad">LB</kbd> (<kbd>Q</kbd>) while walking about to quicksave; "Quicksaved" shows at the top of
 the screen. During a fight, a conversation or a scene there is nothing to save, and it says so. The game also saves by
 itself when you arrive in another area (through a door, into a town) and after every ten minutes of walking about
 ("Autosaved"), keeping the last two of these. <strong>Quick Load</strong> on the pause menu (during a fight too) loads
@@ -504,7 +504,7 @@ attack you switch to <a href="#combat">Combat Mode</a>.</p>
 </dl>
 <div class="port"><p>In widescreen the sun dial moves to the left edge and the compass to the right edge, leaving the
 middle of the picture clear. The party portraits stay in the middle. The controls card at the top left lists what the
-buttons do; <kbd class="pad">LB</kbd> hides it or shows it again. The party walks faster than on the N64 (1.5 times
+buttons do; <kbd class="pad">View</kbd> hides it or shows it again. The party walks faster than on the N64 (1.5 times
 by default: Walk speed on the ReChronicled page).</p></div>
 
 <h3>Dialogue</h3>
@@ -833,7 +833,7 @@ data only, not the game's code, so the PC version runs it as it is.</p>
   <dt>Fast-forward</dt><dd>Click the left stick (or hold <kbd>Tab</kbd>) and everything runs three times faster: long
   walks, fights, scenes. Two chevrons at the top right show it is on. Enemy turns in combat run twice as fast on
   their own (Enemy turns on the ReChronicled page).</dd>
-  <dt>Quicksaves and autosaves</dt><dd><kbd class="pad">View</kbd> quicksaves while you walk about, the game saves by
+  <dt>Quicksaves and autosaves</dt><dd><kbd class="pad">LB</kbd> quicksaves while you walk about, the game saves by
   itself on arriving somewhere new and every ten minutes, and Continue on the main menu picks up where you left off
   (see <a href="#quicksaves">Quicksaves and Autosaves</a>). Load Game and Quick Load work during a fight too, and
   Quit to Title ends a game without closing the program.</dd>
@@ -881,7 +881,7 @@ pause menu's <em>Display</em> and <em>ReChronicled</em> pages, which save them h
 <tr><td><code>walk_speed</code> *</td><td>1.5</td><td>How fast the party walks in the field: 1 (the original) to 2</td></tr>
 <tr><td><code>widescreen</code> *</td><td><code>true</code></td><td><code>false</code> shows the N64's 4:3 picture</td></tr>
 <tr><td><code>fullscreen</code> *</td><td><code>false</code></td><td>Borderless full screen instead of a window (the Display page's Window row; <kbd>F11</kbd> switches at any time)</td></tr>
-<tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">LB</kbd> sets it)</td></tr>
+<tr><td><code>controls_card</code> *</td><td><code>true</code></td><td>The card of button prompts while travelling and in combat (<kbd class="pad">View</kbd> sets it)</td></tr>
 <tr><td><code>hud_at_edges</code> *</td><td><code>true</code></td><td>Widescreen: sun dial, compass and the combat columns at the screen edges</td></tr>
 <tr><td><code>button_prompts</code> *</td><td><code>true</code></td><td>The menus' button hints, LB / RB at the page arrows and the party switch</td></tr>
 <tr><td><code>combat_log</code> *</td><td><code>true</code></td><td>The log of the fight at the bottom left in combat, and what a spell or potion does beside the held X and Y

@@ -262,10 +262,10 @@ Switching versions:
 | B | B | X, right mouse button | back, cancel; walking: show the party's portraits; title menu: back to the title card |
 | C-down | X | K | Details (pause menu); in combat: spells (tap: the last spell again, hold + stick: pick one); title screen: switch to the version marked X |
 | C-up | Y | I | in combat: items and potions (tap: the last one again, hold + stick: pick one); title screen: switch to the version marked Y |
-| C-left | View | J | walking: quicksave; in combat and the menus: nothing (not passed to the game) |
+| C-left | View | J | walking and in combat: show / hide the controls card (not passed to the game there; in combat it cycled targets, which the stick and RT still do); the menus: nothing |
 | C-right | RT | L, mouse forward button | pause menu, shops, trainers: next party member |
 | Z | LT | C, mouse back button | walking: hold + stick to sneak; combat: end the turn; pause menu, shops, trainers: previous party member (passed to the game as C-left; the game's Z turned the page back, as LB does) |
-| L | LB | Q | walking and in combat: show / hide the controls card (not passed to the game there; in combat it was a second End turn); pause menu: previous page |
+| L | LB | Q | walking: quicksave; in combat: nothing (not passed to the game in either; in combat it was a second End turn); pause menu: previous page |
 | R | RB | E | pause menu: next page; hold + stick: the game's own camera control |
 | Start | Menu | Enter | pause menu; back to the game |
 | D-pad | D-pad | keypad 8 4 5 6 | menus |
@@ -290,7 +290,7 @@ was used last) shows at the bottom right of its band (`draw_dialogue_hint`; `AID
 [Start]": Start (as in the game's four cinematics, which skip with B or Start) skips the conversation by pressing A for
 you about eight times a second (`src/main/input.cpp`), so every line goes by and everything it does still happens, until
 it offers answers or ends; Start again stops it ("Stop [Start]"). In a conversation the game sees neither Start (held
-past the end, it doesn't open the pause menu) nor View (no quicksave). The Help book (a conversation on the journal's
+past the end, it doesn't open the pause menu) nor View, and LB doesn't quicksave. The Help book (a conversation on the journal's
 page) keeps its own hints.
 `AIDYN_INPUT_FILE=<file>` (testing: a line of inputs held, "W, Mouse Left", and `look=dx,dy`), `AIDYN_TEST_PAD=1` with
 `tools/dev/vpad.py` (a virtual Xbox pad for the real pad path), `AIDYN_CONTROLS_LOG=1` (mouse capture changes).
@@ -376,7 +376,7 @@ these defaults on the first run:
 | `supersampling` | 1 (off), 2, 3 or 4: renders at that many times `render_height` and scales down, smoothing the edges MSAA leaves (hair, leaves, thin parts). Not with `render_height` 0 |
 | `draw_distance` | 1 (original) to 3: outdoors, rings of map cells beyond the game's own 3x3 are loaded and drawn (5x5 up to 9x9, 2 = 9x9: ground reaching about 400 units) and the far clip follows the loaded edge up to 180 x `draw_distance`; props (trees, rocks, objects) are drawn up to that many times farther, with their detail levels; monsters, people and items (chests, bags, herb patches) reach twice as far as props: 160 units at 2, 240 at 3 (originally 20 and 5 to 30) |
 | `walk_speed` | 1 (original) to 2: in the field Alaron's walk and run cycles play this many times faster, and as the game moves him by them, his pace with them; nothing else is sped up (`1.5`) |
-| `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); LB shows and hides it and this remembers which (`true`) |
+| `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
 | `combat_descriptions` | combat: what the highlighted spell, skill or item does, beside its menu (the ReChronicled page's Combat descriptions; `false`: none) |
@@ -490,7 +490,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
 
 - **Help book.** The pause menu's Help (a dialogue, `BORG13_HelpMenu`) is copied as it loads with its words fitted to
   this edition: the BUTTON after each button icon dropped (they're Xbox icons now), "the left stick" for the Control
-  Stick, RT (not View, which quicksaves) to pick a target. A **ReChronicled** topic is added before Exit
+  Stick, RT (not View, which shows the controls card) to pick a target. A **ReChronicled** topic is added before Exit
   Help: the camera, fast-forward, the controls card, the menus, saving, combat (turn order, hold menus, D-pad targeting) and the
   keyboard and PC keys.
 - **Pause scroll ends.** The pause pages are one long parchment drawn through a clip, and the scroll's rollers are a
@@ -765,9 +765,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   `src/game/branding_images.h` (the N64-size copies the game draws) and the `rechronicled` texture pack (their full-resolution
   versions). The title card's own TM is redrawn in the text font by the HD UI pack (`labels.json` "marks").
 - **Button prompts.** While walking and in combat a see-through card at the left edge lists what the buttons do there
-  (`controls_card`; LB shows and hides it: in those two modes LB is not passed to the game, where it only turned the
-  pause menu's pages and was a second End turn in combat; nor is View, which only cycled combat targets, which the
-  stick and RT still do, and which quicksaves while walking). In combat it sits in the bottom left corner when the picture is
+  (`controls_card`; View shows and hides it: in those two modes View is not passed to the game, where it only cycled
+  combat targets, which the stick and RT still do; nor is LB, which only turned the pause menu's pages and was a second
+  End turn in combat, and which quicksaves while walking). In combat it sits in the bottom left corner when the picture is
   wide enough to leave room beside the message box, else above it; it is left out while Menu is held, as pausing
   keeps a picture of the screen for the pause menu's background. The pause pages' arrows get LB and RB at the ends they point to
   (the arrows are told apart by their pixels; the Controller Pak screens' arrows on save slots get none). The card's
