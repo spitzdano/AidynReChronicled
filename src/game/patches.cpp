@@ -4399,6 +4399,13 @@ extern "C" int aidyn_party_row(uint8_t* rdram, recomp_context* ctx) {
     else if (ctx->r5 == 0 && bottom < 0xF0) bottom += 4;
     MEM_H(0, kScreenBottom) = (int16_t)bottom;
     gpr g = ctx->r4;
+    // Slid all the way down: nothing drawn. The game's row is then just below the screen (y 240; an N64 TV's overscan
+    // hid its edge anyway), but the redrawn slots are taller and centred on its portraits, so their tops would still
+    // show as a sliver along the bottom edge (spitzdano, 2026-10-30).
+    if (bottom >= 0xF0) {
+        ctx->r2 = g;
+        return 1;
+    }
     const float bright = std::clamp(read_f32(rdram, (gpr)kGlobals + 0x2040), 0.0f, 1.0f);
     const uint32_t shade = (uint32_t)std::lround(255.0f * bright);
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
