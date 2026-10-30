@@ -148,6 +148,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -1454,6 +1455,7 @@ namespace {
 }
 
 bool scene_intact(uint8_t* rdram, gpr scene);  // "Heap trace", below
+void skinned_draw(uint8_t* rdram, gpr scene);   // "Skinned models", below
 
 // Returns false to skip the model (the hook returns the display list unchanged): one whose memory was overwritten
 // (its Borg5 pointer no longer one), which the function would read through and crash on (see "Heap trace").
@@ -1461,6 +1463,7 @@ extern "C" int aidyn_scene_draw_begin(uint8_t* rdram, recomp_context* ctx) {
     if (!scene_intact(rdram, ctx->r5)) {
         return 0;
     }
+    skinned_draw(rdram, ctx->r5);
     if (!interpolating()) {
         return 1;
     }
@@ -5914,6 +5917,7 @@ namespace {
                   kBorgBytes = (gpr)(int32_t)0x800E4988;
     std::vector<uint32_t> model_pending;  // meshes the model being set up has its own files for
     uint32_t model_current = 0xFFFFFFFF;
+    std::map<uint32_t, uint32_t> model_of;  // Borg5Header -> its index, as set up (the header's own isn't kept)
     struct ModelOverride {
         bool active = false;
         uint32_t model = 0, mesh = 0;
@@ -5963,6 +5967,7 @@ extern "C" void aidyn_model_init(uint8_t* rdram, recomp_context* ctx) {
     if (!heap_pointer(b5)) return;
     // The header's index is only written once the setup is done; getBorgItem, which calls it, still has the index in s3.
     model_current = (uint32_t)ctx->r19;
+    model_of[(uint32_t)b5] = model_current;
     const int count = MEM_W(0x18, b5);
     const gpr list = MEM_W(0x3C, b5);
     static const bool log = std::getenv("AIDYN_ASSET_LOG") != nullptr;
@@ -6033,6 +6038,140 @@ extern "C" int aidyn_asset_decompress(uint8_t* rdram, recomp_context* ctx) {
         MEM_B(i, dest) = (int8_t)(*file)[i];
     }
     return 1;
+}
+
+// ---- Skinned models ----
+// A skinned character in place of a rigid model (a test, with the asset files above; tools/models/skinned_model.py
+// writes both from a GLB). The game draws a character as rigid parts, each a mesh with its own matrix; a skinned mesh
+// bends at the joints, which its formats can't hold. So the model's torso mesh (the carrier) holds the whole skinned
+// mesh, the other parts are emptied, and every time the model is drawn (BorgAnimDrawSceneRaw's entry) its vertices
+// are skinned here from <model>.skin: the frame of the animation the scene plays (SceneData.borg6's index, aniTime at
+// +0x1F8) gives each joint's matrix (mesh rest -> model space, the root transform's own motion left out), each vertex
+// blends its four joints, and positions (in the carrier's units: v * scale / 16 is metres) and normals go into the
+// carrier's vertices (Vtx +6, unused by the RSP, holds which skinned vertex each is). Two vertex buffers in turn (the
+// blob carries a second): Borg2Data.vertlist2 (+0x34) is pointed at the one just filled. The carrier's transform (6) is
+// then given the root's matrix (transform 2, mfs[1]: the Borg5Struct2 at transform +0xC, mfs[1] at +0xC0), the space
+// the skinned vertices are in. An animation the file lacks shows its first one's first frame.
+namespace {
+    struct Skin {
+        uint32_t verts = 0, joints = 0, slot = 0, off_vtx = 0, off_vtx2 = 0, blob_verts = 0;
+        struct Vert { float pos[3], nrm[3]; uint8_t joint[4]; float weight[4]; };
+        std::vector<Vert> vert;
+        std::map<uint32_t, std::pair<uint32_t, std::vector<float>>> anims;  // borg6 -> (frames, 12 floats per joint)
+        uint32_t first = 0;
+        bool flip = false;
+    };
+    std::map<uint32_t, std::unique_ptr<Skin>> skins;  // model -> its skin, or null
+
+    Skin* skin_for(uint32_t model) {
+        auto it = skins.find(model);
+        if (it != skins.end()) return it->second.get();
+        std::unique_ptr<Skin> s;
+        char name[24];
+        snprintf(name, sizeof name, "%04x.skin", model);
+        std::ifstream in(std::filesystem::path(std::getenv("AIDYN_ASSET_DIR")) / name, std::ios::binary);
+        if (in) {
+            std::vector<char> b((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            uint32_t h[10];
+            if (b.size() >= sizeof h && std::memcmp(b.data(), "AKS1", 4) == 0) {
+                std::memcpy(h, b.data(), sizeof h);
+                s = std::make_unique<Skin>();
+                s->verts = h[2], s->joints = h[3], s->slot = h[5], s->off_vtx = h[6], s->off_vtx2 = h[7],
+                s->blob_verts = h[8];
+                size_t o = sizeof h;
+                s->vert.resize(s->verts);
+                for (auto& v : s->vert) {
+                    std::memcpy(v.pos, &b[o], 24), std::memcpy(v.joint, &b[o + 24], 4),
+                        std::memcpy(v.weight, &b[o + 28], 16);
+                    o += 44;
+                }
+                for (uint32_t a = 0; a < h[4] && o + 8 <= b.size(); a++) {
+                    uint32_t idx, frames;
+                    std::memcpy(&idx, &b[o], 4), std::memcpy(&frames, &b[o + 4], 4);
+                    o += 8;
+                    std::vector<float> k(size_t(frames) * s->joints * 12);
+                    std::memcpy(k.data(), &b[o], k.size() * 4);
+                    o += k.size() * 4;
+                    if (a == 0) s->first = idx;
+                    s->anims[idx] = { frames, std::move(k) };
+                }
+                fprintf(stdout, "Skinned models: %s, %u vertices, %u joints, %zu animations\n", name, s->verts,
+                        s->joints, s->anims.size());
+                fflush(stdout);
+            }
+        }
+        return (skins[model] = std::move(s)).get();
+    }
+}
+
+void skinned_draw(uint8_t* rdram, gpr scene) {
+    if (!assets_on()) return;
+    const gpr b5 = MEM_W(0, scene);
+    if (!heap_pointer(b5)) return;
+    const auto m = model_of.find((uint32_t)b5);
+    if (m == model_of.end()) return;
+    Skin* s = skin_for(m->second);
+    if (s == nullptr) return;
+    const gpr list = MEM_W(0x3C, b5);  // Borg5Data.borg2p
+    if ((uint32_t)MEM_W(0x18, b5) <= s->slot || !heap_pointer(list)) return;
+    const gpr b2 = MEM_W(4 * s->slot, list);
+    if (!heap_pointer(b2)) return;
+    const gpr dat = MEM_W(0x58, b2);  // Borg2Header.dat
+    if (!heap_pointer(dat) || (uint32_t)MEM_W(0x38, dat) != s->blob_verts) return;  // not the carrier
+    const gpr transforms = MEM_W(0x28, b5);
+    if (!heap_pointer(transforms)) return;
+    const gpr root = MEM_W(0xC, transforms + 2 * 0x40), carrier = MEM_W(0xC, transforms + 6 * 0x40);
+    if (!heap_pointer(root) || !heap_pointer(carrier)) return;
+
+    // The animation and frame.
+    const gpr b6 = MEM_W(4, scene);
+    auto it = heap_pointer(b6) ? s->anims.find((uint32_t)MEM_W(0, b6)) : s->anims.end();
+    uint32_t frame = 0;
+    if (it == s->anims.end()) {
+        it = s->anims.find(s->first);
+    } else {
+        const uint32_t t = MEM_HU(0x1F8, scene);
+        frame = std::min<uint32_t>(t > 0 ? t - 1 : 0, it->second.first - 1);
+    }
+    const float* k = it->second.second.data() + size_t(frame) * s->joints * 12;
+
+    // Skin every vertex: position and normal, in model space.
+    static std::vector<float> out;
+    out.resize(size_t(s->verts) * 6);
+    for (uint32_t i = 0; i < s->verts; i++) {
+        const Skin::Vert& v = s->vert[i];
+        float p[3] = {}, n[3] = {};
+        for (int j = 0; j < 4; j++) {
+            const float w = v.weight[j];
+            if (w == 0.0f || v.joint[j] >= s->joints) continue;
+            const float* m = k + v.joint[j] * 12;
+            for (int r = 0; r < 3; r++) {
+                p[r] += w * (m[4 * r] * v.pos[0] + m[4 * r + 1] * v.pos[1] + m[4 * r + 2] * v.pos[2] + m[4 * r + 3]);
+                n[r] += w * (m[4 * r] * v.nrm[0] + m[4 * r + 1] * v.nrm[1] + m[4 * r + 2] * v.nrm[2]);
+            }
+        }
+        const float l = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        for (int r = 0; r < 3; r++) out[size_t(i) * 6 + r] = p[r], out[size_t(i) * 6 + 3 + r] = l > 0 ? n[r] / l : 0;
+    }
+
+    // Into the buffer not drawn last time, in the carrier's units.
+    const float unit = 16.0f / read_f32(rdram, dat + 8);  // Borg2Data.scale
+    s->flip = !s->flip;
+    const gpr vtx = dat + (s->flip ? s->off_vtx2 : s->off_vtx);
+    for (uint32_t i = 0; i < s->blob_verts; i++) {
+        const gpr a = vtx + 16 * i;
+        const uint32_t id = MEM_HU(6, a);
+        if (id >= s->verts) continue;
+        const float* o = &out[size_t(id) * 6];
+        for (int r = 0; r < 3; r++) {
+            MEM_H(2 * r, a) = (int16_t)std::clamp(std::lround(o[r] * unit), -32768L, 32767L);
+            MEM_B(12 + r, a) = (int8_t)std::clamp(std::lround(o[3 + r] * 127.0f), -127L, 127L);
+        }
+    }
+    MEM_W(0x34, dat) = (int32_t)vtx;  // Borg2Data.vertlist2: segment A for this draw
+
+    // The carrier draws with the root's matrix.
+    for (int w = 0; w < 16; w++) MEM_W(0xC0 + 4 * w, carrier) = MEM_W(0xC0 + 4 * w, root);
 }
 
 // ---- Buckler ----

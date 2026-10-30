@@ -731,6 +731,17 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   replaces a mesh in that one model only: as the model is set up (`InitBorgScene`, 0x80099B6C) its meshes with their
   own file are loaded as private copies (the game's `borgFlag`), the shared copy's cache entry put back as
   `getBorgItem` returns. Tested on Alaron (his torso and hands) through three Quick Loads.
+- **Skinned models** (a test, developers only, with the asset files). A character modelled with a skeleton, whose
+  mesh bends at the joints, which the game's rigid parts can't hold: `tools/models/skinned_model.py` turns a GLB (one
+  animation per game animation, named `borg6 <index>` as Aidyn Chronicles Enhanced exports them) into `<model>.skin`
+  (the vertices with their four joints and weights, and every animation's frames as joint matrices) plus the asset
+  files that empty the model's parts and put the whole mesh in one of them (the torso, the carrier). Each time the model
+  is drawn (`BorgAnimDrawSceneRaw`'s entry) the port skins the mesh on the CPU for the animation and frame the game is
+  playing and writes it into the carrier's vertices (two buffers in turn), drawn with the root's matrix; the game's own
+  state machine, movement and lights are untouched. The texture comes through a texture pack, in place of the one the
+  carrier's display list loads. Tested with MDoulos's Alaron remodel from Enhanced (1,000 triangles, 23 bones, 50
+  animations, its 2048x2048 base colour): idle, walk, jog, sneak, cut-scenes and combat. Held weapons and shields still
+  follow the original's hands.
 - **Far map cells.** Outdoors the game keeps only the 3x3 map cells around the party. With `draw_distance` above 1,
   rings of cells around them are loaded with the game's own `BorgAnimLoadScene`, placed as the game places its
   neighbours, and drawn after its cells (ground only: no props, people or collision), two loads a frame (six while
