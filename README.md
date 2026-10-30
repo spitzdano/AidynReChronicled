@@ -337,7 +337,7 @@ these defaults on the first run:
         "aspect": "16:9",
         "widescreen": true,
         "msaa": 4,
-        "supersampling": 2,
+        "supersampling": 1,
         "fps_limit": 240,
         "draw_distance": 3.0,
         "walk_speed": 1.5,
@@ -561,7 +561,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   report when one was made). `AIDYN_FREEZE_TEST=1` stops the game thread for 25 s after 10 s of walking about (`=start`:
   20 s after the first frame); `AIDYN_CRASH_TEST=native` tries the crash handlers.
 - **Out of graphics memory** (#47, `graphics_memory_fallback` in `src/main/main.cpp`). A small or shared graphics card
-  (an integrated AMD Radeon at the defaults: 1080 lines, 4x MSAA and 2x supersampling) can't make the renderer's
+  (an integrated AMD Radeon at 1080 lines, 4x MSAA and 2x supersampling, the defaults then) can't make the renderer's
   images, and the game crashes as the title screen opens ("vmaCreateImage failed with error code 0xFFFFFFFE" in the
   log). The next start finds that in `logs/previous-run.log` and turns the graphics down a step, each in
   `settings.json`: anti-aliasing and supersampling off, then 720 lines, then 480, then the new textures off; a note
