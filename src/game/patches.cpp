@@ -4551,6 +4551,12 @@ namespace {
     constexpr const char* kAaWords[] = { "rc_off", "rc_aa_low", "rc_aa_medium", "rc_aa_high" };
     constexpr int kAaMsaa[] = { 0, 2, 4, 8 }, kAaSupersampling[] = { 1, 1, 2, 2 };
     float aa_step = 2.0f;  // the row's value, from settings.json's msaa and supersampling when the page lists its rows
+    // Frame rate (spitzdano, 2026-10-30): settings.json's fps_limit, 0 unlimited (aidyn::set_fps_limit). Nothing below
+    // 60: the game makes 60 frames a second and the limit only holds back RT64's in-between ones (30 still showed 60).
+    constexpr float kFpsSteps[] = { 60.0f, 90.0f, 100.0f, 120.0f, 144.0f, 175.0f, 240.0f, 0.0f };
+    constexpr const char* kFpsWords[] = { "rc_fr_60", "rc_fr_90", "rc_fr_100", "rc_fr_120", "rc_fr_144", "rc_fr_175",
+                                          "rc_fr_240", "rc_fr_unlimited" };
+    float fps_step = 240.0f;  // the row's value, from settings.json when the page lists its rows
     constexpr float kWalkSpeeds[] = { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
     constexpr float kPartySpeeds[] = { 1.0f, 1.5f, 2.0f, 3.0f };
     constexpr const char* kPartySpeedWords[] = { "rc_dd_1", "rc_dd_15", "rc_dd_2", "rc_dd_3" };
@@ -4573,6 +4579,15 @@ namespace {
                 if (off(i) < off(best)) best = i;
             }
             aa_step = kAaSteps[best];
+            static const RcSteps fps = { &fps_step, kFpsSteps, kFpsWords, (int)std::size(kFpsSteps) };
+            {  // the step nearest settings.json's fps_limit (it may hold any rate)
+                const int have = gfx.fps_limit;
+                int near = (int)std::size(kFpsSteps) - 1;
+                for (int i = 0; have != 0 && i < (int)std::size(kFpsSteps) - 1; i++) {
+                    if (near == (int)std::size(kFpsSteps) - 1 || std::abs(kFpsSteps[i] - have) < std::abs(kFpsSteps[near] - have)) near = i;
+                }
+                fps_step = kFpsSteps[near];
+            }
             return {
                 { "rc_widescreen", &gfx.widescreen, "widescreen",
                   [](uint8_t*) { aidyn::settings::apply_widescreen(); aidyn::refresh_aspect(); },
@@ -4580,6 +4595,7 @@ namespace {
                 { "rc_textures", &gfx.textures, "textures", [](uint8_t* rdram) { aidyn::refresh_textures(); apply_font_widths(rdram); } },
                 { "rc_vsync", &gfx.vsync, "vsync", [](uint8_t*) { aidyn::refresh_vsync(); } },
                 { "rc_window", &gfx.fullscreen, "fullscreen", nullptr, nullptr, nullptr, nullptr, "rc_borderless", "rc_windowed" },
+                { "rc_frame_rate", nullptr, "", [](uint8_t*) { aidyn::set_fps_limit((int)fps_step); }, nullptr, &fps },
                 { "rc_fps", &gfx.fps_counter, "fps_counter", nullptr },
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
