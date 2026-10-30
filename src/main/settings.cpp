@@ -106,6 +106,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["fullscreen"] = g_graphics.fullscreen;
         j["graphics"]["menus_4_3"] = g_graphics.menus_4_3;
         j["graphics"]["right_stick_camera"] = g_graphics.right_stick_camera;
+        j["graphics"]["camera_sensitivity"] = g_graphics.camera_sensitivity;
         j["graphics"]["camera_invert_x"] = g_graphics.camera_invert_x;
         j["graphics"]["camera_invert_y"] = g_graphics.camera_invert_y;
         j["graphics"]["overscan_borders"] = g_graphics.overscan_borders;
@@ -159,6 +160,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.fullscreen = gfx.value("fullscreen", g_graphics.fullscreen);
         g_graphics.menus_4_3 = gfx.value("menus_4_3", g_graphics.menus_4_3);
         g_graphics.right_stick_camera = gfx.value("right_stick_camera", g_graphics.right_stick_camera);
+        g_graphics.camera_sensitivity = gfx.value("camera_sensitivity", g_graphics.camera_sensitivity);
         g_graphics.camera_invert_x = gfx.value("camera_invert_x", g_graphics.camera_invert_x);
         g_graphics.camera_invert_y = gfx.value("camera_invert_y", g_graphics.camera_invert_y);
         g_graphics.overscan_borders = gfx.value("overscan_borders", g_graphics.overscan_borders);
@@ -269,6 +271,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     }
     if (!(g_graphics.walk_speed >= 1.0f && g_graphics.walk_speed <= 2.0f)) {
         bad(path, "graphics.walk_speed must be 1 (original) to 2");
+    }
+    if (!(g_graphics.camera_sensitivity >= 0.5f && g_graphics.camera_sensitivity <= 2.0f)) {
+        bad(path, "graphics.camera_sensitivity must be 0.5 to 2");
     }
 }
 
