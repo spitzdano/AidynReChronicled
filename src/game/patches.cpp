@@ -2141,6 +2141,30 @@ namespace {
         return gfx.hud_at_edges && gfx.aspect != aidyn::settings::Aspect::Original;
     }
 
+    // The picture's real width / height: view_aspect() assumes an ultrawide window, which put the combat log in the
+    // corner of a 16:9 window too, over the message box's portrait.
+    float picture_aspect() {
+        if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Window && aidyn::window_aspect() > 0.0f) {
+            return aidyn::window_aspect();
+        }
+        return view_aspect();
+    }
+    // Units each side of the middle 4:3 (320 wide): 0 at 4:3, about 53 at 16:9, 120 at 21:9.
+    float picture_extra() { return std::max(0.0f, (240.0f * picture_aspect() - 320.0f) / 2.0f); }
+
+    // Combat's bottom (spitzdano, 2026-10-30): with the HUD at the edges, the message box's portrait and text slide
+    // right into the picture's extra width, just far enough for the combat log to fit in the bottom left corner (at
+    // 16:9 about 50 units; nothing at 21:9, where it fits, or 4:3, where there is no room). AIDYN_CARD_RIGHT=1 puts the
+    // combat controls card on the right above the radar (developers: it overlaps the last party portrait).
+    bool combat_slide() { return hud_wide(); }
+    bool card_right() { static const bool on = std::getenv("AIDYN_CARD_RIGHT") != nullptr; return on && hud_wide(); }
+    constexpr float kLogNeeds = 129.0f;  // the log's corner: 6 margin, 3 gap, 120 of text
+    float message_shift() {
+        if (!combat_slide()) return 0.0f;
+        const float room = 25.0f + picture_extra();  // left of the message box's portrait (x 25 of the middle 4:3)
+        return std::clamp(kLogNeeds - room, 0.0f, picture_extra());
+    }
+
     gpr hud_begin(uint8_t* rdram, gpr g, bool right) {
         GfxCommand c[5];
         gEXEnable(&c[0]);
@@ -2158,6 +2182,35 @@ namespace {
         c[2].values.word0 = 0xED000000;                                   // gDPSetScissor(G_SC_NON_INTERLACE, 0, 0, h, v)
         c[2].values.word1 = ((h * 4) & 0xFFF) << 12 | ((v * 4) & 0xFFF);
         return put_cmds(rdram, g, c, 3);
+    }
+}
+
+// CombatTextboxWidget_Tick: before its Render the message box's portrait (its frame, +0x9C, and the picture, +0x98)
+// and its text (+0x7C) move right by message_shift(), and before its return they are put back. Only those: the band
+// behind them (+0x80, and its gradient +0x84) stays across the whole picture.
+namespace {
+    constexpr int kTextboxMoved[3] = { 0x7C, 0x98, 0x9C };
+    constexpr int kTextboxPosX = 0x60;  // BaseWidget.posX
+    gpr textbox_moved[3] = {};
+    int16_t textbox_shift = 0;
+}
+
+extern "C" void aidyn_message_box_begin(uint8_t* rdram, recomp_context* ctx) {
+    textbox_shift = (int16_t)std::lround(message_shift());
+    const gpr box = MEM_W(0, (gpr)(int32_t)0x800E3160);  // gWidgetCombatTextboxP
+    for (int k = 0; k < 3; k++) {
+        textbox_moved[k] = 0;
+        const gpr w = textbox_shift > 0 && heap_pointer(box) ? MEM_W(kTextboxMoved[k], box) : 0;
+        if (!heap_pointer(w)) continue;
+        textbox_moved[k] = w;
+        MEM_H(kTextboxPosX, w) = (int16_t)(MEM_H(kTextboxPosX, w) + textbox_shift);
+    }
+}
+
+extern "C" void aidyn_message_box_end(uint8_t* rdram, recomp_context* ctx) {
+    for (int k = 0; k < 3; k++) {
+        if (heap_pointer(textbox_moved[k])) MEM_H(kTextboxPosX, textbox_moved[k]) = (int16_t)(MEM_H(kTextboxPosX, textbox_moved[k]) - textbox_shift);
+        textbox_moved[k] = 0;
     }
 }
 
@@ -3215,20 +3268,24 @@ namespace {
             return g;
         }
         const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-        const float x0 = kMargin;
-        float y0 = card.bottom ? 240.0f - kMargin - height - 2 * kPad : kMargin;
+        const bool right = card.bottom && card_right();
+        // On the right (AIDYN_CARD_RIGHT): above the radar (its ring centred at x 274, y 199, about 37 across), against
+        // the picture's right edge.
+        const float x0 = right ? 320.0f - kMargin - width - 2 * kPad : kMargin;
+        float y0 = right ? 199.0f - 19.0f - 3.0f - height - 2 * kPad
+                 : card.bottom ? 240.0f - kMargin - height - 2 * kPad : kMargin;
         // Combat's message box (centred, its portrait from x 25 to y 179 of the middle 4:3) leaves the bottom left
         // corner free on a wide picture only; on a narrower one the card goes above the box.
-        const float room = kMessagePortraitX + (240.0f * view_aspect() - 320.0f) / 2.0f;
-        if (card.bottom && x0 + width + 2 * kPad + 3.0f > room) {
+        const float room = kMessagePortraitX + picture_extra() + message_shift();
+        if (card.bottom && !right && x0 + width + 2 * kPad + 3.0f > room) {
             y0 = kMessageTop - 3.0f - height - 2 * kPad;
         }
         const auto& p = aidyn::branding::kImages[panel];
-        if (card.bottom) {
+        if (card.bottom && !right) {
             combat_card_top = y0;  // the combat log goes above it
         }
         (void)p;  // no backing (spitzdano): the rows' letters have their own dark edge
-        g = hud_begin(rdram, g, false);
+        g = hud_begin(rdram, g, right);
         g = prompt_state(rdram, g, 255);
         float y = y0 + kPad;
         for (int k = 0; k < n; k++) {
@@ -5371,7 +5428,7 @@ gpr draw_combat_log(uint8_t* rdram, recomp_context* ctx, gpr g, float card_top, 
     }
     constexpr float kMargin = 6.0f, kMessagePortraitX = 25.0f, kMessageTop = 178.0f;
     // The room left of the message box's portrait (its x 25 of the middle 4:3, plus the picture's extra width).
-    const float room = kMessagePortraitX + (hud_wide() ? (240.0f * view_aspect() - 320.0f) / 2.0f : 0.0f);
+    const float room = kMessagePortraitX + (hud_wide() ? picture_extra() + message_shift() : 0.0f);
     const bool corner = room - kMargin - 3.0f >= 120.0f;
     if (!corner && menu_open) {
         return g;  // above the message box is where the held X / Y menu opens: out of its way while it's held
@@ -6938,7 +6995,8 @@ void aidyn_hud_frames_image(uint8_t* rdram, recomp_context* ctx) {
         std::memcpy(&x, &bits, 4);
         bits = (uint32_t)ctx->r7;
         std::memcpy(&y, &bits, 4);
-        if (std::abs(x - 20.0f) < 1.5f && std::abs(y - 174.0f) < 1.5f && speaker_enemy(rdram)) {  // the message box's
+        // the message box's, at x 20 plus its slide (textbox_shift: "Combat's bottom")
+        if (std::abs(x - 20.0f - textbox_shift) < 1.5f && std::abs(y - 174.0f) < 1.5f && speaker_enemy(rdram)) {
             const gpr img = ctx->r5, pixels = MEM_W(0x14, img);
             for (int k = 0; k < 0x20; k += 4) {
                 MEM_W(k, kEnemyFrame) = MEM_W(k, img);

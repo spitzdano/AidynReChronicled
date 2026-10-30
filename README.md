@@ -596,8 +596,10 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   or replaces at once: turns, attacks, hits, misses, damage, kills, spells, healing, potions, fleeing, with "Round N"
   as each round begins. Names are in their side's colour (the party blue, enemies red), hit points lost orange and
   gained green. The last seven lines show, older ones fainter, in the game's own letters with a soft shadow (no
-  backing; the controls card has none either), in the corner when the picture is wide enough to clear the message
-  box, else above it, and above the controls card. The latest fight is also written to `combat-log.txt` in the data
+  backing; the controls card has none either), in the corner, above the controls card. With `hud_at_edges` the message
+  box's portrait and text slide right into a wide picture's extra width, just far enough for the log to fit (at 16:9
+  about 50 units; none at 21:9, where it fits already), its dark band still across the whole picture; at 4:3 the log
+  goes above the message box. Placement uses the window's real shape with `aspect: "window"`. The latest fight is also written to `combat-log.txt` in the data
   folder. All messages go through `copy_string_to_textbox` (hooked); a message repeated in the same turn is left out.
   `combat_log` (the ReChronicled page) turns it off; `AIDYN_COMBAT_LOG_DEBUG=1` prints each message.
 - **Turn order.** In combat an ornate bar across the top (pieces cut from Spitzdano's concept, `art/turn-order`, by

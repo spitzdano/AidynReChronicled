@@ -1062,3 +1062,15 @@ text = "extern void aidyn_asset_request(uint8_t* rdram, recomp_context* ctx); ai
 func = "draw_screenshot_background"
 before_vram = 0x80048718
 text = "extern void aidyn_snapshot_drawn(uint8_t* rdram, recomp_context* ctx); aidyn_snapshot_drawn(rdram, ctx);"
+
+# Combat's message box (src/game/patches.cpp, aidyn_message_box_begin): CombatTextboxWidget_Tick before its Render's
+# jalr (a1 the display list, set at 0x800879B4) and before its return (v0 the display list on every path).
+[[patches.hook]]
+func = "CombatTextboxWidget_Tick"
+before_vram = 0x800879B8
+text = "extern void aidyn_message_box_begin(uint8_t* rdram, recomp_context* ctx); aidyn_message_box_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "CombatTextboxWidget_Tick"
+before_vram = 0x800879E4
+text = "extern void aidyn_message_box_end(uint8_t* rdram, recomp_context* ctx); aidyn_message_box_end(rdram, ctx);"
