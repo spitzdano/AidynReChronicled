@@ -4513,6 +4513,8 @@ gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 void title_updates_open(uint8_t* rdram, recomp_context* ctx);   // "Updates", below
 bool title_panel_up();  // Controls, Achievements or Updates over the title menu (end of the file)
 gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g);
+void title_display_open(uint8_t* rdram, recomp_context* ctx);   // "Display (title menu)", below
+gpr title_display_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 bool fair_panel_open(uint8_t* rdram, recomp_context* ctx);       // "Fair play", below
 gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g);
 void fair_show(uint8_t* rdram, recomp_context* ctx);
@@ -4834,6 +4836,7 @@ gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = title_controls_page(rdram, ctx, g);
     g = title_ach_page(rdram, ctx, g);
     g = title_updates_page(rdram, ctx, g);
+    g = title_display_page(rdram, ctx, g);
     {  // the title menu's list under a panel: see-through meanwhile (its last entries showed below the panel)
         extern gpr title_menu_list;
         static bool hidden = false;
@@ -7685,6 +7688,7 @@ namespace {
     constexpr uint16_t kLoadGameId = 0xA0;                     // the game's Load Game (OptionN_LoadGame)
     constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0, kControlsText = kRcText + 0xC0,
                   kAchText = kRcText + 0xE0;
+    constexpr gpr kDisplayText = (gpr)(int32_t)0x80F81820;  // the title menu's Display
     constexpr gpr kUpdatesText = (gpr)(int32_t)0x80F81800;  // the title menu's Updates (kRcText's 0x100 bytes are full)
     constexpr gpr kCombatNext = (gpr)(int32_t)0x800D9455;      // gGlobals.combatBytes[1]: the fight's state after the pause
     constexpr gpr kCommonStrings = (gpr)(int32_t)0x800DA0D8;   // gGlobals.CommonStrings
@@ -7824,6 +7828,12 @@ extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
     const gpr memory = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
     if (!heap_pointer(memory)) {
         return;
+    }
+    const gpr memory_d = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+    if (heap_pointer(memory_d)) {  // Display (#66): the pause menu's Display page, before the game
+        const gpr display = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory_d,
+                                                    (uint32_t)put_menu_text(rdram, kDisplayText, "Display"), 400);
+        call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)display);
     }
     const gpr controls = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory,
                                                  (uint32_t)put_menu_text(rdram, kControlsText, "Controls"), 400);
@@ -8017,7 +8027,11 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
             x1 = 264.0f;
             y1 = 192.0f;
         }
-        if (y1 > 232.0f) y1 = std::min(y1, y0 + 140.0f);
+        if (x1 - x0 == 132.0f) {  // the menu's own box: nine entries (Continue and Updates too) end at the screen's foot
+            y1 = std::min(y1, 238.0f);
+        } else if (y1 > 232.0f) {
+            y1 = std::min(y1, y0 + 140.0f);
+        }
         if (options_box_shifted(rdram) && x1 - x0 == 208.0f) {  // the Options page's box follows its rows: kept centred
             x0 -= 4.0f;
             x1 -= 4.0f;
@@ -8079,6 +8093,11 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
     if (text == "Achievements") {
         rc_sound(rdram, ctx, 0x740, 60);
         title_ach_open(rdram, ctx);
+        return 1;
+    }
+    if (text == "Display") {
+        rc_sound(rdram, ctx, 0x740, 60);
+        title_display_open(rdram, ctx);
         return 1;
     }
     if (text == "Updates") {
@@ -9372,6 +9391,114 @@ gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     const std::string hint = a_key + ": choose   " + (max_scroll > 0 ? std::string(kb ? keys_of(aidyn::controls::kLB, false) + " / " + keys_of(aidyn::controls::kRB, false) : "LB / RB") + ": scroll   " : "") +
                              b_key + ": back";
     g = ctl_text(rdram, ctx, g, hint, centre, 190.0f, 0.55f, ink, tu.fade, false, true);
+    return g;
+}
+
+// ---- Display (title menu) ----
+// The pause menu's Display page (rc_rows(kRcDisplay): the same rows, the same changes written into settings.json),
+// as a panel over the title screen, so widescreen, frame rate, anti-aliasing and the rest can be set before a game is
+// started (#66). The rows' names and values are the pause page's pictures, in the title panels' ivory (the selected
+// row pulsing gold); the title and the hint are text, like the Controls panel's. Up / down choose a row, A or left /
+// right change it, B or Start goes back.
+namespace {
+    struct TitleDisplay {
+        bool open = false, closing = false;
+        int fade = 0, pulse = 0, repeat = 0, row = 0, top = 0;
+        uint32_t held = 0xFFFFFFFF;
+    } td;
+}
+
+void title_display_open(uint8_t* rdram, recomp_context* ctx) {
+    td = TitleDisplay{};
+    td.open = true;
+    aidyn::input::set_capture(true);
+}
+
+gpr title_display_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    if (!td.open) return g;
+    if (!heap_pointer(MEM_W(0, kTitleScreen))) {  // the title is gone (a version switch, a game starting)
+        td = TitleDisplay{};
+        aidyn::input::set_capture(false);
+        return g;
+    }
+    uint32_t b = 0;
+    float sx = 0.0f, sy = 0.0f;
+    aidyn::input::captured(&b, &sx, &sy);
+    if (sy > 0.5f) b |= 0x0800;
+    if (sy < -0.5f) b |= 0x0400;
+    if (sx < -0.5f) b |= 0x0200;
+    if (sx > 0.5f) b |= 0x0100;
+    const uint32_t pressed = td.held == 0xFFFFFFFF ? 0 : (b & ~td.held);
+    td.held = (td.held == 0xFFFFFFFF && (b & 0x8000)) ? 0xFFFFFFFF : b;
+    const uint32_t dirs = b & 0x0F00;
+    td.repeat = dirs != 0 ? td.repeat + 1 : 0;
+    const uint32_t act = pressed | ((td.repeat > 24 && td.repeat % 6 == 0) ? dirs : 0);
+    const std::vector<RcRow> rows = rc_rows(kRcDisplay);
+    const int n = (int)rows.size(), shown = std::min(n, kRcVisible);
+    td.row = std::clamp(td.row, 0, n - 1);
+    td.top = std::clamp(td.top, 0, n - shown);
+    constexpr float kLeft = 54.0f, kRight = 266.0f, kTop = 58.0f, kStep = 12.5f;
+    const bool ready = !td.closing && td.fade == 255;
+    if (ready) {
+        static uint32_t seen = 0;
+        const PointerPick p = pointer_pick(kTop - 2.0f, kStep, shown, kLeft - 8.0f, kRight + 4.0f, seen);
+        if (p.row >= 0 && td.top + p.row != td.row) { td.row = td.top + p.row; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0800) { td.row = (td.row + n - 1) % n; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0400) { td.row = (td.row + 1) % n; rc_sound(rdram, ctx, 0x73B, 30); }
+        const RcRow& cur = rows[td.row];
+        if (cur.action != nullptr) {
+            if (pressed & 0x8000) cur.action(rdram, ctx);
+        } else if (act & 0x8000) {
+            rc_change(rdram, cur, 1);
+            rc_sound(rdram, ctx, 0x740, 60);
+        } else if (act & 0x0300) {
+            rc_change(rdram, cur, (act & 0x0200) ? -1 : 1);
+            rc_sound(rdram, ctx, 0x740, 60);
+        }
+        if (pressed & (0x4000 | 0x1000)) {  // B, Start: back
+            td.closing = true;
+            rc_sound(rdram, ctx, 0x741, 60);
+        }
+    }
+    if (td.row < td.top) td.top = td.row;
+    if (td.row >= td.top + shown) td.top = td.row - shown + 1;
+    td.fade = std::clamp(td.fade + (td.closing ? -60 : 60), 0, 255);
+    if (td.closing && td.fade == 0) {
+        if (b == 0) {
+            td = TitleDisplay{};
+            aidyn::input::set_capture(false);
+        }
+        return g;
+    }
+    td.pulse++;
+    const CtlHost h{ true, td.fade, td.closing, td.pulse, 0 };
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 214.0f, (uint32_t)td.fade);
+    copy_branding(rdram);
+    auto ink = [&](uint32_t rgb) {
+        g = prompt_state(rdram, g, (uint8_t)td.fade);
+        put(rdram, g, 0xFA000000, rgb << 8 | (uint32_t)td.fade);  // gDPSetPrimColor: the tint
+    };
+    auto word = [&](const char* name, float x, float y, bool right) {
+        const int i = branding_index(name);
+        if (i >= 0) g = draw_rgba16(rdram, g, i, (right ? x - ink_width(i) : x) * hs, y * vs, hs, vs);
+    };
+    for (int k = td.top; k < td.top + shown; k++) {
+        const RcRow& r = rows[k];
+        const float y = kTop + kStep * (k - td.top);
+        ink(k == td.row ? ctl_highlight(h) : 0xF2E6C8);
+        word(r.label, kLeft, y, false);
+        if (r.action == nullptr || r.shown != nullptr) {
+            word(r.flag != nullptr || r.steps == nullptr ? (rc_on(r) ? r.on_word : r.off_word) : r.steps->words[step_index(*r.steps)],
+                 kRight, y, true);
+        }
+    }
+    g = ctl_state(rdram, ctx, g);
+    g = ctl_text(rdram, ctx, g, "Display", 160.0f, kPanelTitleY, 0.9f, 0xE8C060, td.fade, false, true);
+    const bool kb = aidyn::input::keyboard_last();
+    const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
+    g = ctl_text(rdram, ctx, g, a_key + " / left / right: change   " + b_key + ": back", 160.0f, kTop + kStep * shown + 3.0f, 0.55f,
+                 0xF2E6C8, td.fade, false, true);
     return g;
 }
 
@@ -11301,5 +11428,5 @@ void aidyn_startup_notice(const std::string& text) {
 // The title screen's panels that go back to the menu (not Fair play, which goes on to New Game): the menu is hidden
 // under them (aidyn_title_box, aidyn_rc_page).
 bool title_panel_up() {
-    return tc.open || ta.open || tu.open;
+    return tc.open || ta.open || tu.open || td.open;
 }

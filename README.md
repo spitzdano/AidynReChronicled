@@ -415,7 +415,8 @@ these defaults on the first run:
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, after Flee), each a page
 of the switches above that can change while playing: **Display** (`widescreen`, `textures`, `vsync`, `fullscreen` as
 Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, Anti-aliasing as `msaa` (Off, 2x, 4x, 8x) and
-Supersampling as `supersampling` (Off, 2x; 3 and 4 only in the file)) and **ReChronicled** (`enhanced` as Sound,
+Supersampling as `supersampling` (Off, 2x; 3 and 4 only in the file); the title menu has the same page as **Display**,
+before a game is started) and **ReChronicled** (`enhanced` as Sound,
 `restored_samples` as Instruments, `turn_order`, `walk_speed` from 1 to 2 in quarters, `combat_party_speed` as Combat
 speed, `combat_enemy_speed` as Enemy turns, `controls_card`, `button_prompts`, `combat_log`,
 `smooth_animation_loops`, `right_stick_camera`, `camera_sensitivity` as Walking camera sensitivity from 0.5x to 2x in
@@ -607,8 +608,9 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   **Load Game** and **Quick Load** (the game offers neither there). The load itself waits: the fight's characters
   still point into the party a load would replace, so the save is kept, the pause menu closes for a load (gameStateB
   4), which the game turns into CombatState 16 (the fight cleared away, as after a win), and the walk's first frame
-  loads it. The lists fit their length: the title's five entries centred with their backing box a row taller for each
-  past three, the Menu page's ten moved up clear of the page arrow. The title's backing box (and its Options page's)
+  loads it. The lists fit their length: the title's entries (up to nine: Continue, New Game, Load Game, Options,
+  Display, Controls, Achievements, Updates, Quit Game) centred with their backing box a row taller for each past
+  three, ending at the screen's foot, the Menu page's ten moved up clear of the page arrow. The title's backing box (and its Options page's)
   is drawn as a dark panel with a gold frame and diamonds in place of the game's soft shadow (WidgetBorg8::Render
   hooked for the IntroMenu's two boxes, gGlobals.titleScreen +0x80 / +0x84).
 - **In-game updates** (`src/main/updater.cpp`, the title menu's **Updates**: `src/game/patches.cpp` "Updates"). At start
