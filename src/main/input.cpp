@@ -5,7 +5,7 @@
 //
 // Pad:       A/B/X/Y -> A/B/Z/(unused)   right stick -> C buttons   triggers -> L/R, Z
 //            left stick, D-pad, Start as expected; right shoulder -> R, left shoulder -> L
-//            (in the field and in combat LB shows / hides the controls card, and in the field View quicksaves: get())
+//            (in the field and in combat View shows / hides the controls card, and in the field LB quicksaves: get())
 // Keyboard and mouse: src/main/controls.cpp (bindings in settings.json: WASD and the arrows move, Z X C Enter Q E I J K L,
 //            the mouse looks and its buttons are A, B...), read here through aidyn::controls::down
 #include <algorithm>
@@ -51,7 +51,7 @@ namespace {
     std::atomic_bool start{ false };
     std::atomic_int last_device{ -1 };  // 0 the pad, 1 the keyboard or mouse, -1 neither yet (the keyboard if there is no pad)
     std::atomic_bool pad_b{ false };  // the pad's B (not the keyboard's or the mouse's)
-    std::atomic_bool quicksave_pressed{ false };  // View pressed in the field: aidyn::input::quicksave_asked
+    std::atomic_bool quicksave_pressed{ false };  // LB pressed in the field: aidyn::input::quicksave_asked
     std::atomic_int card_state{ -1 }; // the controls card: -1 as settings.json says, else shown (1) or hidden (0)
 
     bool card_visible() {
@@ -233,20 +233,20 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     c_down.store((b & CD) != 0, std::memory_order_relaxed);
     c_up.store((b & CU) != 0, std::memory_order_relaxed);
     start.store((b & START) != 0, std::memory_order_relaxed);
-    // In the field and in combat LB shows or hides the controls card (src/game/patches.cpp, "Button prompts"), and in
-    // the field View quicksaves ("Quick and auto saves"); there neither reaches the game (LB only turns the pause
-    // menu's pages; in combat it was a second End turn).
+    // In the field and in combat View shows or hides the controls card (src/game/patches.cpp, "Button prompts"), and in
+    // the field LB quicksaves ("Quick and auto saves"; spitzdano, 2026-10-30: the other way round before); there neither
+    // reaches the game (LB only turns the pause menu's pages; in combat it was a second End turn, View cycled targets).
     static bool view_was_down = false, lb_was_down = false;
     const bool view = (b & CL) != 0, lb = (b & L) != 0;
     const int mode = card_mode.load(std::memory_order_relaxed);
     const int dia = dialogue_state.load(std::memory_order_relaxed);  // a conversation up: Start skips it (below)
     if (mode != 0) {
-        if (lb && !lb_was_down) {
+        if (view && !view_was_down) {
             const bool shown = !card_visible();
             card_state.store(shown ? 1 : 0, std::memory_order_relaxed);
             aidyn::settings::save_controls_card(shown);
         }
-        if (mode == 1 && dia == 0 && view && !view_was_down) {
+        if (mode == 1 && dia == 0 && lb && !lb_was_down) {
             quicksave_pressed.store(true, std::memory_order_relaxed);
         }
         b &= ~(CL | L);
@@ -255,8 +255,8 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     // eight times a second, so every line goes by and everything the conversation does still happens (a flag, an item,
     // someone joining), until it offers answers (the player chooses: the skip ends) or it ends; Start again stops it.
     // The game side says which (set_dialogue, src/game/patches.cpp "Conversation hint"). There the game sees neither
-    // Start (kept from it until let go, so one held past the conversation's end doesn't open the pause menu) nor View
-    // (no quicksave: talking to someone in the field is still the field to the game).
+    // Start (kept from it until let go, so one held past the conversation's end doesn't open the pause menu) nor View;
+    // LB doesn't quicksave there (above: talking to someone in the field is still the field to the game).
     static bool start_was_down = false, start_swallowed = false;
     const bool start_now = (b & START) != 0;
     if (dia != 0 && mode != 2) {

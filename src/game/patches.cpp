@@ -3103,9 +3103,9 @@ extern "C" void aidyn_sfx_attack_pick(uint8_t* rdram, recomp_context* ctx) {
 // ---- Button prompts ----
 // Controls card: while walking the field (gGlobals.gameStateA 1) or in combat (2), a see-through dark card at the left
 // edge lists what the buttons do there (top left in the field; bottom left in combat, clear of the enemies' column).
-// LB (N64 L; keyboard Q) shows and hides it in those two modes and isn't passed to the game there (it only turns the
-// pause menu's pages; in combat it was a second End turn), nor is View (C-left: there it only cycled combat targets,
-// which the stick and RT still do; in the field it quicksaves); src/main/input.cpp, saved as settings.json
+// View (N64 C-left; keyboard J) shows and hides it in those two modes and isn't passed to the game there (it only
+// cycled combat targets, which the stick and RT still do), nor is LB (N64 L: it only turns the pause menu's pages; in
+// combat it was a second End turn; in the field it quicksaves); src/main/input.cpp, saved as settings.json
 // graphics.controls_card. Page prompts: the pause pages' arrows (SliderArrowL / LR / R, told apart by their pixels,
 // at the bottom of the page, and the one painted into the map page's background) get LB and RB at the ends they
 // point to. Both are drawn at the end of the frame (Graphics__EndList) with their own
@@ -4993,7 +4993,7 @@ extern "C" void aidyn_pause_clip(uint8_t* rdram, recomp_context* ctx) {
 // with its own index at +0x30; +0x31 0x8 for a menu, 0x1 otherwise; ops at +0: {u16 value, u8 command}, 2 = go to
 // command `value`, 34 = end). Its words were written for the N64: "the \x7F BUTTON" (the text's escapes become the
 // button icons, now the Xbox ones: the BUTTON after them is dropped), "the Control Stick" (the left stick here), and
-// C-left to pick a target (View quicksaves here: RT does it). The L and R icons (\x88, \x89)
+// C-left to pick a target (View shows the controls card here: RT does it). The L and R icons (\x88, \x89)
 // don't show in the book's text, so LB and RB are written as words. get_borg13 is hooked as it returns
 // the loaded book: its commands and text are copied above the game's 15 MB with those words changed and a
 // ReChronicled topic added before Exit Help (this edition's camera, fast-forward, controls card, menus, saving, combat and
@@ -5047,7 +5047,7 @@ namespace {
             "4x, fast-forward (3x) doesn't speed up the enemies any more." } },
         { "Controls Card", {
             "While you walk and in combat, a card at the left edge of the screen lists what the buttons do there. "
-            "Press LB to hide it or show it again; your choice is remembered.",
+            "Press \\x82 to hide it or show it again; your choice is remembered.",
             "The menus also show button hints, such as \\x7F Equip or Lists. The card and the hints can each be "
             "turned off on the ReChronicled page of the Menu." } },
         { "Menus", {
@@ -5056,7 +5056,7 @@ namespace {
             "The Menu page's Display and ReChronicled entries hold this edition's options: widescreen, the new "
             "textures, the draw distance, the turn order and more. Each change takes effect at once." } },
         { "Saving", {
-            "Press \\x82 while walking about to quicksave. The game also saves by itself when you arrive in another "
+            "Press LB while walking about to quicksave. The game also saves by itself when you arrive in another "
             "area and after every ten minutes of walking about, keeping the last two of these autosaves.",
             "Quick Load on the Menu page loads the newest quicksave or autosave; Continue on the title screen loads "
             "your newest save of any kind. They are kept apart from the Controller Pak, which still holds the saves "
@@ -7105,7 +7105,7 @@ extern "C" void aidyn_camera_apart(uint8_t* rdram, gpr pos) {
 // Saves of their own beside the Controller Pak (spitzdano, 2026-10-21), which keeps the game's manual saves: files next to
 // the pak, named after it (aidyn-patch.mpk: aidyn-patch-quicksave.sav, -autosave-1.sav, -autosave-2.sav), each the
 // 7 KB SaveDatStruct the game writes to the pak, byte for byte.
-//  - View in the field quicksaves (src/main/input.cpp). Autosaves are made on arriving in another area (through a door
+//  - LB in the field quicksaves (src/main/input.cpp). Autosaves are made on arriving in another area (through a door
 //    or any other map load; not walking from cell to cell outdoors) and after every 10 minutes of walking about, into
 //    the older of the two files. Only while really walking about: gameStateA 1 (Trek), gameStateB 3, no screen fade,
 //    no state change waiting (some_toggle), the walk set up (gTrekUninitted clear), a player. A door is only a screen
