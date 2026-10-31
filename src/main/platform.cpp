@@ -230,8 +230,19 @@ void aidyn::platform::restart(const std::vector<std::string>& args, const fs::pa
         argv.push_back(a.data());
     }
     argv.push_back(nullptr);
+    // The same process goes on (exec), and the log (the launcher's) with it: a line marks where the new program
+    // starts, and its start-up times count from here (startup_mark), not from the first start.
+    const fs::path target = program.empty() ? exe_path() : program;
+    timespec boot{};
+    clock_gettime(CLOCK_BOOTTIME, &boot);
+    setenv("AIDYN_RESTARTED_AT_MS", std::to_string(boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6).c_str(), 1);
+    const std::time_t now = std::time(nullptr);
+    char when[32];
+    std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+    std::fprintf(stdout, "== %s restart: %s\n", when, target.string().c_str());
+    std::fflush(stdout);
     // The executable's own path, not /proc/self/exe: exec takes the process's name from the path ("exe" otherwise).
-    execv((program.empty() ? exe_path() : program).c_str(), argv.data());
+    execv(target.c_str(), argv.data());
     std::fprintf(stderr, "Could not restart: %s\n", std::strerror(errno));
 }
 
@@ -326,7 +337,12 @@ void aidyn::platform::startup_mark(const char* what) {
                 timespec boot{};
                 clock_gettime(CLOCK_BOOTTIME, &boot);
                 const double hz = static_cast<double>(sysconf(_SC_CLK_TCK));
-                ms = static_cast<long long>(boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6 - start * 1000.0 / hz);
+                double started = start * 1000.0 / hz;
+                // After restart() the process is the same (exec): it started when the restart did.
+                if (const char* r = std::getenv("AIDYN_RESTARTED_AT_MS"); r != nullptr && *r != '\0') {
+                    started = std::max(started, std::atof(r));
+                }
+                ms = static_cast<long long>(boot.tv_sec * 1000.0 + boot.tv_nsec / 1e6 - started);
             }
         }
     }
