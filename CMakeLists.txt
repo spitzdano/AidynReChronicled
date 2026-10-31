@@ -88,6 +88,9 @@ add_executable(AidynReChronicled
     src/main/watch.cpp
     src/main/platform.cpp
     src/main/packs.cpp
+    src/main/updater.cpp
+    lib/monocypher/monocypher.c
+    lib/monocypher/monocypher-ed25519.c
     src/game/pak.cpp
     src/game/page_words.cpp
     src/game/music_log.cpp
@@ -119,6 +122,7 @@ target_include_directories(AidynReChronicled PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/rt64/src/render
     ${CMAKE_BINARY_DIR}/rt64/src
     ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/nativefiledialog-extended/src/include
+    ${CMAKE_SOURCE_DIR}/lib/monocypher
 )
 
 find_package(SDL2 REQUIRED)

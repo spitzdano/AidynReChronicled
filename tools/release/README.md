@@ -101,6 +101,14 @@ The **data folder** holds the ROMs, saves, settings, logs and problem reports:
 - Linux: `~/.local/share/AidynReChronicled`
 - Windows: `%APPDATA%\AidynReChronicled` (type that into File Explorer's address bar)
 
+## Updates
+
+You only download the game once. At each start it looks on GitHub for a newer version, and a line at the top of the
+title screen tells you when one is out. **Updates** on the main menu shows what's new; **Update** downloads only the
+files that changed, and **Restart now** puts them in (or the next start does). **Undo the last update** goes back.
+Saves, settings and ROMs aren't touched. **Check at start** turns the looking off; **Test builds too** also offers
+test builds. (Under Wine or Proton it can't download, and opens the release page instead.)
+
 ## Found a problem?
 
 Please report it: a crash, a freeze, a glitch, a wrong picture, anything that looks off.

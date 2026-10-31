@@ -110,10 +110,20 @@ instrument samples (the `sound/` submodule).
 The data folder (settings, saves, logs, problem reports, the stored ROMs) is `~/.local/share/AidynReChronicled` on Linux
 and `%APPDATA%\AidynReChronicled` on Windows.
 
-A release is made with `tools/release/make_release.sh <version> --windows --publish`: it builds the portable Linux
-executable (`tools/ally/build_portable.sh`) and the Windows one (`tools/windows/build_windows.sh`, cross-compiled
-here), packages each with its launcher or Add to Steam script, the icon, the Steam art and the texture packs, tags the
-pushed `main` and creates the GitHub release with both.
+**Updates come through the game.** At each start the title screen asks GitHub (in the background, through the
+system's `curl`) whether a newer release is out; if so, a line at the top says so, and **Updates** on the title menu
+shows what's new and updates: only the files that changed are downloaded, checked, and put in at the next start (or
+Restart now), the old ones kept so **Undo the last update** can put them back. Saves, settings and ROMs aren't touched.
+**Check at start** turns the checking off (Updates then looks only when opened); **Test builds too** also offers test
+builds (pre-releases). Works on Linux (including Steam Deck / Bazzite Game Mode) and Windows 10 / 11; under Wine or
+Proton, which have no `curl.exe`, it shows the release page instead.
+
+A release is made with `tools/release/make_release.sh <version> --windows --publish` (`--test` for a test build, a
+pre-release): it builds the portable Linux executable (`tools/ally/build_portable.sh`) and the Windows one
+(`tools/windows/build_windows.sh`, cross-compiled here), packages each with its launcher or Add to Steam script, the
+icon, the Steam art and the texture packs, makes the in-game updater's signed manifest (`tools/release/update_manifest.py`,
+"In-game updates" below; the signing key in `~/Vault` must be open), tags the pushed `main` and creates the GitHub
+release with all of it.
 
 ## Found a problem?
 
@@ -352,6 +362,10 @@ these defaults on the first run:
         "textures": true,
         "vsync": true,
         "texture_packs": ["hd-ui", "hd-world", "rechronicled-text", "rechronicled-art", "rechronicled"]
+    },
+    "updates": {
+        "check": true,
+        "test_builds": false
     }
 }
 ```
@@ -392,6 +406,8 @@ these defaults on the first run:
 | `textures` | `false`: every custom texture off, as the N64 drew it: the texture packs (HD menus, letters, buttons, portraits, world, title art), the HD save pictures and the redrawn page words; the letters go back to the game's own widths. The packs stay listed in `texture_packs` |
 | `vsync` | `true`: each frame waits for the display's refresh (no tearing); `false`: shown as soon as it's drawn, for a G-Sync or FreeSync display (on a fixed-rate one it can tear) |
 | `menus_4_3` | with `16:9` or `window`: the pause menu (all pages, also the combat inventory) and shop screens switch to 4:3 while they're up. Their layouts mix 2D draws that RT64 widens with ones it keeps centred, so the equipment page fell apart widened |
+| `updates.check` | `false`: no look for a newer release at start (the title menu's Updates still looks when opened) |
+| `updates.test_builds` | `true`: Updates offers test builds (GitHub pre-releases) too, not only full releases |
 | `texture_packs` | RT64 texture packs in `~/.local/share/AidynReChronicled/texture-packs` (folders or `.rtz`), later ones win. The default `hd-ui` and `hd-world` are built by `tools/hdui` (see its README), `rechronicled-text` (the HD letters and Xbox buttons, drawn from fonts; it decides the letter widths, see "HD text") by `tools/hdui/text_pack.py`, `rechronicled-art` (the redrawn portraits and icons in `art/`) by `tools/hdui/art_pack.py`, `rechronicled` by `tools/branding/make_branding.py`; a missing pack is skipped with a message. A settings file from before `rechronicled-art` or `rechronicled-text` existed gets each added once |
 
 **In the game.** The pause menu's Menu page has two more entries below Theater (in a battle, after Flee), each a page
@@ -593,6 +609,27 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   past three, the Menu page's ten moved up clear of the page arrow. The title's backing box (and its Options page's)
   is drawn as a dark panel with a gold frame and diamonds in place of the game's soft shadow (WidgetBorg8::Render
   hooked for the IntroMenu's two boxes, gGlobals.titleScreen +0x80 / +0x84).
+- **In-game updates** (`src/main/updater.cpp`, the title menu's **Updates**: `src/game/patches.cpp` "Updates"). At start
+  (`updates.check`) a thread runs curl (Linux's own; System32's `curl.exe` on Windows 10 and later, so the game has no
+  network or TLS code of its own) on GitHub's releases list and keeps the newest release newer than this build
+  (versions compare as numbers, then `-patchN` above and `-beta.N` / `-rc.N` below; pre-releases only with
+  `updates.test_builds`). A development build checks nothing. Each release carries `update.json`: every installed file
+  of each platform (Linux's `game/`, the Windows folder; never `ROMs/`) with its size, BLAKE2b-256 and the URL of a
+  release asset holding exactly it (one unchanged since the base release keeps that release's URL), and
+  `update.json.sig`, its Ed25519 signature, base64, made with spitzdano's key (`tools/release/update_manifest.py`,
+  run by `make_release.sh`; `kPublicKey` is its other half; Monocypher, `lib/monocypher`, checks it). Update refuses a
+  manifest that isn't signed, names a URL outside this repository's releases or a path outside the install; hashes the
+  installed files (cached in `.update/hashes.json` by size and time) and downloads only those that differ into
+  `.update/new/`, each checked, then lists them in `.update/ready.json`. Applied first thing at the next start
+  (`apply_pending`, before any file is opened) or by Restart now: each old file moves to `.update/previous/`, the new
+  one into place (a running program can be renamed, not overwritten), and the new program starts in this one's place
+  (Linux: exec, the same process, so Steam and Game Mode see nothing; Windows: a new process); a failure part way puts
+  everything back. Undo moves `.update/previous/` back the same way. The title menu's list and box are hidden under
+  the title panels (Updates, Controls, Achievements) meanwhile. Testing: `AIDYN_UPDATE_URL=<base>` reads
+  `<base>/releases.json` (GitHub's list format) and accepts assets under `<base>` (http and `file:///` too),
+  `AIDYN_UPDATE_KEY=<hex>` a test key's public half (only with the URL), `AIDYN_UPDATE_VERSION` makes a development
+  build act as that release, `AIDYN_UPDATE_RATE=2M` slows the download, and `AIDYN_UPDATE_SELFTEST=1` (or `=undo`)
+  checks, downloads and restarts without a window, printing each step (for a VM that can't draw the game).
 - **Combat HUD.** With `hud_at_edges` the enemies' column (portraits, health bars) is drawn at the picture's left
   edge, the party's at the right and the radar at the bottom right; the message box stays. A portrait flying in to its
   slot goes to the edge its slot is on.

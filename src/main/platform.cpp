@@ -14,7 +14,11 @@
 #include <shlobj.h>
 #else
 #include <cerrno>
+#include <csignal>
 #include <execinfo.h>
+#include <fcntl.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #endif
@@ -84,11 +88,11 @@ std::string aidyn::platform::os_description() {
     return text;
 }
 
-void aidyn::platform::restart(const std::vector<std::string>& args) {
+void aidyn::platform::restart(const std::vector<std::string>& args, const fs::path& program) {
     // Windows has no exec: start the new copy, then end this one.
     std::wstring cmd;
     for (size_t i = 0; i < args.size(); i++) {
-        std::wstring a = i == 0 ? exe_path().wstring() : fs::path(args[i]).wstring();
+        std::wstring a = i == 0 ? (program.empty() ? exe_path() : program).wstring() : fs::path(args[i]).wstring();
         cmd += (i ? L" \"" : L"\"") + a + L"\"";
     }
     STARTUPINFOW si{};
@@ -101,6 +105,54 @@ void aidyn::platform::restart(const std::vector<std::string>& args) {
         std::_Exit(0);
     }
     std::fprintf(stderr, "Could not restart: error %lu\n", GetLastError());
+}
+
+fs::path aidyn::platform::find_curl() {
+    wchar_t dir[MAX_PATH];
+    const UINT n = GetSystemDirectoryW(dir, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    const fs::path curl = fs::path(dir) / L"curl.exe";
+    std::error_code ec;
+    return fs::is_regular_file(curl, ec) ? curl : fs::path();
+}
+
+int aidyn::platform::run_process(const std::vector<std::string>& args, const fs::path& err_file,
+                                 const std::function<bool()>& keep_going) {
+    std::wstring cmd;
+    for (size_t i = 0; i < args.size(); i++) {
+        cmd += (i ? L" \"" : L"\"") + fs::path(args[i]).wstring() + L"\"";
+    }
+    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
+    HANDLE err = CreateFileW(err_file.wstring().c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS,
+                             FILE_ATTRIBUTE_NORMAL, nullptr);
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = nullptr;
+    si.hStdOutput = err;
+    si.hStdError = err;
+    PROCESS_INFORMATION pi{};
+    const BOOL ok = CreateProcessW(fs::path(args[0]).wstring().c_str(), cmd.data(), nullptr, nullptr, TRUE,
+                                   CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    if (err != INVALID_HANDLE_VALUE) CloseHandle(err);
+    if (!ok) return -1;
+    CloseHandle(pi.hThread);
+    int result = -2;
+    for (;;) {
+        if (WaitForSingleObject(pi.hProcess, 250) == WAIT_OBJECT_0) {
+            DWORD code = 0;
+            GetExitCodeProcess(pi.hProcess, &code);
+            result = (int)code;
+            break;
+        }
+        if (!keep_going()) {
+            TerminateProcess(pi.hProcess, 1);
+            WaitForSingleObject(pi.hProcess, 2000);
+            break;
+        }
+    }
+    CloseHandle(pi.hProcess);
+    return result;
 }
 
 int aidyn::platform::capture_stack(void** frames, int max_frames) {
@@ -171,7 +223,7 @@ std::string aidyn::platform::os_description() {
     return name + ", kernel " + uts.release + " (" + uts.machine + ")";
 }
 
-void aidyn::platform::restart(const std::vector<std::string>& args) {
+void aidyn::platform::restart(const std::vector<std::string>& args, const fs::path& program) {
     std::vector<std::string> copy = args;
     std::vector<char*> argv;
     for (std::string& a : copy) {
@@ -179,8 +231,56 @@ void aidyn::platform::restart(const std::vector<std::string>& args) {
     }
     argv.push_back(nullptr);
     // The executable's own path, not /proc/self/exe: exec takes the process's name from the path ("exe" otherwise).
-    execv(exe_path().c_str(), argv.data());
+    execv((program.empty() ? exe_path() : program).c_str(), argv.data());
     std::fprintf(stderr, "Could not restart: %s\n", std::strerror(errno));
+}
+
+fs::path aidyn::platform::find_curl() {
+    const char* path = std::getenv("PATH");
+    std::string dirs = path != nullptr && *path != '\0' ? path : "/usr/local/bin:/usr/bin:/bin";
+    size_t start = 0;
+    while (start <= dirs.size()) {
+        const size_t end = std::min(dirs.find(':', start), dirs.size());
+        const fs::path curl = fs::path(dirs.substr(start, end - start)) / "curl";
+        if (end > start && access(curl.c_str(), X_OK) == 0) return curl;
+        start = end + 1;
+    }
+    return {};
+}
+
+int aidyn::platform::run_process(const std::vector<std::string>& args, const fs::path& err_file,
+                                 const std::function<bool()>& keep_going) {
+    std::vector<std::string> env;
+    for (char** e = environ; *e != nullptr; e++) {
+        if (std::strncmp(*e, "LD_PRELOAD=", 11) != 0 && std::strncmp(*e, "LD_LIBRARY_PATH=", 16) != 0) env.emplace_back(*e);
+    }
+    std::vector<char*> envp, argv;
+    for (std::string& e : env) envp.push_back(e.data());
+    envp.push_back(nullptr);
+    std::vector<std::string> copy = args;
+    for (std::string& a : copy) argv.push_back(a.data());
+    argv.push_back(nullptr);
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, err_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    posix_spawn_file_actions_adddup2(&fa, 1, 2);
+    pid_t pid = 0;
+    const int rc = posix_spawn(&pid, argv[0], &fa, nullptr, argv.data(), envp.data());
+    posix_spawn_file_actions_destroy(&fa);
+    if (rc != 0) return -1;
+    for (;;) {
+        int status = 0;
+        const pid_t done = waitpid(pid, &status, WNOHANG);
+        if (done == pid) return WIFEXITED(status) ? WEXITSTATUS(status) : -2;
+        if (done < 0 && errno != EINTR) return -1;
+        if (!keep_going()) {
+            kill(pid, SIGTERM);
+            waitpid(pid, &status, 0);
+            return -2;
+        }
+        usleep(250 * 1000);
+    }
 }
 
 int aidyn::platform::capture_stack(void** frames, int max_frames) {

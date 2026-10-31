@@ -5,11 +5,10 @@
 #   tools/release/make_release.sh <version> --windows   ... and AidynReChronicled-<version>-windows-x86_64.zip
 #   tools/release/make_release.sh <version> [--windows] --publish   ... then tag v<version>, push the tag, create the
 #                                                       GitHub release with them
-#   tools/release/make_release.sh <version> --patch [--windows] [--publish]
-#                                                       a test build for people who have the last release: only the new
-#                                                       executable and the title branding pack, as AidynReChronicled-
-#                                                       <version>-patch-linux-x86_64.tar.gz (and -patch-windows-x86_64.zip),
-#                                                       about 15 MB. --publish makes a GitHub pre-release of it.
+#   tools/release/make_release.sh <version> --test [--windows] --publish
+#                                                       the same as a GitHub pre-release: a test build, which the game's
+#                                                       Updates offers with Test builds on (--patch's slim builds are
+#                                                       retired: the updater fetches only what changed)
 #   --no-sound   leave out the restored instrument samples (bundled by default: below)
 #   --no-hd      leave out the HD upscale packs (bundled by default: below)
 #
@@ -28,18 +27,24 @@
 # Steam art, README.md and LICENSE, in one folder to unpack and play.
 # tools/release/notes/<version>.md goes into the GitHub release's notes (what's new), and every download carries
 # RELEASE-NOTES.md: all the notes files, newest first. --publish needs this version's notes file.
+# In-game updates (src/main/updater.cpp): --publish also makes update.json (tools/release/update_manifest.py: every
+# installed file of each platform with its BLAKE2b and the URL of an asset holding it; files unchanged since the base
+# release keep that release's URL, the others are uploaded with this one as <hash16>-<name>), signed with the release
+# key (AIDYN_SIGNING_KEY, default ~/Vault/aidyn-release/signing-key.pem: the vault must be open). A full release's base
+# is the last full release with a manifest, a test build's the newest release with one.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/../.."
 die() { echo "make_release.sh: $*" >&2; exit 1; }
 
 version=${1:-}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$ ]] || die "usage: make_release.sh <version, e.g. 0.1.0> [--publish]"
-publish=0 windows=0 sound=1 hd=1 patch=0
+publish=0 windows=0 sound=1 hd=1 test=0
 for a in "${@:2}"; do
     case $a in
         --publish) publish=1 ;;
         --windows) windows=1 ;;
-        --patch) patch=1 ;;
+        --test) test=1 ;;
+        --patch) die "--patch is retired: --test publishes a test build the in-game updater offers" ;;
         --no-sound) sound=0 ;;
         --no-hd) hd=0 ;;
         *) die "unknown option $a" ;;
@@ -57,6 +62,11 @@ if (( publish )); then
     [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || die "HEAD isn't origin/main: push first"
     git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag exists already"
     [[ -f tools/release/notes/$version.md ]] || die "no release notes: write tools/release/notes/$version.md first"
+    signing_key=${AIDYN_SIGNING_KEY:-$HOME/Vault/aidyn-release/signing-key.pem}
+    [[ -f $signing_key ]] || die "no signing key at $signing_key: open the vault (vault) or set AIDYN_SIGNING_KEY"
+    built_in=$(sed -n 's/.*kPublicKey = "\([0-9a-f]*\)".*/\1/p' src/main/updater.cpp)
+    [[ $(openssl pkey -in "$signing_key" -pubout -outform DER | tail -c 32 | od -An -tx1 | tr -d ' \n') == "$built_in" ]] \
+        || die "the signing key isn't the one src/main/updater.cpp checks (kPublicKey)"
 fi
 
 echo "== portable build"
@@ -65,111 +75,6 @@ AIDYN_VERSION=$version tools/ally/build_portable.sh  # the title screen shows it
 # game-crash.txt (AidynReChronicled(+0x2be600)) are its functions: addr2line -f -C -e $out/symbols/AidynReChronicled-<version> 0x2be600
 mkdir -p "$out/symbols"
 cp build/portable/AidynReChronicled "$out/symbols/AidynReChronicled-$version"
-if (( patch )); then
-    # A test build for people who have the last release: the new executables, and the title branding pack (the pictures
-    # the executable draws are in it too, at full resolution). Everything else of the release is unchanged.
-    echo "== title branding pack"
-    python3 tools/branding/make_branding.py
-    pname=AidynReChronicled-$version-patch-linux-x86_64
-    rm -rf "$out/$pname" "$out/$pname.tar.gz" "$out/$pname.tar.gz.sha256"
-    mkdir -p "$out/$pname/texture-packs"
-    cp build/portable/dist/AidynReChronicled "$out/$pname/"
-    python3 -I tools/release/rtz.py "$packs/rechronicled" "$out/$pname/texture-packs/rechronicled.rtz"
-    cat >"$out/$pname/apply.sh" <<'SH'
-#!/usr/bin/env bash
-# apply.sh: puts this test build over an installed Aidyn ReChronicled (~/Games/AidynReChronicled by default).
-#   bash apply.sh            keeps the old files as AidynReChronicled.previous and rechronicled.rtz.previous
-#   bash apply.sh --undo     puts them back
-set -euo pipefail
-here=$(dirname "$(readlink -f "$0")")
-game=${AIDYN_GAME:-$HOME/Games/AidynReChronicled}
-[[ -x $game/AidynReChronicled && -d $game/texture-packs ]] || { echo "apply.sh: no installed game in $game (install the last release first, or set AIDYN_GAME=<its folder>)" >&2; exit 1; }
-if [[ ${1:-} == --undo ]]; then
-    [[ -f $game/AidynReChronicled.previous ]] || { echo "apply.sh: nothing to undo" >&2; exit 1; }
-    mv -f "$game/AidynReChronicled.previous" "$game/AidynReChronicled"
-    [[ -f $game/texture-packs/rechronicled.rtz.previous ]] && mv -f "$game/texture-packs/rechronicled.rtz.previous" "$game/texture-packs/rechronicled.rtz"
-    echo "Back to the release you had."
-    exit 0
-fi
-cp -f "$game/AidynReChronicled" "$game/AidynReChronicled.previous"
-[[ -f $game/texture-packs/rechronicled.rtz ]] && cp -f "$game/texture-packs/rechronicled.rtz" "$game/texture-packs/rechronicled.rtz.previous"
-cp -f "$here/AidynReChronicled" "$game/AidynReChronicled"
-cp -f "$here/texture-packs/rechronicled.rtz" "$game/texture-packs/rechronicled.rtz"
-chmod +x "$game/AidynReChronicled"
-echo "Done: the title screen now shows v$VERSION_TEXT. Your saves and settings are untouched."
-SH
-    sed -i "s/\$VERSION_TEXT/$version/" "$out/$pname/apply.sh"
-    chmod +x "$out/$pname/apply.sh"
-    cat >"$out/$pname/README.txt" <<TXT
-Aidyn ReChronicled $version: a test build (a patch over the last release)
-
-Needs the last release installed first: https://github.com/spitzdano/AidynReChronicled/releases/latest
-This replaces only the program and one small texture pack. Your saves, settings and ROMs aren't touched.
-
-Linux:   bash apply.sh            (to go back: bash apply.sh --undo)
-         If the game isn't in ~/Games/AidynReChronicled: AIDYN_GAME=<its folder> bash apply.sh
-
-The title screen shows v$version when it worked. What to look at is in the release's notes; problems:
-https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml
-TXT
-    tar -C "$out" -czf "$out/$pname.tar.gz" "$pname"
-    (cd "$out" && sha256sum "$pname.tar.gz" >"$pname.tar.gz.sha256")
-    echo "make_release.sh: $out/$pname.tar.gz ($(du -h "$out/$pname.tar.gz" | cut -f1))"
-    assets=("$out/$pname.tar.gz" "$out/$pname.tar.gz.sha256")
-    if (( windows )); then
-        wpname=AidynReChronicled-$version-patch-windows-x86_64
-        echo "== Windows build"
-        AIDYN_VERSION=$version tools/windows/build_windows.sh
-        mkdir -p "$out/symbols/windows-$version"
-        cp build/windows/AidynReChronicled.exe build/windows/AidynReChronicled.pdb "$out/symbols/windows-$version/"
-        rm -rf "$out/$wpname" "$out/$wpname.zip" "$out/$wpname.zip.sha256"
-        mkdir -p "$out/$wpname/texture-packs"
-        cp build/windows/AidynReChronicled.exe "$out/$wpname/"
-        cp "$out/$pname/texture-packs/rechronicled.rtz" "$out/$wpname/texture-packs/"
-        sed 's/$/\r/' >"$out/$wpname/README.txt" <<TXT
-Aidyn ReChronicled $version: a test build (a patch over the last release)
-
-Needs the last release installed first: https://github.com/spitzdano/AidynReChronicled/releases/latest
-This replaces only the program and one small texture pack. Your saves, settings and ROMs (in %APPDATA%) aren't touched.
-
-1. Close the game. Open the folder you unpacked the release into (the one with AidynReChronicled.exe).
-2. Rename AidynReChronicled.exe there to AidynReChronicled-old.exe (to keep it), and
-   texture-packs\rechronicled.rtz to rechronicled-old.rtz.
-3. Copy AidynReChronicled.exe and the texture-packs folder from this download into it.
-4. Run AidynReChronicled.exe. The title screen shows v$version when it worked.
-   To go back, delete the new files and rename the old ones back.
-
-Problems: https://github.com/spitzdano/AidynReChronicled/issues/new?template=problem-report.yml
-TXT
-        (cd "$out" && python3 -c 'import os, sys, zipfile
-with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-    for root, dirs, files in os.walk(sys.argv[2]):
-        dirs.sort()
-        for f in sorted(files):
-            z.write(os.path.join(root, f))' "$wpname.zip" "$wpname" && sha256sum "$wpname.zip" >"$wpname.zip.sha256")
-        echo "make_release.sh: $out/$wpname.zip ($(du -h "$out/$wpname.zip" | cut -f1))"
-        assets+=("$out/$wpname.zip" "$out/$wpname.zip.sha256")
-    fi
-    (( publish )) || exit 0
-    echo "== GitHub pre-release $tag"
-    git tag -a "$tag" -m "Aidyn ReChronicled $version (test build)"
-    git push -q origin "$tag"
-    notes=$(mktemp)
-    trap 'rm -f "$notes"' EXIT
-    {
-        echo "**A test build of Aidyn ReChronicled $version, as a patch over the last release.** Not the next release: that comes"
-        echo "once this has been tried. Install the last release first, then put this over it (its README.txt says how);"
-        echo "your saves and settings aren't touched."
-        echo
-        [[ -f tools/release/notes/$version.md ]] && { cat "tools/release/notes/$version.md"; echo; }
-        echo "Built from $(git rev-parse --short HEAD). SHA-256: \`$(cut -d' ' -f1 "$out/$pname.tar.gz.sha256")\` (Linux)"
-        (( windows )) && echo "\`$(cut -d' ' -f1 "$out/$wpname.zip.sha256")\` (Windows)"
-    } >"$notes"
-    gh release create "$tag" "${assets[@]}" --verify-tag --prerelease \
-        --title "Aidyn ReChronicled $version (test build)" --notes-file "$notes"
-    echo "make_release.sh: published $tag as a pre-release"
-    exit 0
-fi
 
 # Every pack is made afresh from the art/ submodule (and the fonts), so a release carries what art/ holds now.
 echo "== title branding pack"
@@ -276,12 +181,37 @@ with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED, compresslevel=9) as
 fi
 
 (( publish )) || exit 0
+echo "== update manifest"
+# The base: the last full release with a manifest (a test build: the newest release with one).
+base_dir=$(mktemp -d)
+trap 'rm -rf "$base_dir"' EXIT
+base=""
+while read -r t pre; do
+    (( test )) || [[ $pre == false ]] || continue
+    if gh release download "$t" -p update.json -D "$base_dir" 2>/dev/null; then base=$t; break; fi
+done < <(gh release list -L 40 --json tagName,isPrerelease -q '.[] | "\(.tagName) \(.isPrerelease)"')
+update_assets=$out/update-assets-$version
+rm -rf "$update_assets" "$out/update.json" "$out/update.json.sig"
+platforms=(--platform "linux-x86_64=$out/$name/game")
+(( windows )) && platforms+=(--platform "windows-x86_64=$out/$wname")
+python3 -I tools/release/update_manifest.py build --version "$version" --tag "$tag" $( (( test )) && echo --prerelease) \
+    "${platforms[@]}" ${base:+--base "$base_dir/update.json"} \
+    --url-base https://github.com/spitzdano/AidynReChronicled/releases/download --assets "$update_assets" --out "$out/update.json"
+echo "make_release.sh: base ${base:-none (every file uploaded)}"
+python3 -I tools/release/update_manifest.py sign "$out/update.json" --key "$signing_key"
+assets+=("$out/update.json" "$out/update.json.sig")
+for f in "$update_assets"/*; do [[ -e $f ]] && assets+=("$f"); done
 echo "== GitHub release $tag"
-git tag -a "$tag" -m "Aidyn ReChronicled $version"
+git tag -a "$tag" -m "Aidyn ReChronicled $version$( (( test )) && echo " (test build)")"
 git push -q origin "$tag"
 notes=$(mktemp)
-trap 'rm -f "$notes"' EXIT
+trap 'rm -f "$notes"; rm -rf "$base_dir"' EXIT
 {
+    if (( test )); then
+        echo "**A test build of Aidyn ReChronicled $version.** Not the next release: that comes once this has been tried."
+        echo "In the game: Updates on the title menu, Test builds on. Or download it below."
+        echo
+    fi
     if (( windows )); then
         echo "Aidyn ReChronicled $version for Linux and Windows (x86_64)."
     else
@@ -312,6 +242,6 @@ trap 'rm -f "$notes"' EXIT
         echo "\`$(cut -d' ' -f1 "$out/$wname.zip.sha256")\` (Windows)"
     fi
 } >"$notes"
-gh release create "$tag" "${assets[@]}" --verify-tag \
-    --title "Aidyn ReChronicled $version" --notes-file "$notes"
+gh release create "$tag" "${assets[@]}" --verify-tag $( (( test )) && echo --prerelease) \
+    --title "Aidyn ReChronicled $version$( (( test )) && echo " (test build)")" --notes-file "$notes"
 echo "make_release.sh: published $tag"
