@@ -180,6 +180,31 @@ def version_label(text, size=64):
     return draw
 
 
+# The edition lines under THE FIRST MAGE on the redesigned title card (AIDYN PATCH, AIDYN PLUS, ACTION EDITION: Codex's
+# overlays on the logo's canvas, art/titles/source/edition-*.png, in the gold serif). Each is cut from the card's own
+# geometry (make_logo.py: the logo trimmed, scaled into the 188x174 card and centred), a 70x12 texel window with its
+# top left at card texel (EDITION_X, EDITION_Y), so all three are drawn at the same place (src/game/patches.cpp, "Title
+# screen": edition_line, the same constants).
+EDITION_X, EDITION_Y, EDITION_W, EDITION_H = 61, 143, 70, 12
+
+
+def edition_line(file):
+    def draw(w, h):
+        import make_logo
+        logo = make_logo.load(make_logo.SOURCE)
+        ys, xs = np.nonzero(logo[..., 3] > 0.02)
+        xmin, ymin = xs.min(), ys.min()
+        lw0, lh0 = xs.max() - xmin + 1, ys.max() - ymin + 1
+        CW, CH = make_logo.CARD[0] * SS, make_logo.CARD[1] * SS
+        scale = min((CW - 2 * SS) / lw0, (CH - 2 * SS) / lh0)
+        x0, y0 = (CW - round(lw0 * scale)) // 2, (CH - round(lh0 * scale)) // 2
+        over_ = make_logo.load(PROJECT / "art/titles/source" / file)
+        left = int(round(xmin + (EDITION_X * SS - x0) / scale)); top = int(round(ymin + (EDITION_Y * SS - y0) / scale))
+        wide, high = int(round(w * SS / scale)), int(round(h * SS / scale))
+        return make_logo.resized(over_[top:top + high, left:left + wide], w * SS, h * SS)
+    return draw
+
+
 def version_mark(w, h):
     """The running version's marker in that list: a copper chevron with a dark edge, like the fast-forward marker's."""
     W, H = w * SS, h * SS
@@ -476,6 +501,9 @@ def art_off(w, h):
 
 
 IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
+          ("edition_patch", EDITION_W, EDITION_H, edition_line("edition-aidyn-patch.png")),
+          ("edition_plus", EDITION_W, EDITION_H, edition_line("edition-aidyn-plus.png")),
+          ("edition_action", EDITION_W, EDITION_H, edition_line("edition-action-edition.png")),
           ("ver_original", 50, 12, version_label("Original")), ("ver_patch", 50, 12, version_label("Aidyn Patch")),
           ("fast_forward", 20, 12, fast_forward), ("ctl_panel", 4, 4, panel),
           ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")),

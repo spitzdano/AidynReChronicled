@@ -2003,6 +2003,19 @@ namespace {
         y_was = y;
     }
 
+    // The redesigned title card names the running mod under THE FIRST MAGE (the original game gets no line): AIDYN PATCH,
+    // AIDYN PLUS or ACTION EDITION, in the gold serif (art/titles/source/edition-*.png, tools/branding/make_branding.py:
+    // 70x12 texel pictures whose top left is at card texel (61, 143), the same for all three). ox, oy the card's texel
+    // (0, 0) on screen, sx, sy pixels a texel; card_rgba the card's colour (its alpha fades the line with it).
+    gpr edition_line(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t card_rgba) {
+        static const char* const kEditionImages[kVersionCount] = { nullptr, "edition_patch", "edition_plus", "edition_action" };
+        const char* name = kEditionImages[running_version()];
+        const int image = name != nullptr ? find_image(name) : -1;
+        if (image < 0) return g;
+        put(rdram, g, 0xFA000000, 0xFFFFFF00u | (card_rgba & 0xFF));  // gDPSetPrimColor: white, the card's fade
+        return draw_rgba16(rdram, g, (size_t)image, ox + 61.0f * sx, oy + 143.0f * sy, sx, sy);
+    }
+
     // The two lines from (10, 194), 12 texels apart; hs, vs pixels a texel; card_rgba the card's colour (its alpha
     // fades them in with it).
     gpr version_list(uint8_t* rdram, gpr g, float hs, float vs, uint32_t card_rgba) {
@@ -2122,6 +2135,8 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     // (the redesigned card has its own).
     if (!redesigned_card()) {
         g = draw_rgba16(rdram, g, 0, ox + (97 - 48) * sx, oy + 139 * sy, sx, sy);
+    } else {
+        g = edition_line(rdram, g, ox, oy, sx, sy, rgba);
     }
     // "Enhanced by SPITZDANO": bottom right of the whole picture, 10 texels in from the edge and the bottom. RT64
     // extended GBI: with the right edge as origin RT64 adds the frame width (320) to x, so the rectangle, drawn where it
