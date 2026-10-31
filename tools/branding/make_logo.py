@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""make_logo.py: the title card (BORG8_TitleCard, the AIDYN CHRONICLES logo) and its shadow, from spitzdano's redesign.
+"""make_logo.py: the title card (BORG8_TitleCard, the AIDYN RECHRONICLED logo) and its shadow, from spitzdano's redesign.
 
-art/titles/source/aidyn-chronicles-logo-redesign.png (the logo redrawn whole: the parchment, AIDYN CHRONICLES, THE
-FIRST MAGE and RECHRONICLED, on nothing) is fitted into the card's 188x174 texels, centred, and written at 8x as
+art/titles/source/aidyn-rechronicled-logo.png (the logo redrawn whole: the parchment, AIDYN, RECHRONICLED and THE
+FIRST MAGE, on nothing; the name was AIDYN CHRONICLES until 1.0.0) is fitted into the card's 188x174 texels, centred, and written at 8x as
 art/titles/TitleCard.png. The card's shadow (BORG8_TitleCardShadow, 213x180: the card's outline 19 texels right and 3
 down, softened, 60% dark) is made again from the new outline: art/titles/TitleCardShadow.png. tools/hdui/art_pack.py
 cuts both into the strips the game draws them in. With the redesign on screen the game no longer draws its own
@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT / "tools/hdui"))
 from pngio import read_png, write_png  # noqa: E402
 
 SS = 8
-SOURCE = PROJECT / "art/titles/source/aidyn-chronicles-logo-redesign.png"
+SOURCE = PROJECT / "art/titles/source/aidyn-rechronicled-logo.png"
 CARD, SHADOW = (188, 174), (213, 180)
 SHADOW_OFFSET = (19, 3)     # texels: where the card's outline sits in the shadow picture
 SHADOW_ALPHA = 0.6          # the original's darkest (153 of 255)

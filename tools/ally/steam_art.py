@@ -4,7 +4,7 @@
     tools/ally/steam_art.py [--icon PATH]
 
 Made from art/steam (the art repository: the box painting without its title, redrawn for each of Steam's shapes) and
-spitzdano's title card (art/titles/source/aidyn-chronicles-logo-redesign.png, RECHRONICLED included):
+spitzdano's title card (art/titles/source/aidyn-rechronicled-logo.png):
   capsule.png   600x900 (library grid): the portrait painting, the title card at the top left as on the box
   wide.png      920x430 (recent games, wide capsule): the landscape painting, the title card left of the heroes
   hero.png      3840x1240: the hero painting as it is (Steam lays logo.png over it)
@@ -32,7 +32,7 @@ def magick(*args):
     subprocess.run(["magick", *map(str, args)], check=True)
 
 
-LOGO = PROJECT / "art/titles/source/aidyn-chronicles-logo-redesign.png"
+LOGO = PROJECT / "art/titles/source/aidyn-rechronicled-logo.png"
 SRC = PROJECT / "art/steam"
 
 
