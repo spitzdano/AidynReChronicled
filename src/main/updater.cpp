@@ -61,7 +61,7 @@ namespace {
     constexpr const char* kReleasesApi = "https://api.github.com/repos/spitzdano/AidynReChronicled/releases?per_page=30";
     constexpr const char* kAssetPrefix = "https://github.com/spitzdano/AidynReChronicled/releases/download/";
     // The release signing key's public half (tools/release/update_manifest.py keygen; the private half is spitzdano's).
-    constexpr const char* kPublicKey = "0000000000000000000000000000000000000000000000000000000000000000";
+    constexpr const char* kPublicKey = "c6d11093e377b7f69b2433d7a3ac43617d7517633fd0dc6fe68b252b264430ae";
 #ifdef _WIN32
     constexpr const char* kPlatform = "windows-x86_64";
 #else
