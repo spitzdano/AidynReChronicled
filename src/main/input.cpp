@@ -1,6 +1,6 @@
 #include <atomic>
 #include <chrono>
-// Minimal input: the first SDL game controller, with the keyboard as a fallback so the game can
+// Input: every SDL game controller (the one used last is read), with the keyboard as a fallback so the game can
 // be tested without a pad. Everything feeds N64 port 1.
 //
 // Pad:       A/B/X/Y -> A/B/Z/(unused)   right stick -> C buttons   triggers -> L/R, Z
@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <mutex>
+#include <vector>
 
 #include "SDL2/SDL.h"
 
@@ -30,6 +31,9 @@ namespace {
         CU = 0x0008, CD = 0x0004, CL = 0x0002, CR = 0x0001,
     };
 
+    // Every controller is opened; the game reads the one used last (`pad`). The Ally X under Steam Input lists another
+    // controller before the one in your hands, and the first one alone was read (spitzdano, 2026-10-30).
+    std::vector<SDL_GameController*> pads;
     SDL_GameController* pad = nullptr;
     std::mutex pad_mutex;
     constexpr float stick_deadzone = 0.15f;
@@ -59,21 +63,49 @@ namespace {
         return s < 0 ? aidyn::settings::graphics().controls_card : s != 0;
     }
 
-    void open_first_pad() {
+    void open_pads() {
         // A test run (AIDYN_PAD_FILE, tools/dev/pad.sh) opens no controller: the game reads controllers in the
         // background too, and presses meant for something else on the desktop would steer the test.
         // AIDYN_TEST_PAD=1: but a virtual pad made for the test (tools/dev/vpad.py) may be read.
         static const bool test_run = std::getenv("AIDYN_PAD_FILE") != nullptr && std::getenv("AIDYN_TEST_PAD") == nullptr;
-        if (pad != nullptr || test_run) {
+        if (test_run) {
             return;
         }
         for (int i = 0; i < SDL_NumJoysticks(); i++) {
-            if (SDL_IsGameController(i)) {
-                pad = SDL_GameControllerOpen(i);
-                if (pad != nullptr) {
-                    fprintf(stdout, "Controller: %s\n", SDL_GameControllerName(pad));
-                    return;
-                }
+            if (!SDL_IsGameController(i)) continue;
+            const SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+            const bool open = std::any_of(pads.begin(), pads.end(), [&](SDL_GameController* p) {
+                return SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(p)) == id;
+            });
+            if (open) continue;
+            if (SDL_GameController* p = SDL_GameControllerOpen(i)) {
+                pads.push_back(p);
+                fprintf(stdout, "Controller: %s\n", SDL_GameControllerName(p));
+                if (pad == nullptr) pad = p;
+            }
+        }
+    }
+
+    // Something pressed or moved on this controller (not the slight drift of a stick at rest).
+    bool pad_active(SDL_GameController* p) {
+        for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++) {
+            if (SDL_GameControllerGetButton(p, (SDL_GameControllerButton)b)) return true;
+        }
+        for (int a = 0; a < SDL_CONTROLLER_AXIS_MAX; a++) {
+            if (std::abs((int)SDL_GameControllerGetAxis(p, (SDL_GameControllerAxis)a)) > 16000) return true;
+        }
+        return false;
+    }
+
+    // The controller in use: another one that is pressed or moved takes over.
+    void follow_active_pad() {
+        if (pads.size() < 2 || (pad != nullptr && pad_active(pad))) return;
+        for (SDL_GameController* p : pads) {
+            if (p != pad && pad_active(p)) {
+                pad = p;
+                fprintf(stdout, "Controller: now %s\n", SDL_GameControllerName(p));
+                fflush(stdout);
+                return;
             }
         }
     }
@@ -96,14 +128,18 @@ void aidyn::input::handle_event(const SDL_Event& event) {
     std::lock_guard lock{ pad_mutex };
     switch (event.type) {
     case SDL_CONTROLLERDEVICEADDED:
-        open_first_pad();
+        open_pads();
         break;
     case SDL_CONTROLLERDEVICEREMOVED:
-        if (pad != nullptr && event.cdevice.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))) {
-            SDL_GameControllerClose(pad);
-            pad = nullptr;
-            open_first_pad();
+        for (auto it = pads.begin(); it != pads.end(); ++it) {
+            if (event.cdevice.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(*it))) {
+                if (*it == pad) pad = nullptr;
+                SDL_GameControllerClose(*it);
+                pads.erase(it);
+                break;
+            }
         }
+        if (pad == nullptr && !pads.empty()) pad = pads.front();
         break;
     default:
         break;
@@ -116,7 +152,7 @@ void aidyn::input::poll() {
     std::lock_guard lock{ pad_mutex };
     if (!scanned) {
         scanned = true;
-        open_first_pad();
+        open_pads();
     }
 }
 
@@ -134,6 +170,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
 
     {
         std::lock_guard lock{ pad_mutex };
+        follow_active_pad();
         if (pad != nullptr) {
             auto down = [&](SDL_GameControllerButton btn) { return SDL_GameControllerGetButton(pad, btn) != 0; };
             // Xbox-style pad -> N64. The right stick is the camera (src/game/patches.cpp), so the C buttons are on

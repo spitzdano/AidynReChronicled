@@ -511,6 +511,12 @@ void normalize_big_draw(uint8_t* rdram, recomp_context* ctx) {
     std::memcpy(&x, &bits, 4);
     bits = (uint32_t)ctx->r7;
     std::memcpy(&y, &bits, 4);
+    // The title card: the game puts it at x 54 to 242, centred on 148 (an N64 TV's overscan hid that); it goes 12 units
+    // right, to the middle of the screen, under Press Start and the line above it (spitzdano, 2026-10-30). Its
+    // "Rechronicled" (draw_title_branding) follows from d.ox.
+    if (format == 2 && w == 188 && h_img == 174) {
+        x += 12.0f;
+    }
     // The requested area, worked out as N64BorgImageDraw does.
     const int32_t left = (int32_t)(x * hs * 4.0f);
     const int32_t top = (int32_t)(y * vs * 4.0f);
@@ -524,6 +530,13 @@ void normalize_big_draw(uint8_t* rdram, recomp_context* ctx) {
     d.cy0 = top;
     d.cy1 = (int32_t)(y * vs * 4.0f + (float)(int)(v - yoff) * ys * vs * 4.0f);
     d.title_card = format == 2 && w == 188 && h_img == 174;
+    if (d.title_card && std::getenv("AIDYN_BOX_LOG") != nullptr) {
+        static float logged = -1.0f;
+        if (logged != x) {
+            logged = x;
+            fprintf(stdout, "Title card: x %g (xoff %u, scale %g) to %g of 320, y %g (moved 12 right)\n", x, xoff, xs, x + (h - xoff) * xs, y);
+        }
+    }
     d.ox = (x - (float)xoff * xs) * hs;
     d.oy = (y - (float)yoff * ys) * vs;
     d.sx = xs * hs;
@@ -7927,6 +7940,16 @@ gpr title_panel(uint8_t* rdram, recomp_context* ctx, gpr g, float x0, float y0, 
                                    MEM_HU(kVres1, (gpr)gGfxManager));
 }
 
+// Just the panel's bar, from x0 to x1, h units tall with its top at y, faded by alpha: behind a single line (the title
+// card's update line, "Updates").
+gpr title_bar(uint8_t* rdram, recomp_context* ctx, gpr g, float x0, float x1, float y, float h, uint32_t alpha) {
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    g = tinted_image_state(rdram, g, 0xFFFFFF00u | alpha);
+    g = panel_bar(rdram, g, "tp_cap_l", x0, x1, y, h, hs, vs);
+    return (gpr)(int32_t)call_game(rdram, ctx, borg8DlistInit, (uint32_t)g, 6, MEM_HU(kHres1, (gpr)gGfxManager),
+                                   MEM_HU(kVres1, (gpr)gGfxManager));
+}
+
 // The Options page over the title screen's panel (WidgetOptionsConfig::InitMenu's end): its title picture sat 1.3 units
 // high in the panel's top bar, and its rows leaned left (AUDIO 14 units from the left rail, the bars ending 22 short of
 // the right one). The title goes down a unit and the rows (AUDIO, Sound, Music, Graphics and their bars, which take the
@@ -9187,9 +9210,12 @@ gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         } else if (s.phase == P::Ready) {
             line = "Update " + s.latest + " is ready: it goes in at the next start";
         }
-        if (!line.empty()) {
+        if (!line.empty()) {  // on a panel like the menu's, in "Enhanced by"'s light ivory (spitzdano, 2026-10-30)
+            const gpr font = MEM_W(0, kFontPtr);
+            const float w = heap_pointer(font) ? ctl_width(rdram, ctx, font, line, 0.6f) : 200.0f;
+            g = title_bar(rdram, ctx, g, 160.0f - w / 2.0f - 22.0f, 160.0f + w / 2.0f + 22.0f, 3.0f, 24.0f, 240);
             g = ctl_state(rdram, ctx, g);
-            g = ctl_text(rdram, ctx, g, line, 160.0f, 8.0f, 0.55f, 0xE8C060, 230, false, true);
+            g = ctl_text(rdram, ctx, g, line, 160.0f, 10.5f, 0.6f, 0xEFE6D4, 255, false, true);
         }
     }
     if (!tu.open) return g;
