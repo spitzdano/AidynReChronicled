@@ -31,6 +31,7 @@
 #include "updater.h"
 #include "platform.h"
 #include "settings.h"
+#include "watch.h"
 
 #include <algorithm>
 #include <atomic>
@@ -591,6 +592,7 @@ namespace {
     }
 
     void restart_installed() {
+        aidyn::watch::session_end();  // not an unclean end: the new program starts its own session (no problem report)
         std::fflush(nullptr);
         const fs::path exe = install_dir() / g_exe_name;
         aidyn::platform::restart(g_args.empty() ? std::vector<std::string>{ exe.string() } : g_args, exe);
