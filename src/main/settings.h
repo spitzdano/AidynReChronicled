@@ -62,7 +62,8 @@ namespace aidyn::settings {
         bool fullscreen = false;
         bool menus_4_3 = true;       // with 16:9/window: show the pause menu, inventory and shops in 4:3 (their layouts break widened)
         bool right_stick_camera = true; // walking: right stick turns the camera (x) and raises/lowers it (y)
-        float camera_sensitivity = 1.0f; // the right stick's camera speed, times 150 degrees a second at full tilt: 0.5 to 2
+        float camera_sensitivity = 1.0f; // the right stick's camera speed walking, times 150 degrees a second at full tilt: 0.5 to 2
+        float battle_camera_sensitivity = 0.5f; // the same in a fight (spitzdano: 1x is too quick there): 0.25 to 2
         bool camera_invert_x = false; // right stick left/right turns the camera the other way
         bool camera_invert_y = true;  // right stick up/down tilts the camera the other way (up: look down)
         bool overscan_borders = false; // the black frame the game draws for CRT overscan (Graphics::EndList)

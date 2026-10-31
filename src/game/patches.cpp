@@ -315,7 +315,9 @@ extern "C" void aidyn_menu_opened(uint8_t* rdram, gpr scroll) {
 // both at the same rate, by game ticks (not the host clock, so each shown frame turns evenly). The height angle goes
 // the same distance up and down from where the camera rests (walking: 15 degrees, so -15 to 45; the game itself only
 // allowed 0 to 45, a third of the way up and two thirds down). graphics.camera_sensitivity (the ReChronicled page's
-// Camera sensitivity, 0.5x to 2x) scales the stick's speed, not the mouse's (the Controls page has its own);
+// Walking camera sensitivity, 0.5x to 2x) scales the stick's speed, not the mouse's (the Controls page has its own);
+// in a fight (gGlobals.gameStateA 2, or 3 paused) graphics.battle_camera_sensitivity does (Battle camera sensitivity,
+// 0.25x to 2x, 0.5x by default: spitzdano found 1x too quick there);
 // graphics.camera_invert_x / camera_invert_y flip them. Once the camera has been turned, func_800A68E0 (replaced below) keeps
 // the camera's own direction as its "behind" point, so the camera stays where it was put and follows at the same
 // distance; pressing the right stick (R3) puts it back behind the player at its resting height, as the original. Movement is relative to
@@ -385,7 +387,9 @@ extern "C" void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor) {
     if (aidyn::settings::graphics().camera_invert_x) {
         mouse_turn = -mouse_turn;
     }
-    const float speed = kTurnSpeed * aidyn::settings::graphics().camera_sensitivity;
+    const uint8_t state = MEM_BU(0, (gpr)(int32_t)0x800D80C8);  // gGlobals.gameStateA: 2 a fight, 3 paused in one
+    const float speed = kTurnSpeed * (state == 2 || state == 3 ? aidyn::settings::graphics().battle_camera_sensitivity
+                                                               : aidyn::settings::graphics().camera_sensitivity);
     const float turn = rx * speed * dt + mouse_turn;   // right positive
     const float tilt = ry * speed * dt + mouse_tilt;   // up positive
     if (turn != 0.0f) {
@@ -4586,6 +4590,9 @@ namespace {
     constexpr float kCameraSensitivities[] = { 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
     constexpr const char* kCameraSensitivityWords[] = { "rc_cs_05", "rc_cs_075", "rc_cs_1", "rc_ws_125", "rc_dd_15",
                                                         "rc_ws_175", "rc_dd_2" };
+    constexpr float kBattleCameraSensitivities[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+    constexpr const char* kBattleCameraSensitivityWords[] = { "rc_cs_025", "rc_cs_05", "rc_cs_075", "rc_cs_1", "rc_ws_125",
+                                                              "rc_dd_15", "rc_ws_175", "rc_dd_2" };
 
     std::vector<RcRow> rc_rows(int kind) {
         auto& gfx = aidyn::settings::graphics_rw();
@@ -4593,6 +4600,8 @@ namespace {
         static const RcSteps walk = { &gfx.walk_speed, kWalkSpeeds, kWalkWords, (int)std::size(kWalkSpeeds) };
         static const RcSteps camera_sensitivity = { &gfx.camera_sensitivity, kCameraSensitivities, kCameraSensitivityWords,
                                                     (int)std::size(kCameraSensitivities) };
+        static const RcSteps battle_camera_sensitivity = { &gfx.battle_camera_sensitivity, kBattleCameraSensitivities,
+                                                           kBattleCameraSensitivityWords, (int)std::size(kBattleCameraSensitivities) };
         auto& game = aidyn::settings::game_rw();
         static const RcSteps party = { &game.combat_party_speed, kPartySpeeds, kPartySpeedWords, (int)std::size(kPartySpeeds) };
         static const RcSteps enemy = { &game.combat_enemy_speed, kEnemySpeeds, kEnemySpeedWords, (int)std::size(kEnemySpeeds) };
@@ -4644,6 +4653,7 @@ namespace {
             { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_camera_sensitivity", nullptr, "camera_sensitivity", nullptr, nullptr, &camera_sensitivity },
+            { "rc_battle_camera", nullptr, "battle_camera_sensitivity", nullptr, nullptr, &battle_camera_sensitivity },
             { "rc_invert_x", &gfx.camera_invert_x, "camera_invert_x", nullptr },
             { "rc_invert_y", &gfx.camera_invert_y, "camera_invert_y", nullptr },
             { "rc_controls", nullptr, "", nullptr, nullptr, nullptr, controls_open },
@@ -5066,8 +5076,8 @@ namespace {
             "Turn the camera around the party with the right stick, and tilt it up or down. Once turned, the camera "
             "keeps that direction while you walk. Click the right stick to bring it back behind the party.",
             "Holding RB and moving the left stick still works the game's own camera. The right-stick camera can be "
-            "turned off, made faster or slower (Camera sensitivity), and either of its directions inverted, on the "
-            "ReChronicled page of the Menu." } },
+            "turned off, made faster or slower (Walking and Battle camera sensitivity, each its own), and either of its "
+            "directions inverted, on the ReChronicled page of the Menu." } },
         { "Fast-Forward", {
             "Click the left stick to make everything run three times faster: long walks, fights and scenes. Click it "
             "again to go back to normal speed. Two chevrons at the top right of the screen show when it is on. "
