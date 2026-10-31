@@ -273,13 +273,22 @@ namespace {
 
     std::string plain_notes(std::string md) {
         md = std::regex_replace(md, std::regex(R"(\[([^\]]*)\]\([^)]*\))"), "$1");  // links: their words
-        std::string out, line;
+        // Release notes are written wrapped at 120 columns: a line that continues the one before it (not blank, not a
+        // bullet, not a heading) is joined to it, so each paragraph and bullet is one line for the panel to wrap.
+        std::string out, line, current;
+        bool open = false;  // `current` holds an unfinished paragraph or bullet
+        const auto flush = [&] {
+            if (open) out += current + "\n";
+            current.clear();
+            open = false;
+        };
         std::istringstream in(md);
         while (std::getline(in, line)) {
             if (!line.empty() && line.back() == '\r') line.pop_back();
             size_t h = 0;
             while (h < line.size() && line[h] == '#') h++;
-            if (h > 0 && h < line.size() && line[h] == ' ') line = line.substr(h + 1);
+            const bool heading = h > 0 && h < line.size() && line[h] == ' ';
+            if (heading) line = line.substr(h + 1);
             if (line.rfind("* ", 0) == 0) line = "- " + line.substr(2);
             std::string clean;
             for (size_t i = 0; i < line.size(); i++) {
@@ -289,8 +298,23 @@ namespace {
                 }
                 clean += line[i];
             }
-            out += clean + "\n";
+            size_t first = clean.find_first_not_of(" \t");
+            if (first == std::string::npos) {  // a blank line ends the paragraph
+                flush();
+                out += "\n";
+            } else if (heading || clean.rfind("- ", first) == first) {  // a heading, or a new bullet
+                flush();
+                current = clean.substr(first);
+                open = true;
+                if (heading) flush();
+            } else if (open) {  // a continuation
+                current += " " + clean.substr(first);
+            } else {
+                current = clean.substr(first);
+                open = true;
+            }
         }
+        flush();
         return out;
     }
 
