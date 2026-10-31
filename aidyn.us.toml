@@ -683,6 +683,16 @@ func = "func_80043AE8"
 before_vram = 0x80043B9C
 text = "extern void aidyn_continue_entry(uint8_t* rdram, recomp_context* ctx); aidyn_continue_entry(rdram, ctx);"
 
+# The title screen's list is made with room for seven entries (new WidgetScrollMenu(7)) and Append doesn't check: Continue,
+# New Game, Load Game, Options, Display, Controls, Achievements, Updates and Quit Game are nine, and the ones past the
+# seventh were written past its array, into the heap (the game crashed freeing the menu when Continue, New Game or
+# Load Game closed it; with eight entries, as in 0.9.2 without Display, it was one past the end and went unnoticed).
+# Room for twelve, as the pause menu's list has.
+[[patches.instruction]]
+func = "func_80043AE8"
+vram = 0x80043B08
+value = 0x2405000C   # addiu $a1, $zero, 12 (was 7)
+
 # Quit Game last on the title screen's menu (IntroMenu::StartGameMenu after Options is appended, s1 the list), and
 # Load Game and Quick Load in a fight's Menu page (MakeScrollList where Options is made: the game skips Load and Save
 # there; s1 the substruct). src/game/patches.cpp, "Quit to Title".
