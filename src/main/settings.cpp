@@ -12,6 +12,7 @@ namespace {
     aidyn::settings::Graphics g_graphics;
     aidyn::settings::Game g_game;
     aidyn::settings::Audio g_audio;
+    aidyn::settings::Updates g_updates;
 
     const char* rom_patch_name(aidyn::settings::RomPatch p) {
         return p == aidyn::settings::RomPatch::AidynPatch ? "aidyn-patch"
@@ -121,6 +122,8 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["textures"] = g_graphics.textures;
         j["graphics"]["vsync"] = g_graphics.vsync;
         j["graphics"]["texture_packs"] = g_graphics.texture_packs;
+        j["updates"]["check"] = g_updates.check;
+        j["updates"]["test_builds"] = g_updates.test_builds;
         std::ofstream out(path);
         out << j.dump(4) << "\n";
         if (!out) {
@@ -175,6 +178,9 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.textures = gfx.value("textures", g_graphics.textures);
         g_graphics.vsync = gfx.value("vsync", g_graphics.vsync);
         g_graphics.texture_packs = gfx.value("texture_packs", g_graphics.texture_packs);
+        const auto& upd = j.value("updates", nlohmann::json::object());
+        g_updates.check = upd.value("check", g_updates.check);
+        g_updates.test_builds = upd.value("test_builds", g_updates.test_builds);
         // rechronicled-art (the redrawn portraits and icons) came after the first settings files were written: put it
         // in once, before "rechronicled" (later packs win).
         auto& packs = g_graphics.texture_packs;
@@ -295,6 +301,14 @@ const aidyn::settings::Audio& aidyn::settings::audio() {
 
 aidyn::settings::Audio& aidyn::settings::audio_rw() {
     return g_audio;
+}
+
+const aidyn::settings::Updates& aidyn::settings::updates() {
+    return g_updates;
+}
+
+aidyn::settings::Updates& aidyn::settings::updates_rw() {
+    return g_updates;
 }
 
 void aidyn::settings::use_rom_patch(RomPatch patch) {

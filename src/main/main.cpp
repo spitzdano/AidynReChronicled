@@ -9,6 +9,8 @@
 #include "watch.h"
 #include "settings.h"
 #include "version.h"
+#include "updater.h"
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cerrno>
@@ -608,6 +610,11 @@ static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
 
 int main(int argc, char** argv) {
     g_args.assign(argv, argv + argc);
+    // A downloaded update goes in before any of the game's files is opened, and the new program starts in this one's
+    // place (src/main/updater.cpp). Not for the launcher's problem-report run.
+    if (std::find(g_args.begin(), g_args.end(), "--report") == g_args.end()) {
+        aidyn::updater::apply_pending(g_args);
+    }
     std::filesystem::path rom_path;
     int version_flag = -1;  // --original 0, --patch 1, --plus 2, --action 3: this run only (a launcher can start any)
     std::string report_reason;  // --report <why>: make a problem report and stop (src/main/report.cpp)
@@ -657,6 +664,10 @@ int main(int argc, char** argv) {
     recomp::register_config_path(data_folder());
     aidyn::settings::load(own_folder);
     graphics_memory_fallback(own_folder / "logs");
+    // AIDYN_UPDATE_SELFTEST=1 or =undo (developers): the updater without the game (src/main/updater.cpp).
+    if (const char* st = std::getenv("AIDYN_UPDATE_SELFTEST"); st != nullptr && *st != '\0') {
+        return aidyn::updater::selftest(st);
+    }
 
     if (version_flag >= 0) {
         aidyn::settings::use_rom_patch(version_flag == 1   ? aidyn::settings::RomPatch::AidynPatch
@@ -727,6 +738,8 @@ int main(int argc, char** argv) {
         printf("%s\n", made.string().c_str());
         return 0;
     }
+
+    aidyn::updater::init();  // what the last run's update left, and the check at start (settings.json updates)
 
     printf("Game: %s\n", version == aidyn::settings::RomPatch::None ? "Aidyn Chronicles (NTSC-U 1.0)" : version_name(version));
     fflush(stdout);

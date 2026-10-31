@@ -1,6 +1,7 @@
 // What differs between Linux and Windows (src/main/platform.cpp): the rest of the program asks here.
 #pragma once
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -15,8 +16,17 @@ namespace aidyn::platform {
     // screen runs at, so the display's rate it gives isn't the real one (src/main/rt64_context.cpp).
     bool under_gamescope();
     // Starts this program again with these arguments (args[0] the program) in place of this one. Returns only if it
-    // couldn't.
-    void restart(const std::vector<std::string>& args);
+    // couldn't. `program`: another file to start instead (after an update has moved this one aside).
+    void restart(const std::vector<std::string>& args, const std::filesystem::path& program = {});
+    // curl (src/main/updater.cpp): on Linux the first on PATH, on Windows the one Windows 10 and later have in
+    // System32 (not Wine's: it has none). Empty when there is none.
+    std::filesystem::path find_curl();
+    // Runs a program (args[0] its path) without a window, its error output into err_file, and waits, asking
+    // keep_going about four times a second: false stops it. The child gets this program's environment without
+    // LD_PRELOAD / LD_LIBRARY_PATH (Steam's overlay and the bundled libraries aren't for it). Its exit code; -1 if it
+    // couldn't be started, -2 if stopped.
+    int run_process(const std::vector<std::string>& args, const std::filesystem::path& err_file,
+                    const std::function<bool()>& keep_going);
     // The call stack, one line per frame ("program(+0x1234) [0x...]" or a symbol), skipping the first `skip` frames.
     std::vector<std::string> backtrace_lines(int skip, int max_frames = 24);
     // Windows: the program's output goes to dir/last-run.log (the run before: previous-run.log), as the Linux launcher

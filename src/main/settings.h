@@ -41,6 +41,12 @@ namespace aidyn::settings {
                                       // there): the ReChronicled page's Instruments, Restored / Original
     };
 
+    // In-game updates (src/main/updater.cpp; the title menu's Updates).
+    struct Updates {
+        bool check = true;          // look for a newer release on GitHub at every start
+        bool test_builds = false;   // offer pre-releases (test builds) too, not only full releases
+    };
+
     struct Graphics {
         int render_height = 1080;    // internal resolution in lines (240 = N64); 0 = largest integer scale that fits the window
         Aspect aspect = Aspect::Ratio;   // in effect: Original while widescreen is off
@@ -80,6 +86,7 @@ namespace aidyn::settings {
     const Graphics& graphics();
     const Game& game();
     const Audio& audio();
+    const Updates& updates();
     void use_rom_patch(RomPatch patch);   // for this run only (--patch / --original)
     void save_rom_patch(RomPatch patch);  // into settings.json (the title screen's version switch), keeping the rest
     void save_controls_card(bool shown);  // View in the field or combat: remembered in settings.json
@@ -88,6 +95,7 @@ namespace aidyn::settings {
     Graphics& graphics_rw();
     Game& game_rw();
     Audio& audio_rw();
+    Updates& updates_rw();
     void save_bool(const char* section, const char* key, bool value);
     void save_number(const char* section, const char* key, double value);
     // Replaces a whole section of settings.json with JSON text (the Controls page's bindings: src/main/controls.cpp).

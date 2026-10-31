@@ -322,6 +322,7 @@ extern "C" void aidyn_menu_opened(uint8_t* rdram, gpr scroll) {
 // the camera, so an angle relative to the player's facing would make the camera chase itself round in circles.
 #include "controls.h"
 #include "input.h"
+#include "updater.h"
 #include "watch.h"
 #include <algorithm>
 #include <chrono>
@@ -4492,6 +4493,9 @@ void title_controls_open(uint8_t* rdram, recomp_context* ctx);
 gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 void title_ach_open(uint8_t* rdram, recomp_context* ctx);      // "Achievements page and toast", below
 gpr title_ach_page(uint8_t* rdram, recomp_context* ctx, gpr g);
+void title_updates_open(uint8_t* rdram, recomp_context* ctx);   // "Updates", below
+bool title_panel_up();  // Controls, Achievements or Updates over the title menu (end of the file)
+gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g);
 bool fair_panel_open(uint8_t* rdram, recomp_context* ctx);       // "Fair play", below
 gpr fair_panel(uint8_t* rdram, recomp_context* ctx, gpr g);
 void fair_show(uint8_t* rdram, recomp_context* ctx);
@@ -4806,6 +4810,22 @@ extern "C" int aidyn_rc_select(uint8_t* rdram, recomp_context* ctx) {
 gpr aidyn_rc_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
     g = title_controls_page(rdram, ctx, g);
     g = title_ach_page(rdram, ctx, g);
+    g = title_updates_page(rdram, ctx, g);
+    {  // the title menu's list under a panel: see-through meanwhile (its last entries showed below the panel)
+        extern gpr title_menu_list;
+        static bool hidden = false;
+        const gpr title_screen = MEM_W(0, (gpr)(int32_t)0x800D9590);  // gGlobals.titleScreen (kTitleScreen, below)
+        const bool up = title_panel_up() && heap_pointer(title_screen) && heap_pointer(title_menu_list);
+        if (up) {
+            call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)title_menu_list, 0);
+            hidden = true;
+        } else if (hidden) {
+            if (heap_pointer(title_screen) && heap_pointer(title_menu_list)) {
+                call_game(rdram, ctx, Utilities__SetAlpha, (uint32_t)title_menu_list, 0xFF);
+            }
+            hidden = false;
+        }
+    }
     g = fair_panel(rdram, ctx, g);
     if (!rc.open) {
         return g;
@@ -7642,6 +7662,7 @@ namespace {
     constexpr uint16_t kLoadGameId = 0xA0;                     // the game's Load Game (OptionN_LoadGame)
     constexpr gpr kQuitText = kRcText + 0x80, kQuitGameText = kRcText + 0xA0, kControlsText = kRcText + 0xC0,
                   kAchText = kRcText + 0xE0;
+    constexpr gpr kUpdatesText = (gpr)(int32_t)0x80F81800;  // the title menu's Updates (kRcText's 0x100 bytes are full)
     constexpr gpr kCombatNext = (gpr)(int32_t)0x800D9455;      // gGlobals.combatBytes[1]: the fight's state after the pause
     constexpr gpr kCommonStrings = (gpr)(int32_t)0x800DA0D8;   // gGlobals.CommonStrings
     constexpr const char* kQuitLabel = "Quit to Title";
@@ -7792,6 +7813,14 @@ extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
             call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)ach_entry);
         }
     }
+    if (!aidyn::updater::status().current.empty()) {  // a release build (src/main/updater.cpp): Updates
+        const gpr memory_u = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
+        if (heap_pointer(memory_u)) {
+            const gpr upd_entry = (gpr)(int32_t)call_game(rdram, ctx, WidgetText__WidgetText, (uint32_t)memory_u,
+                                                          (uint32_t)put_menu_text(rdram, kUpdatesText, "Updates"), 400);
+            call_game(rdram, ctx, WidgetScrollMenu__Apppend, (uint32_t)list, (uint32_t)upd_entry);
+        }
+    }
     const gpr memory2 = (gpr)(int32_t)call_game(rdram, ctx, new_, 0x7C);
     if (!heap_pointer(memory2)) {
         return;
@@ -7809,7 +7838,10 @@ extern "C" void aidyn_quit_game_entry(uint8_t* rdram, recomp_context* ctx) {
 
 // IntroMenu::ShowStartGameMenu's backing box (IntroMenu_ShadowBG: a3 its bottom, shifted left 16; v1 the list): made
 // for three entries, a row taller for each one more.
+gpr title_menu_list = 0;  // the title menu's list (StartGameMenu's), hidden while a panel is over it (aidyn_rc_page)
+
 extern "C" void aidyn_title_box_fit(uint8_t* rdram, recomp_context* ctx) {
+    title_menu_list = ctx->r3;
     const int more = list_entries(rdram, ctx->r3) - 3;
     if (more > 0) {
         const int32_t bottom = ((int32_t)ctx->r7 >> 16) + more * kTitleRow;
@@ -7918,6 +7950,10 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     if (!heap_pointer(menu) || !heap_pointer(w) || (w != MEM_W(0x84, menu) && w != MEM_W(0x80, menu))) {
         return 0;
     }
+    if (title_panel_up()) {  // a panel over the menu: the menu's box isn't drawn (its foot showed below the panel)
+        ctx->r2 = ctx->r5;
+        return 1;
+    }
     const uint32_t alpha = MEM_BU(0x5B, w);  // the box's colour: its alpha fades it in and out
     gpr g = ctx->r5;
     if (alpha != 0) {
@@ -8010,6 +8046,11 @@ extern "C" int aidyn_title_choice(uint8_t* rdram, recomp_context* ctx) {
     if (text == "Achievements") {
         rc_sound(rdram, ctx, 0x740, 60);
         title_ach_open(rdram, ctx);
+        return 1;
+    }
+    if (text == "Updates") {
+        rc_sound(rdram, ctx, 0x740, 60);
+        title_updates_open(rdram, ctx);
         return 1;
     }
     if (text == "New Game" && fair_panel_open(rdram, ctx)) {  // the Fair play panel first ("Fair play", below)
@@ -9001,6 +9042,300 @@ gpr title_controls_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         tc = TitleControls{};
         aidyn::input::set_capture(false);
     }
+    return g;
+}
+
+// ---- Updates ----
+// The title menu's Updates (release builds only; src/main/updater.cpp does the work): a panel over the title screen
+// with what the updater knows (looking, up to date, a newer release and its notes, the download's progress, ready),
+// the rows that act on it (Update, Stop, Restart now, Check again; the release page where this computer can't
+// download: no curl, or a release without a signed manifest), Check at start and Test builds (settings.json updates),
+// and Undo update while the last update's old files are kept. LB / RB scroll the notes. On the title card itself a line
+// at the top says when a newer release is out (and, once, "Updated to ..." after an update).
+namespace {
+    struct TitleUpdates {
+        bool open = false, closing = false, confirm_undo = false;
+        int fade = 0, pulse = 0, repeat = 0, row = 0, scroll = 0;
+        uint32_t held = 0xFFFFFFFF;
+        std::string wrapped_for;          // the notes the lines were wrapped from
+        std::vector<std::string> lines;   // the notes, wrapped to the panel
+    } tu;
+    std::string tu_note;  // "Updated to ..." (shown for a while on the title)
+    int tu_note_frames = 0;
+
+    enum class UpdRow { Action, CheckAtStart, TestBuilds, Undo };
+
+    // The notes in the game's letters: plain ASCII (the font has no others), common punctuation spelled out.
+    std::string ascii_only(const std::string& s) {
+        std::string out;
+        for (size_t i = 0; i < s.size(); i++) {
+            const unsigned char c = (unsigned char)s[i];
+            if (c < 0x80) { out += (char)c; continue; }
+            const std::string rest = s.substr(i, 3);
+            if (rest == "\xE2\x80\x94" || rest == "\xE2\x80\x93") { out += "-"; i += 2; }
+            else if (rest == "\xE2\x80\x99" || rest == "\xE2\x80\x98") { out += "'"; i += 2; }
+            else if (rest == "\xE2\x80\x9C" || rest == "\xE2\x80\x9D") { out += "\""; i += 2; }
+            else if (rest == "\xE2\x86\x92") { out += "->"; i += 2; }
+            else if (rest == "\xE2\x80\xA6") { out += "..."; i += 2; }
+            else if (c == 0xC3 && i + 1 < s.size() && (unsigned char)s[i + 1] == 0x97) { out += "x"; i += 1; }
+            else { while (i + 1 < s.size() && ((unsigned char)s[i + 1] & 0xC0) == 0x80) i++; }
+        }
+        return out;
+    }
+
+    std::vector<std::string> wrap_lines(uint8_t* rdram, recomp_context* ctx, const std::string& text, float width, float scale) {
+        std::vector<std::string> out;
+        const gpr font = MEM_W(0, kFontPtr);
+        if (!heap_pointer(font)) return out;
+        std::istringstream in(ascii_only(text));
+        std::string para;
+        while (std::getline(in, para)) {
+            if (para.empty()) { if (!out.empty() && !out.back().empty()) out.push_back(""); continue; }
+            const bool bullet = para.rfind("- ", 0) == 0;
+            std::istringstream words(para);
+            std::string word, line;
+            while (words >> word) {
+                const std::string tryline = line.empty() ? word : line + " " + word;
+                if (!line.empty() && ctl_width(rdram, ctx, font, tryline, scale) > width) {
+                    out.push_back(line);
+                    line = (bullet ? "  " : "") + word;
+                } else {
+                    line = tryline;
+                }
+            }
+            if (!line.empty()) out.push_back(line);
+        }
+        while (!out.empty() && out.back().empty()) out.pop_back();
+        return out;
+    }
+
+    std::string mb(uint64_t bytes) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "%.1f MB", bytes / 1048576.0);
+        return buf;
+    }
+
+    std::vector<UpdRow> upd_rows(const aidyn::updater::Status& s) {
+        std::vector<UpdRow> r = { UpdRow::Action, UpdRow::CheckAtStart, UpdRow::TestBuilds };
+        if (!s.undo_to.empty() && s.phase != aidyn::updater::Phase::Downloading) r.push_back(UpdRow::Undo);
+        return r;
+    }
+
+    std::string action_label(const aidyn::updater::Status& s) {
+        using P = aidyn::updater::Phase;
+        switch (s.phase) {
+        case P::Available: return s.can_download ? "Update to " + s.latest : "Open the release page";
+        case P::Downloading: return "Stop the download";
+        case P::Ready: return "Restart now";
+        case P::Checking: return "Looking...";
+        default: return "Check again";
+        }
+    }
+
+    std::string status_line(const aidyn::updater::Status& s) {
+        using P = aidyn::updater::Phase;
+        switch (s.phase) {
+        case P::Checking: return "Looking for updates...";
+        case P::UpToDate: return "This is " + s.current + ", the newest" + (aidyn::settings::updates().test_builds ? "." : " full release.");
+        case P::Available: return s.latest + (s.latest_test ? " (a test build)" : "") + " is out. This is " + s.current + ".";
+        case P::Downloading:
+            if (s.files_total == 0) return "Comparing your files with " + s.latest + "...";
+            return "Downloading " + s.latest + ": " + mb(s.done) + " of " + mb(s.total) + " (" +
+                   std::to_string(s.files_done) + " of " + std::to_string(s.files_total) + " files)";
+        case P::Ready: return s.latest + " is ready: Restart now, or it goes in the next time you start.";
+        case P::Failed: return s.error;
+        default: return "This is " + s.current + ". Not checked yet.";
+        }
+    }
+}
+
+void title_updates_open(uint8_t* rdram, recomp_context* ctx) {
+    tu = TitleUpdates{};
+    tu.open = true;
+    aidyn::input::set_capture(true);
+    const aidyn::updater::Status s = aidyn::updater::status();
+    if (s.phase == aidyn::updater::Phase::Off) aidyn::updater::check();  // checking at start is off: look now
+}
+
+gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
+    using P = aidyn::updater::Phase;
+    const bool title = heap_pointer(MEM_W(0, kTitleScreen));
+    // The line on the title card: a newer release, or (for a while) what the last update did.
+    if (title && !tu.open) {
+        const aidyn::updater::Status s = aidyn::updater::status();
+        const std::string done = aidyn::updater::take_just_updated();
+        if (!done.empty()) {
+            tu_note = done;
+            tu_note_frames = 900;  // 15 seconds
+        }
+        std::string line;
+        if (tu_note_frames > 0) {
+            tu_note_frames--;
+            line = tu_note;
+        } else if (s.phase == P::Available) {
+            line = "Update " + s.latest + " is out: Updates in the menu";
+        } else if (s.phase == P::Ready) {
+            line = "Update " + s.latest + " is ready: it goes in at the next start";
+        }
+        if (!line.empty()) {
+            g = ctl_state(rdram, ctx, g);
+            g = ctl_text(rdram, ctx, g, line, 160.0f, 8.0f, 0.55f, 0xE8C060, 230, false, true);
+        }
+    }
+    if (!tu.open) return g;
+    if (!title) {  // the title is gone (a version switch, a game starting)
+        tu = TitleUpdates{};
+        aidyn::input::set_capture(false);
+        return g;
+    }
+    const aidyn::updater::Status s = aidyn::updater::status();
+    uint32_t b = 0;
+    float sx = 0.0f, sy = 0.0f;
+    aidyn::input::captured(&b, &sx, &sy);
+    if (sy > 0.5f) b |= 0x0800;
+    if (sy < -0.5f) b |= 0x0400;
+    if (sx < -0.5f) b |= 0x0200;
+    if (sx > 0.5f) b |= 0x0100;
+    const uint32_t pressed = tu.held == 0xFFFFFFFF ? 0 : (b & ~tu.held);
+    tu.held = (tu.held == 0xFFFFFFFF && (b & 0x8000)) ? 0xFFFFFFFF : b;
+    const uint32_t dirs = b & 0x0F30;  // the stick and D-pad, LB / RB: repeat while held
+    tu.repeat = dirs != 0 ? tu.repeat + 1 : 0;
+    const uint32_t act = pressed | ((tu.repeat > 24 && tu.repeat % 6 == 0) ? dirs : 0);
+    const std::vector<UpdRow> rows = upd_rows(s);
+    const int n = (int)rows.size();
+    tu.row = std::clamp(tu.row, 0, n - 1);
+
+    // Where things go (the Controls page's panel).
+    const float left = 54.0f, right = 266.0f, centre = 160.0f, scale = 0.55f, step = 8.8f;
+    const float status_top = 54.0f, rows_top = 181.0f - 9.6f * n;  // the rows end above the closing bar
+    const std::vector<std::string> head = wrap_lines(rdram, ctx, status_line(s), right - left, 0.6f);
+    const int head_lines = std::min(2, (int)head.size());
+    const float notes_top = status_top + 9.0f * head_lines + 4.0f;
+    const int notes_visible = std::max(1, (int)((rows_top - 10.0f - notes_top) / step));
+    const bool notes_shown = s.phase == P::Available || s.phase == P::Downloading || s.phase == P::Ready;
+    if (notes_shown && tu.wrapped_for != s.notes) {
+        tu.lines = wrap_lines(rdram, ctx, s.notes, right - left, scale);
+        tu.wrapped_for = s.notes;
+        tu.scroll = 0;
+    }
+    const int max_scroll = notes_shown ? std::max(0, (int)tu.lines.size() - notes_visible) : 0;
+
+    const bool ready = !tu.closing && tu.fade == 255;
+    if (ready) {
+        if (act & 0x0800) { tu.row = (tu.row + n - 1) % n; tu.confirm_undo = false; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0400) { tu.row = (tu.row + 1) % n; tu.confirm_undo = false; rc_sound(rdram, ctx, 0x73B, 30); }
+        if (act & 0x0020) tu.scroll = std::max(0, tu.scroll - 3);              // LB
+        if (act & 0x0010) tu.scroll = std::min(max_scroll, tu.scroll + 3);     // RB
+        const UpdRow cur = rows[tu.row];
+        const bool choose = (pressed & 0x8000) || (cur != UpdRow::Action && cur != UpdRow::Undo && (act & 0x0300));
+        if (choose) {
+            auto& upd = aidyn::settings::updates_rw();
+            switch (cur) {
+            case UpdRow::Action:
+                switch (s.phase) {
+                case P::Available:
+                    if (s.can_download) aidyn::updater::download();
+                    else aidyn::updater::open_page();
+                    break;
+                case P::Downloading: aidyn::updater::cancel(); break;
+                case P::Ready:
+                    aidyn::input::set_capture(false);
+                    aidyn::updater::restart_now();  // returns only if it failed (the status says why)
+                    aidyn::input::set_capture(true);
+                    break;
+                case P::Checking: break;
+                default: aidyn::updater::check(); break;
+                }
+                break;
+            case UpdRow::CheckAtStart:
+                upd.check = !upd.check;
+                aidyn::settings::save_bool("updates", "check", upd.check);
+                break;
+            case UpdRow::TestBuilds:
+                upd.test_builds = !upd.test_builds;
+                aidyn::settings::save_bool("updates", "test_builds", upd.test_builds);
+                if (s.phase != P::Downloading && s.phase != P::Ready) aidyn::updater::check();  // what's offered changes
+                break;
+            case UpdRow::Undo:
+                if (tu.confirm_undo) {
+                    aidyn::input::set_capture(false);
+                    aidyn::updater::undo_now();  // returns only if it failed
+                    aidyn::input::set_capture(true);
+                    tu.confirm_undo = false;
+                } else {
+                    tu.confirm_undo = true;
+                }
+                break;
+            }
+            rc_sound(rdram, ctx, 0x740, 60);
+        }
+        if (pressed & (0x4000 | 0x1000)) {  // B, Start: back (a download goes on)
+            tu.closing = true;
+            rc_sound(rdram, ctx, 0x741, 60);
+        }
+    }
+    tu.fade = std::clamp(tu.fade + (tu.closing ? -60 : 60), 0, 255);
+    if (tu.closing && tu.fade == 0) {
+        if (b == 0) {
+            tu = TitleUpdates{};
+            aidyn::input::set_capture(false);
+        }
+        return g;
+    }
+    tu.pulse++;
+    const CtlHost h{ true, tu.fade, tu.closing, tu.pulse, 0 };
+    const uint32_t ink = 0xF2E6C8, dim = 0x8C8470;
+    g = title_panel(rdram, ctx, g, 40.0f, 20.0f, 280.0f, 200.0f, (uint32_t)tu.fade);
+    g = ctl_state(rdram, ctx, g);
+    g = ctl_text(rdram, ctx, g, "Updates", centre, kPanelTitleY, 0.9f, 0xE8C060, tu.fade, false, true);
+    // The status, wrapped to two lines at most.
+    for (int i = 0; i < head_lines; i++) {
+        g = ctl_text(rdram, ctx, g, head[i], left, status_top + 9.0f * i, 0.6f, s.phase == P::Failed ? 0xE89070 : ink, tu.fade);
+    }
+    if (notes_shown) {
+        for (int i = 0; i < notes_visible && tu.scroll + i < (int)tu.lines.size(); i++) {
+            g = ctl_text(rdram, ctx, g, tu.lines[tu.scroll + i], left, notes_top + step * i, scale, dim + 0x303030, tu.fade);
+        }
+        if (max_scroll > 0) {
+            g = ctl_text(rdram, ctx, g, std::to_string(tu.scroll + 1) + "-" + std::to_string(std::min((int)tu.lines.size(), tu.scroll + notes_visible)) +
+                         " of " + std::to_string(tu.lines.size()), right, notes_top + step * notes_visible, 0.5f, dim, tu.fade, true);
+        }
+    }
+    if (s.phase == P::Downloading && s.total > 0) {  // the progress bar
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        const float x0 = left, x1 = right, y0 = rows_top - 9.0f, y1 = rows_top - 5.0f;
+        const float f = std::clamp((float)s.done / (float)s.total, 0.0f, 1.0f);
+        g = rect_state(rdram, g);
+        g = rect(rdram, g, x0, y0, x1, y1, 0x3C342800u | (uint32_t)(tu.fade * 0.8f), hs, vs);
+        g = rect(rdram, g, x0, y0, x0 + (x1 - x0) * f, y1, 0xE8C06000u | (uint32_t)tu.fade, hs, vs);
+        g = ctl_state(rdram, ctx, g);
+    }
+    for (int i = 0; i < n; i++) {
+        const float y = rows_top + 9.6f * i;
+        const bool sel = i == tu.row;
+        const uint32_t c = sel ? ctl_highlight(h) : ink;
+        const auto& upd = aidyn::settings::updates();
+        switch (rows[i]) {
+        case UpdRow::Action: g = ctl_text(rdram, ctx, g, action_label(s), left, y, 0.6f, s.phase == P::Checking ? dim : c, tu.fade); break;
+        case UpdRow::CheckAtStart:
+            g = ctl_text(rdram, ctx, g, "Check at start", left, y, 0.6f, c, tu.fade);
+            g = ctl_text(rdram, ctx, g, upd.check ? "On" : "Off", right, y, 0.6f, c, tu.fade, true);
+            break;
+        case UpdRow::TestBuilds:
+            g = ctl_text(rdram, ctx, g, "Test builds too", left, y, 0.6f, c, tu.fade);
+            g = ctl_text(rdram, ctx, g, upd.test_builds ? "On" : "Off", right, y, 0.6f, c, tu.fade, true);
+            break;
+        case UpdRow::Undo:
+            g = ctl_text(rdram, ctx, g, tu.confirm_undo ? "A again: back to " + s.undo_to + " (restarts)" : "Undo the last update (back to " + s.undo_to + ")",
+                         left, y, 0.6f, c, tu.fade);
+            break;
+        }
+    }
+    const bool kb = aidyn::input::keyboard_last();
+    const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
+    const std::string hint = a_key + ": choose   " + (max_scroll > 0 ? std::string(kb ? keys_of(aidyn::controls::kLB, false) + " / " + keys_of(aidyn::controls::kRB, false) : "LB / RB") + ": scroll   " : "") +
+                             b_key + ": back";
+    g = ctl_text(rdram, ctx, g, hint, centre, 190.0f, 0.55f, ink, tu.fade, false, true);
     return g;
 }
 
@@ -10925,4 +11260,10 @@ gpr treasure_sparkle(uint8_t* rdram, recomp_context* ctx, gpr g) {
 // src/main/main.cpp graphics_memory_fallback, as the game starts (before its thread runs): a note on the title screen.
 void aidyn_startup_notice(const std::string& text) {
     notice(text.c_str(), 15000);
+}
+
+// The title screen's panels that go back to the menu (not Fair play, which goes on to New Game): the menu is hidden
+// under them (aidyn_title_box, aidyn_rc_page).
+bool title_panel_up() {
+    return tc.open || ta.open || tu.open;
 }
