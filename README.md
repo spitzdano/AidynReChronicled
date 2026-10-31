@@ -355,6 +355,7 @@ these defaults on the first run:
         "menus_4_3": true,
         "right_stick_camera": true,
         "camera_sensitivity": 1.0,
+        "battle_camera_sensitivity": 0.5,
         "camera_invert_x": false,
         "camera_invert_y": true,
         "overscan_borders": false,
@@ -400,7 +401,8 @@ these defaults on the first run:
 | `hud_at_edges` | with a wider aspect: the time-of-day dial at the picture's left edge, the compass at its right edge; the party portraits stay centred (`false`: all in the middle 4:3, as the original) |
 | `overscan_borders` | `true` puts back the black frame the game drew for CRT overscan |
 | `right_stick_camera` | `false` turns the right-stick camera off |
-| `camera_sensitivity` | 0.5 to 2: the right stick's camera speed (1: 150 degrees a second at full tilt); the mouse has its own (`controls`) (`1.0`) |
+| `camera_sensitivity` | 0.5 to 2: the right stick's camera speed walking (1: 150 degrees a second at full tilt); the mouse has its own (`controls`) (`1.0`) |
+| `battle_camera_sensitivity` | 0.25 to 2: the same in a fight (`0.5`: 1 felt too quick there) |
 | `camera_invert_x`, `camera_invert_y` | `true` turns the camera the other way left/right, or tilts it the other way up/down (inverted look) |
 | `smooth_animation_loops` | `false` puts back the original stop in a walk or run cycle each time it loops (see below) |
 | `textures` | `false`: every custom texture off, as the N64 drew it: the texture packs (HD menus, letters, buttons, portraits, world, title art), the HD save pictures and the redrawn page words; the letters go back to the game's own widths. The packs stay listed in `texture_packs` |
@@ -416,8 +418,8 @@ Window, `fps_counter`, `hud_at_edges`, `draw_distance` from 1 to 3 in halves, An
 Supersampling as `supersampling` (Off, 2x; 3 and 4 only in the file)) and **ReChronicled** (`enhanced` as Sound,
 `restored_samples` as Instruments, `turn_order`, `walk_speed` from 1 to 2 in quarters, `combat_party_speed` as Combat
 speed, `combat_enemy_speed` as Enemy turns, `controls_card`, `button_prompts`, `combat_log`,
-`smooth_animation_loops`, `right_stick_camera`, `camera_sensitivity` as Camera sensitivity from 0.5x to 2x in
-quarters, `camera_invert_x` and `_y`, and Report a problem).
+`smooth_animation_loops`, `right_stick_camera`, `camera_sensitivity` as Walking camera sensitivity from 0.5x to 2x in
+quarters, `battle_camera_sensitivity` as Battle camera sensitivity from 0.25x, `camera_invert_x` and `_y`, and Report a problem).
 Up / down pick one, A or left / right change it, B goes back. Each change takes effect at once and is written into
 `settings.json` (the rest of the file is kept); turning `textures` back on holds the game for a few seconds while the
 packs load, as F2 does.
