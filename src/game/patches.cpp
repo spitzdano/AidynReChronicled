@@ -9213,9 +9213,9 @@ gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         if (!line.empty()) {  // on a panel like the menu's, in "Enhanced by"'s light ivory (spitzdano, 2026-10-30)
             const gpr font = MEM_W(0, kFontPtr);
             const float w = heap_pointer(font) ? ctl_width(rdram, ctx, font, line, 0.6f) : 200.0f;
-            g = title_bar(rdram, ctx, g, 160.0f - w / 2.0f - 22.0f, 160.0f + w / 2.0f + 22.0f, 3.0f, 24.0f, 240);
+            g = title_bar(rdram, ctx, g, 160.0f - w / 2.0f - 22.0f, 160.0f + w / 2.0f + 22.0f, 3.0f, 21.0f, 240);
             g = ctl_state(rdram, ctx, g);
-            g = ctl_text(rdram, ctx, g, line, 160.0f, 10.5f, 0.6f, 0xEFE6D4, 255, false, true);
+            g = ctl_text(rdram, ctx, g, line, 160.0f, 11.0f, 0.6f, 0xEFE6D4, 255, false, true);
         }
     }
     if (!tu.open) return g;
