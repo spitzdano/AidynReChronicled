@@ -3688,6 +3688,7 @@ namespace aidyn {
 }
 
 int conversation_state(uint8_t* rdram);  // "Conversation hint", below
+bool help_book_loaded = false;           // the last dialogue the game loaded was the Help book (aidyn_help_book)
 
 gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     book_frames = journal_frame ? 10 : std::max(0, book_frames - 1);
@@ -3855,8 +3856,17 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         g = draw_hint_row(rdram, g, map_page, row, 1, 224.0f, 193.0f, true);
     }
     if (journal && journal_page.seen && journal_page.alpha != 0) {
-        const int row[] = { branding_index("hint_scroll"), branding_index("hint_close") };
-        g = draw_hint_row(rdram, g, journal_page, row, 2, 153.0f, 222.0f, true);
+        // The map page's Journal and the pause menu's Help close with B. A book in the world (Becan's Journal: a
+        // conversation, gameStateA 12; not the Help book) doesn't: its list is chosen from with A ("Leave the Journal." closes it) and an
+        // entry's page goes back to the list with A (spitzdano, 2026-10-31: the hint said B closes).
+        if (state_a == 12 && !paused && !help_book_loaded) {  // (the Help book is a conversation too, and B closes it)
+            const bool list = conversation_state(rdram) == 2;
+            const int row[] = { branding_index("hint_scroll"), branding_index(list ? "hint_choose" : "hint_return") };
+            g = draw_hint_row(rdram, g, journal_page, list ? row : row + 1, list ? 2 : 1, 153.0f, 222.0f, true);
+        } else {
+            const int row[] = { branding_index("hint_scroll"), branding_index("hint_close") };
+            g = draw_hint_row(rdram, g, journal_page, row, 2, 153.0f, 222.0f, true);
+        }
     }
     treasure_title.seen = false;
     inventory_page.seen = false;
@@ -5137,6 +5147,7 @@ namespace {
 }
 
 extern "C" void aidyn_help_book(uint8_t* rdram, uint32_t index, gpr header) {
+    help_book_loaded = index == 0x54B;  // each dialogue loaded: is it the Help book (aidyn_prompts: B closes that one)
     if (index != 0x54B || !heap_pointer(header)) {
         return;
     }

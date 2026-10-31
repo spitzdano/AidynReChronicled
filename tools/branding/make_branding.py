@@ -370,7 +370,8 @@ HINTS = [("hint_take", "Take", "A"), ("hint_putback", "Put back", "A"), ("hint_l
          ("hint_switch", "Switch", "DPAD"), ("hint_equip", "Equip", "A"), ("hint_unequip", "Unequip", "A"),
          ("hint_use", "Use", "A"), ("hint_lists", "Lists", "DPAD"), ("hint_train", "Train", "A"),
          ("hint_buy", "Buy", "A"), ("hint_sell", "Sell", "A"), ("hint_appraise", "Appraise", "CU"),
-         ("hint_open", "Open", "A"), ("hint_scroll", "Scroll", "DPAD"), ("hint_close", "Close", "B")]
+         ("hint_open", "Open", "A"), ("hint_scroll", "Scroll", "DPAD"), ("hint_close", "Close", "B"),
+         ("hint_choose", "Choose", "A"), ("hint_return", "Return", "A")]
 
 CONTROLS = [
     ("ctl_walk", (("LS",), "Walk")),
