@@ -2025,20 +2025,29 @@ namespace {
         };
         const int run = running_version();
         const int mark = title_image("ver_mark"), label = title_image(kVersionImages[run]);
+        // The Y button's picture is centred under the arrow (both 10 texels wide, so they line up; the keyboard's key cap is
+        // 15, and hung out to the right, into "Versions"), and both lines' text start at the same x, three texels past the
+        // wider of the two (spitzdano, 2026-11-01).
+        const int y_icon = title_image("ver_y");
+        const float mark_w = mark >= 0 ? (float)aidyn::branding::kImages[mark].w : 10.0f;
+        const float icon_w = y_icon >= 0 ? (float)aidyn::branding::kImages[y_icon].w : 10.0f;
+        const float centre = 10.0f + mark_w / 2.0f;
+        const float icon_x = centre - icon_w / 2.0f;
+        const float text_x = centre + std::max(mark_w, icon_w) / 2.0f + 3.0f;
         tint(0xFFFFFF, 1.0f);
         if (mark >= 0) {
             g = draw_rgba16(rdram, g, mark, 10.0f * hs, 194.0f * vs, hs, vs);
         }
         if (label >= 0) {
-            g = draw_rgba16(rdram, g, label, 22.0f * hs, 194.0f * vs, hs, vs);
+            g = draw_rgba16(rdram, g, label, text_x * hs, 194.0f * vs, hs, vs);
         }
         tint(0xD2CDC3, 0.95f);
         const int icon = title_image("ver_y"), word = title_image("ver_versions");
         if (icon >= 0) {
-            g = draw_rgba16(rdram, g, icon, 10.0f * hs, 206.0f * vs, hs, vs);
+            g = draw_rgba16(rdram, g, icon, icon_x * hs, 206.0f * vs, hs, vs);
         }
         if (word >= 0) {
-            g = draw_rgba16(rdram, g, word, 22.0f * hs, 206.0f * vs, hs, vs);
+            g = draw_rgba16(rdram, g, word, text_x * hs, 206.0f * vs, hs, vs);
         }
         put(rdram, g, 0xFA000000, card_rgba);  // the card's own again
         return g;
