@@ -10,7 +10,9 @@ recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run o
 engine. The two stay separate and share art, fixes and findings. Aidyn ReChronicled remains the original game and its
 mods, fixed and improved.
 
-![Aidyn Chronicles: The First Mage, ReChronicled](docs/banner.jpg)
+![Aidyn ReChronicled: The First Mage](docs/banner.jpg)
+
+**1.0.0 is the main release.** New features stop here: spitzdano is putting the work down to play the game. Bug fixes will follow as they turn up, and maybe some quality-of-life additions. Updates come through the game itself (Updates on the title menu), so there is nothing to download again.
 
 ## Features
 
@@ -54,10 +56,10 @@ checks it against this SHA-1:
 47ae795a2b12783a13e2b8d03439ce9a39fc826c  baserom.z64
 ```
 
-> **Work in progress.** This is a hobby project I'm making for myself, in my own time. Expect rough edges, unfinished
-> parts and changes between releases, and no schedule. For lack of time I haven't played very far into the game yet,
-> so playtests and problem reports from further along are very welcome (see [Found a problem?](#found-a-problem));
-> I'll work on them when I can.
+> **Work in progress.** This is a hobby project I'm making for myself, in my own time, with no schedule. Expect some
+> rough edges. New features stop with 1.0.0 so I can play the game; I'll fix bugs as they turn up, and maybe add small
+> quality-of-life things. I haven't played very far into the game yet, so playtests and problem reports from further
+> along are very welcome (see [Found a problem?](#found-a-problem)); I'll work on them when I can.
 
 > **Unofficial fan project.** Not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. *Aidyn
 > Chronicles: The First Mage* and its characters, art and music belong to their rights holders.
@@ -75,13 +77,17 @@ checks it against this SHA-1:
 | | |
 |---|---|
 | ![The title screen](docs/screenshots/title.jpg) | ![The title menu](docs/screenshots/title-menu.jpg) |
-| The redesigned title card, and the version switch | Continue picks up from your newest save |
-| ![Walking about in the first forest](docs/screenshots/field.jpg) | ![Alaron in the newly painted forest](docs/screenshots/painted-world.jpg) |
-| The new HUD, the controls card, widescreen | Newly painted world textures and portraits |
-| ![A fight](docs/screenshots/combat.jpg) | ![The inventory page](docs/screenshots/inventory.jpg) |
-| The turn order bar, framed portraits and the combat log | The repainted scroll, HD lettering and Xbox prompts |
-| ![The map and calendar page](docs/screenshots/map-and-calendar.jpg) | ![The ReChronicled page](docs/screenshots/rechronicled-page.jpg) |
-| The map page's calendar with its moon phases | This edition's options, changed while you play |
+| The new logo, and the version switch | Continue, Display, Controls, Achievements and Updates before the game starts |
+| ![The title menu's Display page](docs/screenshots/title-display.jpg) | ![Updates](docs/screenshots/updates-panel.jpg) |
+| Frame rate, anti-aliasing and the rest, set before starting a game | In-game updates: what's new, then only the changed files are downloaded |
+| ![Walking about in the first forest](docs/screenshots/field.jpg) | ![The coast](docs/screenshots/painted-world.jpg) |
+| The new party bar, the compass, the controls card, widescreen | Newly painted world textures, the right-stick camera |
+| ![A fight](docs/screenshots/combat.jpg) | ![The party and its inventory](docs/screenshots/inventory.jpg) |
+| The turn order bar, framed portraits, the combat log and its controls card | The repainted scroll, the new portraits, HD lettering and Xbox prompts |
+| ![The map and calendar page](docs/screenshots/map-and-calendar.jpg) | ![The Display page](docs/screenshots/display-page.jpg) |
+| The map page's calendar with its moon phases | Frame rate, separate anti-aliasing and supersampling, changed while you play |
+| ![The ReChronicled page](docs/screenshots/rechronicled-page.jpg) | ![Achievements](docs/screenshots/title-achievements.jpg) |
+| This edition's options, changed while you play | Achievements for each version of the game |
 
 ## Download and play
 
