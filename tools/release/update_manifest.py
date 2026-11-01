@@ -6,11 +6,12 @@
         printed as hex for kPublicKey in src/main/updater.cpp
     update_manifest.py build --version 0.9.2 --tag v0.9.2 [--prerelease] --platform linux-x86_64=<dir>
                              [--platform windows-x86_64=<dir>] [--base <earlier update.json>] --url-base <URL>
-                             --assets <dir> --out <update.json>
+                             --assets <dir> [--files-tag update-files] --out <update.json>
         every file under each platform's folder (the installed game: Linux's game/, the Windows zip's folder; never
         ROMs/ or .update/) with its size, BLAKE2b-256 and a URL. A file whose hash an earlier manifest (--base) has
         keeps that URL (an earlier release's asset); the others are copied into <assets> as <hash16>-<name>, uploaded
-        with this release at <url-base>/<tag>/<asset>. A file both platforms have is uploaded once.
+        at <url-base>/<files-tag>/<asset> (--files-tag: the release that holds the update files, so the version's own
+        release page shows only its downloads; default the version's own tag). A file both platforms have is uploaded once.
     update_manifest.py sign <update.json> --key <private.pem>
         <update.json>.sig: the Ed25519 signature of the file's bytes, base64 (openssl pkeyutl -rawin)
     update_manifest.py verify <update.json> --public <hex>
@@ -98,7 +99,7 @@ def cmd_build(a):
                         os.link(p, target)  # the same file, no second gigabyte
                     except OSError:
                         shutil.copyfile(p, target)
-                url = f"{a.url_base.rstrip('/')}/{a.tag}/{name}"
+                url = f"{a.url_base.rstrip('/')}/{a.files_tag or a.tag}/{name}"
                 uploaded[digest] = url
                 new_bytes += p.stat().st_size
             entries.append({"path": rel, "size": p.stat().st_size, "blake2b": digest, "url": url,
@@ -145,6 +146,7 @@ def main():
     b.add_argument("--base")
     b.add_argument("--url-base", required=True)
     b.add_argument("--assets", required=True)
+    b.add_argument("--files-tag", help="release tag the update files are uploaded to (default: --tag)")
     b.add_argument("--out", required=True)
     s = sub.add_parser("sign")
     s.add_argument("manifest")

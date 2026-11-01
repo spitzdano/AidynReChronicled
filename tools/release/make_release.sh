@@ -29,7 +29,8 @@
 # RELEASE-NOTES.md: all the notes files, newest first. --publish needs this version's notes file.
 # In-game updates (src/main/updater.cpp): --publish also makes update.json (tools/release/update_manifest.py: every
 # installed file of each platform with its BLAKE2b and the URL of an asset holding it; files unchanged since the base
-# release keep that release's URL, the others are uploaded with this one as <hash16>-<name>), signed with the release
+# release keep that release's URL, the others are uploaded to the "update-files" release as <hash16>-<name>, so a
+# version's own release page shows only its downloads), signed with the release
 # key (AIDYN_SIGNING_KEY, default ~/Vault/aidyn-release/signing-key.pem: the vault must be open). A full release's base
 # is the last full release with a manifest, a test build's the newest release with one.
 set -euo pipefail
@@ -196,11 +197,26 @@ platforms=(--platform "linux-x86_64=$out/$name/game")
 (( windows )) && platforms+=(--platform "windows-x86_64=$out/$wname")
 python3 -I tools/release/update_manifest.py build --version "$version" --tag "$tag" $( (( test )) && echo --prerelease) \
     "${platforms[@]}" ${base:+--base "$base_dir/update.json"} \
-    --url-base https://github.com/spitzdano/AidynReChronicled/releases/download --assets "$update_assets" --out "$out/update.json"
+    --url-base https://github.com/spitzdano/AidynReChronicled/releases/download --files-tag update-files --assets "$update_assets" --out "$out/update.json"
 echo "make_release.sh: base ${base:-none (every file uploaded)}"
 python3 -I tools/release/update_manifest.py sign "$out/update.json" --key "$signing_key"
 assets+=("$out/update.json" "$out/update.json.sig")
-for f in "$update_assets"/*; do [[ -e $f ]] && assets+=("$f"); done
+echo "== update files (release update-files)"
+# One pre-release holds every release's update files (the manifests point at it), so the version releases stay clean.
+# Its tag sits on the first commit, so it is the oldest in the list and never "Latest".
+if ! gh release view update-files >/dev/null 2>&1; then
+    gh release create update-files --prerelease --latest=false --target "$(git rev-list --max-parents=0 HEAD | tail -1)" \
+        --title "Update files (used by the in-game updater, not a download)" \
+        --notes "Files the game downloads when you press Update. Nothing here to download by hand: get the game from the [latest release](https://github.com/spitzdano/AidynReChronicled/releases/latest)."
+fi
+have=$(gh release view update-files --json assets -q '.assets[].name' | sort)
+upload=()
+for f in "$update_assets"/*; do
+    [[ -e $f ]] || continue
+    grep -qxF "$(basename "$f")" <<<"$have" || upload+=("$f")
+done
+(( ${#upload[@]} == 0 )) || gh release upload update-files "${upload[@]}"
+echo "make_release.sh: ${#upload[@]} update files uploaded"
 echo "== GitHub release $tag"
 git tag -a "$tag" -m "Aidyn ReChronicled $version$( (( test )) && echo " (test build)")"
 git push -q origin "$tag"
