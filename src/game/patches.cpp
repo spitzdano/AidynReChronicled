@@ -2578,14 +2578,19 @@ extern "C" void aidyn_ff_combat(uint8_t* rdram) {
     ff_combat_carry = speed - (float)ff_combat;
 }
 
-// Graphics__EndList (the end of every frame's display list) draws this: the chevrons (branding image 4), 8 texels in
-// from the top right of the picture, while the player's fast-forward is on.
+// Graphics__EndList (the end of every frame's display list) draws this: the chevrons (branding image "fast_forward",
+// by name: 1.0.0's title-card edition lines moved the pictures along, and the fixed index 4 showed ACTION EDITION here,
+// #76), 8 texels in from the top right of the picture, while the player's fast-forward is on.
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g) {
     if (!aidyn::input::fast_forward()) {
         return g;
     }
+    const int ff = find_image("fast_forward");
+    if (ff < 0) {
+        return g;
+    }
     copy_branding(rdram);
-    const auto& img = aidyn::branding::kImages[4];
+    const auto& img = aidyn::branding::kImages[ff];
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
     g = hud_begin(rdram, g, true);
@@ -2597,7 +2602,7 @@ gpr aidyn_ff_marker(uint8_t* rdram, gpr g) {
     cmd(0xE2001E01, 0x00000000);         // gDPSetAlphaCompare(G_AC_NONE)
     cmd(0xE200001C, 0x00504240);         // gDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2)
     cmd(0xFCFFFFFF, 0xFFFCF279);         // gDPSetCombineMode(G_CC_DECALRGBA, G_CC_DECALRGBA)
-    g = draw_rgba16(rdram, g, 4, (320 - 8 - img.w) * hs, 8 * vs, hs, vs);
+    g = draw_rgba16(rdram, g, (size_t)ff, (320 - 8 - img.w) * hs, 8 * vs, hs, vs);
     return hud_end(rdram, g);
 }
 
