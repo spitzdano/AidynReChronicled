@@ -362,6 +362,14 @@ static void graphics_memory_fallback(const std::filesystem::path& logs) {
     aidyn_startup_notice("Graphics memory ran out: " + what);
 }
 
+// Resolution: settings.json's render_height (0 = auto: the window's own height, at most 2160 lines), taken up on the
+// next frame like supersampling.
+void aidyn::set_render_height(int lines) {
+    aidyn::settings::graphics_rw().render_height = lines;
+    aidyn::settings::save_number("graphics", "render_height", lines);
+    aidyn::refresh_aspect();
+}
+
 void aidyn::set_antialiasing(int msaa, int supersampling) {
     aidyn::settings::graphics_rw().msaa = msaa;
     aidyn::settings::graphics_rw().supersampling = supersampling;

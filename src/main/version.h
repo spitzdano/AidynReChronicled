@@ -13,6 +13,7 @@ namespace aidyn {
     // MSAA (0, 2, 4, 8) and supersampling (1 to 4), applied on the next frame and remembered in settings.json (the
     // Display page's Anti-aliasing row).
     void set_antialiasing(int msaa, int supersampling);
+    void set_render_height(int lines);  // 0 = auto (the window's height, at most 2160); the Display page's Resolution
     // The frame rate RT64 aims for: settings.json's fps_limit, or 1000 for 0 (unlimited; the display's rate holds it
     // anyway, except under gamescope). set_fps_limit (the Display page's Frame rate row) applies and remembers one.
     int fps_target();

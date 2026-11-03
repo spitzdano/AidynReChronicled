@@ -4628,6 +4628,11 @@ namespace {
     constexpr const char* kMsaaWords[] = { "rc_off", "rc_dd_2", "rc_x4", "rc_x8" };
     constexpr float kSupersamplingSteps[] = { 1.0f, 2.0f };
     constexpr const char* kSupersamplingWords[] = { "rc_off", "rc_dd_2" };
+    // Resolution (2026-11-02): settings.json's render_height, 0 = auto (the window's own height, at most 2160). The steps
+    // are the usual screen heights; a value written by hand shows as the nearest (0 stays Auto).
+    constexpr float kResolutionSteps[] = { 0.0f, 720.0f, 1080.0f, 1440.0f, 2160.0f };
+    constexpr const char* kResolutionWords[] = { "rc_res_auto", "rc_res_720", "rc_res_1080", "rc_res_1440", "rc_res_2160" };
+    float resolution_step = 1080.0f;
     float msaa_step = 4.0f, supersampling_step = 2.0f;  // the rows' values, from settings.json when the page lists its rows
     // Frame rate (spitzdano, 2026-10-30): settings.json's fps_limit, 0 unlimited (aidyn::set_fps_limit). Nothing below
     // 60: the game makes 60 frames a second and the limit only holds back RT64's in-between ones (30 still showed 60).
@@ -4665,6 +4670,16 @@ namespace {
                                                    (int)std::size(kSupersamplingSteps) };
             msaa_step = (float)gfx.msaa;  // shown as the nearest step (settings.json may hold 3x or 4x supersampling)
             supersampling_step = (float)gfx.supersampling;
+            static const RcSteps resolution = { &resolution_step, kResolutionSteps, kResolutionWords,
+                                                (int)std::size(kResolutionSteps) };
+            resolution_step = gfx.render_height == 0 ? 0.0f : (float)gfx.render_height;
+            if (gfx.render_height != 0) {  // not "near": a macro in windows.h
+                int pick = 1;
+                for (int i = 2; i < (int)std::size(kResolutionSteps); i++) {
+                    if (std::fabs(kResolutionSteps[i] - gfx.render_height) < std::fabs(kResolutionSteps[pick] - gfx.render_height)) pick = i;
+                }
+                resolution_step = kResolutionSteps[pick];
+            }
             static const RcSteps fps = { &fps_step, kFpsSteps, kFpsWords, (int)std::size(kFpsSteps) };
             {  // the step nearest settings.json's fps_limit (it may hold any rate)
                 const int have = gfx.fps_limit;
@@ -4685,6 +4700,8 @@ namespace {
                 { "rc_fps", &gfx.fps_counter, "fps_counter", nullptr },
                 { "rc_hud_edges", &gfx.hud_at_edges, "hud_at_edges", nullptr },
                 { "rc_draw_distance", nullptr, "draw_distance", nullptr, nullptr, &distance },
+                { "rc_resolution", nullptr, "", [](uint8_t*) { aidyn::set_render_height((int)resolution_step); }, nullptr,
+                  &resolution },
                 { "rc_anti_aliasing", nullptr, "", [](uint8_t*) {
                       aidyn::set_antialiasing((int)msaa_step, aidyn::settings::graphics().supersampling);
                   }, nullptr, &msaa },
@@ -4778,7 +4795,7 @@ namespace {
         } else {
             const RcSteps& s = *r.steps;
             *s.value = s.steps[(step_index(s) + step + s.n) % s.n];
-            if (*r.key != '\0') {  // (Anti-aliasing and Supersampling save through set_antialiasing)
+            if (*r.key != '\0') {  // (Anti-aliasing, Supersampling and Resolution save through their own setters)
                 aidyn::settings::save_number(r.section, r.key, *s.value);
             }
         }
