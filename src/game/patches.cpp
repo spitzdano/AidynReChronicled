@@ -9330,14 +9330,16 @@ gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         tu.wrapped_for = s.notes;
         tu.scroll = 0;
     }
-    const int max_scroll = notes_shown ? std::max(0, (int)tu.lines.size() - notes_visible) : 0;
+    // The notes go by pages (LB / RB): scroll is the page, "Page 1 of 2" says where.
+    const int pages = notes_shown ? std::max(1, ((int)tu.lines.size() + notes_visible - 1) / notes_visible) : 1;
+    const int max_scroll = pages - 1;
 
     const bool ready = !tu.closing && tu.fade == 255;
     if (ready) {
         if (act & 0x0800) { tu.row = (tu.row + n - 1) % n; tu.confirm_undo = false; rc_sound(rdram, ctx, 0x73B, 30); }
         if (act & 0x0400) { tu.row = (tu.row + 1) % n; tu.confirm_undo = false; rc_sound(rdram, ctx, 0x73B, 30); }
-        if (act & 0x0020) tu.scroll = std::max(0, tu.scroll - 3);              // LB
-        if (act & 0x0010) tu.scroll = std::min(max_scroll, tu.scroll + 3);     // RB
+        if ((pressed & 0x0020) && tu.scroll > 0) { tu.scroll--; rc_sound(rdram, ctx, 0x73B, 30); }                  // LB
+        if ((pressed & 0x0010) && tu.scroll < max_scroll) { tu.scroll++; rc_sound(rdram, ctx, 0x73B, 30); }       // RB
         const UpdRow cur = rows[tu.row];
         const bool choose = (pressed & 0x8000) || (cur != UpdRow::Action && cur != UpdRow::Undo && (act & 0x0300));
         if (choose) {
@@ -9405,12 +9407,13 @@ gpr title_updates_page(uint8_t* rdram, recomp_context* ctx, gpr g) {
         g = ctl_text(rdram, ctx, g, head[i], left, status_top + 9.0f * i, 0.6f, s.phase == P::Failed ? 0xE89070 : ink, tu.fade);
     }
     if (notes_shown) {
-        for (int i = 0; i < notes_visible && tu.scroll + i < (int)tu.lines.size(); i++) {
-            g = ctl_text(rdram, ctx, g, tu.lines[tu.scroll + i], left, notes_top + step * i, scale, dim + 0x303030, tu.fade);
+        const int first_line = tu.scroll * notes_visible;
+        for (int i = 0; i < notes_visible && first_line + i < (int)tu.lines.size(); i++) {
+            g = ctl_text(rdram, ctx, g, tu.lines[first_line + i], left, notes_top + step * i, scale, dim + 0x303030, tu.fade);
         }
-        if (max_scroll > 0) {
-            g = ctl_text(rdram, ctx, g, std::to_string(tu.scroll + 1) + "-" + std::to_string(std::min((int)tu.lines.size(), tu.scroll + notes_visible)) +
-                         " of " + std::to_string(tu.lines.size()), right, notes_top + step * notes_visible, 0.5f, dim, tu.fade, true);
+        if (pages > 1) {
+            g = ctl_text(rdram, ctx, g, "Page " + std::to_string(tu.scroll + 1) + " of " + std::to_string(pages), right,
+                         notes_top + step * notes_visible, 0.5f, dim, tu.fade, true);
         }
     }
     if (s.phase == P::Downloading && s.total > 0) {  // the progress bar

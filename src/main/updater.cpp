@@ -275,10 +275,15 @@ namespace {
         md = std::regex_replace(md, std::regex(R"(\[([^\]]*)\]\([^)]*\))"), "$1");  // links: their words
         // Release notes are written wrapped at 120 columns: a line that continues the one before it (not blank, not a
         // bullet, not a heading) is joined to it, so each paragraph and bullet is one line for the panel to wrap.
+        // The panel shows only the changes: the release page's lead-in (what the release is, how to get it: everything
+        // before the first heading or bullet) and its "Built from ..." line are left out (when there are headings or
+        // bullets at all).
         std::string out, line, current;
         bool open = false;  // `current` holds an unfinished paragraph or bullet
+        bool structured = false, after_heading = false;
+        size_t keep_from = 0;
         const auto flush = [&] {
-            if (open) out += current + "\n";
+            if (open && current.rfind("Built from ", 0) != 0) out += current + "\n";
             current.clear();
             open = false;
         };
@@ -299,14 +304,24 @@ namespace {
                 clean += line[i];
             }
             size_t first = clean.find_first_not_of(" \t");
-            if (first == std::string::npos) {  // a blank line ends the paragraph
+            if (first == std::string::npos) {  // a blank line ends the paragraph (none right under a heading)
                 flush();
-                out += "\n";
+                if (!after_heading) out += "\n";
+                after_heading = false;
             } else if (heading || clean.rfind("- ", first) == first) {  // a heading, or a new bullet
                 flush();
+                if (!structured) {
+                    structured = true;
+                    keep_from = out.size();
+                }
                 current = clean.substr(first);
                 open = true;
-                if (heading) flush();
+                if (heading) {
+                    flush();
+                    after_heading = true;
+                    continue;
+                }
+                after_heading = false;
             } else if (open) {  // a continuation
                 current += " " + clean.substr(first);
             } else {
@@ -315,7 +330,7 @@ namespace {
             }
         }
         flush();
-        return out;
+        return structured ? out.substr(keep_from) : out;
     }
 
     // ---- the check ----
