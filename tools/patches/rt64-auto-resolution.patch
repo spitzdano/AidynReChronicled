@@ -1,0 +1,23 @@
+Auto resolution for the N64Recomp ports: Resolution::WindowIntegerScale renders at the window's own height
+(at most 2160 lines, 4K) times the supersampling factor, instead of rounding the window up to a whole multiple
+of the reference height (1080 -> 1200 lines) and ignoring supersampling. 1440 window -> 1440, 1080 -> 1080,
+4K -> 2160; follows the window when it is resized, goes fullscreen or moves to another monitor.
+
+diff --git i/src/hle/rt64_workload_queue.cpp w/src/hle/rt64_workload_queue.cpp
+index 5a331aa..84e4728 100644
+--- i/src/hle/rt64_workload_queue.cpp
++++ w/src/hle/rt64_workload_queue.cpp
+@@ -187,8 +187,12 @@ namespace RT64 {
+         const auto resolutionMode = ext.sharedResources->userConfig.resolution;
+         switch (resolutionMode) {
+         case UserConfiguration::Resolution::WindowIntegerScale:
++            // The ports' "auto" resolution: the window's own height in lines (not rounded up to a multiple of the
++            // reference height), at most 4K, times the supersampling factor (RT64 shrinks the result by
++            // downsampleMultiplier). A 1440-line window renders 1440 lines, a 1080-line one 1080, a 4K one 2160.
+             if (ext.sharedResources->swapChainHeight > 0) {
+-                resolutionMultiplier = std::max(float((ext.sharedResources->swapChainHeight + referenceHeight - 1) / referenceHeight), 1.0f);
++                const float lines = std::min(float(ext.sharedResources->swapChainHeight), 2160.0f);
++                resolutionMultiplier = std::max(lines / float(referenceHeight), 1.0f) * float(std::max(ext.sharedResources->userConfig.downsampleMultiplier, 1));
+             }
+             else {
+                 resolutionMultiplier = 1.0f;

@@ -129,10 +129,11 @@ void set_application_user_config(RT64::Application* application, const ultramode
     const aidyn::settings::Graphics& player = aidyn::settings::graphics();
     // Supersampling: RT64 draws at resolutionMultiplier and shrinks the result by downsampleMultiplier, so both grow by
     // the factor. It smooths what MSAA leaves (edges cut by texture alpha, such as hair and leaves, and thin geometry).
-    // With render_height 0 the window's integer scale is used as is (RT64 picks it per frame), without supersampling.
+    // With render_height 0 ("auto") RT64 picks it per frame from the window (the rt64-auto-resolution patch): the
+    // window's own height, at most 2160 lines, times the supersampling factor.
     if (player.render_height == 0) {
         application->userConfig.resolution = RT64::UserConfiguration::Resolution::WindowIntegerScale;
-        application->userConfig.downsampleMultiplier = 1;
+        application->userConfig.downsampleMultiplier = player.supersampling;
     }
     else {
         application->userConfig.resolution = RT64::UserConfiguration::Resolution::Manual;
@@ -494,8 +495,10 @@ static void count_game_frame(RT64::Application* app, const OSTask* task) {
         // Shown: the present thread's own timing (RT64 draws in-between frames above the game's rate).
         const double present_ms = app->presentQueue->presentProfiler.average();
         extern std::atomic_uint32_t aidyn_game_ticks;  // src/game/patches.cpp, "Fast-forward"
-        fprintf(stdout, "fps: %.1f (shown %.1f), game ticks %.0f/s, display list up to %u commands\n", frames / seconds,
-                present_ms > 0.0 ? 1000.0 / present_ms : 0.0, aidyn_game_ticks.exchange(0) / seconds, max_dl / 8);
+        const float scale = app->sharedQueueResources->resolutionScale.y;   // lines drawn = scale x the frame's height
+        fprintf(stdout, "fps: %.1f (shown %.1f), game ticks %.0f/s, display list up to %u commands, scale %.2f, window %u\n", frames / seconds,
+                present_ms > 0.0 ? 1000.0 / present_ms : 0.0, aidyn_game_ticks.exchange(0) / seconds, max_dl / 8, scale,
+                (unsigned)app->sharedQueueResources->swapChainHeight);
         max_dl = 0;
         fflush(stdout);
         frames = 0;
@@ -679,7 +682,9 @@ float aidyn::RT64Context::get_resolution_scale() const {
     switch (app->userConfig.resolution) {
         case RT64::UserConfiguration::Resolution::WindowIntegerScale:
             if (app->sharedQueueResources->swapChainHeight > 0) {
-                return std::max(float((app->sharedQueueResources->swapChainHeight + ReferenceHeight - 1) / ReferenceHeight), 1.0f);
+                // As RT64 computes it (the rt64-auto-resolution patch).
+                return std::max(std::min(float(app->sharedQueueResources->swapChainHeight), 2160.0f) / ReferenceHeight, 1.0f) *
+                       float(std::max(app->userConfig.downsampleMultiplier, 1));
             }
             else {
                 return 1.0f;

@@ -48,7 +48,7 @@ namespace aidyn::settings {
     };
 
     struct Graphics {
-        int render_height = 1080;    // internal resolution in lines (240 = N64); 0 = largest integer scale that fits the window
+        int render_height = 1080;    // internal resolution in lines (240 = N64); 0 = auto: the window's own height, at most 2160 (4K)
         Aspect aspect = Aspect::Ratio;   // in effect: Original while widescreen is off
         bool widescreen = true;          // false: 4:3, the N64's picture, whatever "aspect" says (the Display page)
         std::string aspect_text = "16:9"; // as written in settings.json
