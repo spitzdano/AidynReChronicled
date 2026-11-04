@@ -55,6 +55,8 @@ namespace {
     std::atomic_bool start{ false };
     std::atomic<long long> details_until_ms{ 0 };  // aidyn::input::set_details_switch
     std::atomic_bool details_press{ false };
+    std::atomic<long long> sort_until_ms{ 0 };  // aidyn::input::set_sort_switch
+    std::atomic_bool sort_press{ false };
     std::atomic_int last_device{ -1 };  // 0 the pad, 1 the keyboard or mouse, -1 neither yet (the keyboard if there is no pad)
     std::atomic_bool pad_b{ false };  // the pad's B (not the keyboard's or the mouse's)
     std::atomic_bool quicksave_pressed{ false };  // LB pressed in the field: aidyn::input::quicksave_asked
@@ -300,6 +302,13 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
             b &= ~CD;
         }
         cd_was_down = cd;
+        static bool cu_was_down = false;
+        const bool cu = (b & CU) != 0;
+        if (now_ms < sort_until_ms.load(std::memory_order_relaxed)) {
+            if (cu && !cu_was_down) sort_press.store(true, std::memory_order_relaxed);
+            b &= ~CU;
+        }
+        cu_was_down = cu;
     }
     // In a conversation Start skips it (spitzdano: as Start skips the cinematics): A is pressed for the player, about
     // eight times a second, so every line goes by and everything the conversation does still happens (a flag, an item,
@@ -356,6 +365,15 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
 void aidyn::input::set_details_switch(bool active) {
     const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     details_until_ms.store(active ? now_ms + 250 : 0, std::memory_order_relaxed);
+}
+
+void aidyn::input::set_sort_switch(bool active) {
+    const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    sort_until_ms.store(active ? now_ms + 250 : 0, std::memory_order_relaxed);
+}
+
+bool aidyn::input::sort_pressed() {
+    return sort_press.exchange(false, std::memory_order_relaxed);
 }
 
 bool aidyn::input::details_pressed() {
