@@ -9585,6 +9585,32 @@ namespace {
         return heap_pointer(item) ? row : 0;
     }
 
+    // A weapon's, armour's or shield's entry in the game's database (WeaponDB weapons* +0x18, count +0; ArmorDB Armor* +4, count +2;
+    // 0x34 bytes each, the item's ID in the first u16). An item only carried in the pack is a plain ItemInstance with none of
+    // the type's fields (the game builds a temporary one to show its details): its numbers are read from here.
+    //   weapon: class +0x18, strength +0x19, hit +0x1A, damage +0x1B, skill +0x26, skill amount +0x27
+    //   armour: defence +0x1B, protection +0x1C, dexterity +0x1D, stealth +0x1F, skill +0x26, skill amount +0x27
+    gpr database_entry(uint8_t* rdram, uint32_t type, uint32_t id) {
+        gpr array = 0;
+        uint32_t total = 0;
+        if (type == 7) {
+            const gpr db = MEM_W(0, (gpr)(int32_t)0x800E2B80);
+            if (!heap_pointer(db)) return 0;
+            array = MEM_W(0x18, db);
+            total = MEM_BU(0, db);
+        } else {
+            const gpr db = MEM_W(0, (gpr)(int32_t)0x800E0C40);
+            if (!heap_pointer(db)) return 0;
+            array = MEM_W(4, db);
+            total = MEM_BU(2, db);
+        }
+        if (!heap_pointer(array)) return 0;
+        for (uint32_t i = 0; i < total && i < 255; i++) {
+            if (MEM_HU(0x34 * i, array) == id) return array + 0x34 * i;
+        }
+        return 0;
+    }
+
     const char* item_kind(uint32_t type) {
         switch (type) {
         case 1: return "Item";
@@ -9684,10 +9710,12 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     const uint32_t ink = 0x40386A, brown = 0x7B5560, green = 0x2F6B3A, red = 0x8E2323;
     const std::string name = game_string(rdram, MEM_W(4, item));
     g = ctl_text(rdram, ctx, g, name.empty() ? "?" : name, X(56.0f), Y(90.0f), 0.8f, ink, alpha);
+    const bool pack_item = MEM_BU(0x81, row) == 0xFF && (type == 5 || type == 6 || type == 7);
+    const gpr ram = pack_item ? database_entry(rdram, type, id) : 0;  // a carried item's numbers
     std::string kind = item_kind(type);
     if (type == 7) {
         const gpr table = MEM_W(0, (gpr)(int32_t)0x800E2FC4);  // weapon_strings
-        const uint32_t wt = MEM_BU(0x24, item);
+        const uint32_t wt = pack_item ? MEM_BU(0x18, ram) : MEM_BU(0x24, item);
         const gpr weapon_text = heap_pointer(table) && wt < 32 ? MEM_W(4 * wt, table) : 0;
         const std::string w = game_string(rdram, weapon_text);
         if (!w.empty()) kind = w;
@@ -9731,21 +9759,44 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         const int b = is_signed ? (int)(int8_t)MEM_BU(offset, compare) : (int)MEM_BU(offset, compare);
         return a - b;
     };
-    if (type == 7) {  // a weapon
-        if (MEM_BU(0x17, item) != 0) line(common_string(rdram, 0x219, "Strength needed"), std::to_string(MEM_BU(0x17, item)));
-        line(common_string(rdram, 0x21A, "Base hit"), std::to_string(MEM_BU(0x25, item)), ink, diff(0x25, false));
-        line(common_string(rdram, 0x21B, "Damage"), std::to_string(MEM_BU(0x26, item)), ink, diff(0x26, false));
+    // One value of this item: from the database entry if it's only carried, else from its instance.
+    auto val = [&](uint32_t instance_offset, uint32_t ram_offset, bool is_signed) {
+        const gpr base = pack_item ? ram : item;
+        const uint32_t off = pack_item ? ram_offset : instance_offset;
+        if (base == 0) return 0;
+        return is_signed ? (int)(int8_t)MEM_BU(off, base) : (int)MEM_BU(off, base);
+    };
+    auto skill_mod = [&](gpr instance_mod_ptr, uint32_t ram_skill, uint32_t ram_amount) {  // the weapon's / armour's skill change
+        if (pack_item) {
+            if (ram == 0) return;
+            const int skill = (int)MEM_BU(ram_skill, ram), amount = (int)(int8_t)MEM_BU(ram_amount, ram);
+            if (skill < 12 && amount != 0) line(skill_name(skill), signed_number(amount), amount > 0 ? green : red);
+        } else {
+            mods(instance_mod_ptr, true);
+        }
+    };
+    if (pack_item && ram == 0 && (type == 5 || type == 6 || type == 7)) {
+        // not found in the database: nothing but the name
+    } else if (type == 7) {  // a weapon
+        if (val(0x17, 0x19, false) != 0) line(common_string(rdram, 0x219, "Strength needed"), std::to_string(val(0x17, 0x19, false)));
+        line(common_string(rdram, 0x21A, "Base hit"), std::to_string(val(0x25, 0x1A, false)), ink, compare != 0 ? val(0x25, 0x1A, false) - (int)MEM_BU(0x25, compare) : 0);
+        line(common_string(rdram, 0x21B, "Damage"), std::to_string(val(0x26, 0x1B, false)), ink, compare != 0 ? val(0x26, 0x1B, false) - (int)MEM_BU(0x26, compare) : 0);
         mods(MEM_W(0xC, item), false);
-        mods(MEM_W(0x18, item), true);
+        skill_mod(MEM_W(0x18, item), 0x26, 0x27);
     } else if (type == 5 || type == 6) {  // armour, a shield
-        line(common_string(rdram, 0x220, "Protection"), std::to_string(MEM_BU(0x25, item)), ink, diff(0x25, false));
-        if (type == 6) line(common_string(rdram, 0x221, "Defence"), std::to_string(MEM_BU(0x24, item)), ink, diff(0x24, false));
-        const int dex = (int)(int8_t)MEM_BU(0x26, item), stealth = (int)(int8_t)MEM_BU(0x27, item);
-        line(common_string(rdram, 0x222, "Dexterity"), signed_number(dex), dex < 0 ? red : ink, diff(0x26, true));
-        if (stealth != 0 || diff(0x27, true) != 0)
-            line(common_string(rdram, 0x223, "Stealth"), signed_number(stealth), stealth < 0 ? red : green, diff(0x27, true));
+        const int prot = val(0x25, 0x1C, false), defence = val(0x24, 0x1B, false);
+        const int dex = val(0x26, 0x1D, true), stealth = val(0x27, 0x1F, true);
+        auto d = [&](uint32_t off, int mine, bool is_signed) {
+            if (compare == 0) return 0;
+            return mine - (is_signed ? (int)(int8_t)MEM_BU(off, compare) : (int)MEM_BU(off, compare));
+        };
+        line(common_string(rdram, 0x220, "Protection"), std::to_string(prot), ink, d(0x25, prot, false));
+        if (type == 6) line(common_string(rdram, 0x221, "Defence"), std::to_string(defence), ink, d(0x24, defence, false));
+        line(common_string(rdram, 0x222, "Dexterity"), signed_number(dex), dex < 0 ? red : ink, d(0x26, dex, true));
+        if (stealth != 0 || d(0x27, stealth, true) != 0)
+            line(common_string(rdram, 0x223, "Stealth"), signed_number(stealth), stealth < 0 ? red : green, d(0x27, stealth, true));
         mods(MEM_W(0xC, item), false);
-        mods(MEM_W(0x18, item), true);
+        skill_mod(MEM_W(0x18, item), 0x26, 0x27);
     } else if (type >= 9 && type <= 15) {  // gear (helmet, cloak, gloves, ring, wand, belt, boots)
         const int dmg = (int)(int8_t)MEM_BU(0x14, item), prot = (int)(int8_t)MEM_BU(0x15, item);
         if (dmg != 0) line(common_string(rdram, 0x21B, "Damage"), signed_number(dmg), dmg < 0 ? red : green);
