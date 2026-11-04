@@ -3244,7 +3244,7 @@ namespace {
     gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on, int sort_mode);
     gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys);  // "Inventory page lists", below
-    gpr hide_list_a = 0, hide_list_b = 0;  // the game's own inventory / spells lists (scroll menu widgets) while the port draws them
+    gpr hide_list_a = 0, hide_list_b = 0, hide_list_c = 0;  // the game's own inventory / spells / skills lists (scroll menu widgets) while the port draws them
     int hide_list_ttl = 0;
     void card_icons_free(uint8_t* rdram, recomp_context* ctx);
     bool card_icons_empty();
@@ -3873,15 +3873,16 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         // The inventory and spells lists are drawn by the port (list_overlay, "Inventory page lists"): tabs, headings, sorting. Their
         // keys (X Details, Y sort, the D-pad, LB / RB) are the port's, and the game's own list is hidden under them. The skills list
         // is the game's, with X as the Details switch. Not after a battle (the Train panel).
-        const bool trained = MEM_W(0xA8, lists) != 0;
+        const uint32_t pause_state = MEM_BU(0, (gpr)(int32_t)0x800D9550);  // gGlobals.pauseMenuState: 7 the pause menu, 3 its fight form, 4 a trainer, 5 after a battle, 6 a shop
+        const bool trained = MEM_W(0xA8, lists) != 0 || (pause_state != 7 && pause_state != 3);  // (the game's own lists there: shops and trainers are not redone yet)
         const bool own_lists = aidyn::settings::graphics().tabbed_lists && frame_ctx != nullptr && !trained && inventory_page.alpha != 0;
         hide_list_ttl = std::max(0, hide_list_ttl - 1);
         if (frame_ctx != nullptr && !trained && (on_inventory || on_spells || on_skills)) {
             uint32_t edges = 0;
-            if (own_lists && (on_inventory || on_spells)) {
+            if (own_lists) {
                 menu_keys = 0x0004 | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;
                 edges = aidyn::input::take_menu_keys();
-                g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : 1, on_inventory ? inventory : spells_list, edges);
+                g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : on_spells ? 1 : 2, on_inventory ? inventory : on_spells ? spells_list : skills_list, edges);
             } else {
                 menu_keys = 0x0004;
                 edges = aidyn::input::take_menu_keys();
@@ -10039,7 +10040,7 @@ gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSe
 // up / down never reach the game while the list is up: aidyn::input::set_menu_keys), so A, Z and the rest act on the row it is on.
 extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     const gpr widget = (gpr)(int32_t)(uint32_t)ctx->r4;
-    return hide_list_ttl > 0 && widget != 0 && (widget == hide_list_a || widget == hide_list_b);
+    return hide_list_ttl > 0 && widget != 0 && (widget == hide_list_a || widget == hide_list_b || widget == hide_list_c);
 }
 
 namespace {
@@ -10052,6 +10053,8 @@ namespace {
         bool heading = false;
         std::string text;     // a heading's words, or the name
         std::string lname;
+        uint32_t key = 0;     // what the row is (an item's or a spell's ID, a skill's type << 8 | number): the cursor stays on it
+        int level = 0, mod = 0;  // a skill's level and what changes it
         uint16_t item = 0;    // an inventory row's item ID (its icon)
         gpr icon = 0;         // a spell row's icon (Borg8)
         gpr portrait = 0;     // the wearer's portrait (Borg8)
@@ -10065,10 +10068,11 @@ namespace {
         gpr cursor_thing = 0;     // what the cursor was on, to keep it there when the game rebuilds the list (an equip, a member switch)
         uint32_t cursor_id = 0;
         int cursor_index = 0;
-    } list_ui[2];
+        uint32_t cursor_key = 0;
+    } list_ui[3];
 
-    constexpr int kInventoryTabs = 7, kSpellTabs = 6;
-    bool hover_moved_over_rows[2] = {};
+    constexpr int kInventoryTabs = 7, kSpellTabs = 6, kSkillTabs = 3;
+    bool hover_moved_over_rows[3] = {};
     constexpr float kListX0 = 160.0f, kListX1 = 296.0f, kTabsY = 99.0f, kChipY = 115.5f, kRowsY = 125.0f, kRowsBottom = 205.5f, kListRowStep = 8.8f;
 
     int inventory_tab_of(uint32_t type) {
@@ -10146,14 +10150,32 @@ namespace {
             if (kind == 0) {
                 const uint32_t id = MEM_HU(0, thing), type = id >> 8, user = MEM_BU(0x81, row), quantity = MEM_BU(0x80, row);
                 e.item = (uint16_t)id;
+                e.key = id;
                 e.tab = inventory_tab_of(type);
                 e.group = type_rank(type);
                 e.worn = user != 0xFF;
                 e.portrait = e.worn ? wearer_portrait(rdram, user) : 0;
                 if (quantity > 1) e.qty = std::to_string(quantity);
                 e.right = inventory_stat(rdram, row, thing, type, id);
+            } else if (kind == 2) {
+                // WidgetSkillInfo: varU16 +0x5E type << 8 | subtype (0 a skill, 1 a weapon skill, 2 the shield); its icon widget +0x80,
+                // level text +0x84 (varU16: the level), modifier text +0x88 (varU16: the change, or no widget)
+                const uint32_t kv = MEM_HU(0x5E, row), type = kv >> 8, sub = kv & 0xFF;
+                const gpr table = MEM_W(0, (gpr)(int32_t)0x800E2FC4);  // weapon_strings
+                e.key = kv;
+                e.tab = type == 0 ? 1 : 2;
+                e.group = type == 0 ? 0 : 1;
+                e.text = type == 0 ? skill_name((int)sub) : type == 1 ? (heap_pointer(table) && sub < 32 ? game_string(rdram, MEM_W(4 * sub, table)) : "") : "Shield";
+                e.lname = e.text;
+                for (char& c : e.lname) c = (char)std::tolower((unsigned char)c);
+                const gpr value = MEM_W(0x84, row), modifier = MEM_W(0x88, row), widget = MEM_W(0x80, row);
+                e.level = heap_pointer(value) ? (int)(int16_t)MEM_HU(0x5E, value) : 0;
+                e.mod = heap_pointer(modifier) ? (int)(int16_t)MEM_HU(0x5E, modifier) : 0;
+                const gpr borg = heap_pointer(widget) ? MEM_W(0x6C, widget) : 0;
+                e.icon = heap_pointer(borg) ? borg : 0;
             } else {
                 const uint32_t school = MEM_BU(0x15, thing);
+                e.key = MEM_HU(0, thing);
                 e.tab = spell_tab_of((int)school);
                 e.group = e.tab;
                 const gpr widget = MEM_W(0x88, row);
@@ -10179,7 +10201,7 @@ namespace {
 namespace {
 gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int kind, gpr list, uint32_t keys) {
     ListUi& ui = list_ui[kind];
-    const int tab_count = kind == 0 ? kInventoryTabs : kSpellTabs;
+    const int tab_count = kind == 0 ? kInventoryTabs : kind == 1 ? kSpellTabs : kSkillTabs;
     const int alpha = o.alpha;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };   // page texel -> the text's units
@@ -10202,10 +10224,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     if (!heap_pointer(sub) || !heap_pointer(items)) return g;
     if (ui.last_list != list) { ui.last_list = list; ui.top = 0; }
     hide_list_ttl = 3;
-    (kind == 0 ? hide_list_a : hide_list_b) = menu;
+    (kind == 0 ? hide_list_a : kind == 1 ? hide_list_b : hide_list_c) = menu;
 
     int counts[8] = {};
     gpr tab_icon_row[8] = {};
+    static const char* const skill_tab_names[] = { "All", "Skills", "Arms" };
     for (const ListEntry& e : all) {
         counts[0]++;
         counts[e.tab]++;
@@ -10254,7 +10277,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             if (mode == 1 && groups > 1 && e.group != last) {
                 ListEntry h;
                 h.heading = true;
-                h.text = kind == 0 ? inventory_group_name(e.group) : spell_school_name(e.tab == 2 ? 0 : e.tab == 1 ? 1 : e.tab == 3 ? 2 : e.tab == 4 ? 3 : 5);
+                h.text = kind == 0 ? inventory_group_name(e.group) : kind == 2 ? (e.group == 0 ? "Skills" : "Arms")
+                                                                  : spell_school_name(e.tab == 2 ? 0 : e.tab == 1 ? 1 : e.tab == 3 ? 2 : e.tab == 4 ? 3 : 5);
                 view.push_back(h);
             }
             last = e.group;
@@ -10280,13 +10304,13 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     };
     // The game rebuilds the list now and then (an equip, a member switch) and puts its highlight on whatever row it likes: the cursor
     // stays on the item it was on (the same instance, else one of the same kind nearest its old place).
-    if (ui.cursor_thing != 0 && (pos < 0 || view[pos].thing != ui.cursor_thing || MEM_HU(0, view[pos].thing) != ui.cursor_id)) {
+    if (ui.cursor_thing != 0 && (pos < 0 || view[pos].thing != ui.cursor_thing || view[pos].key != ui.cursor_key)) {
         int found = -1, best = 1 << 30;
         for (int i = 0; i < (int)view.size(); i++) {
             if (view[i].heading) continue;
-            const uint32_t id = MEM_HU(0, view[i].thing);
-            if (view[i].thing == ui.cursor_thing && id == ui.cursor_id) { found = i; break; }  // (a freed instance's place is reused: the ID too)
-            if (id == ui.cursor_id && std::abs(view[i].index - ui.cursor_index) < best) { best = std::abs(view[i].index - ui.cursor_index); found = i; }
+            const uint32_t id = view[i].key;
+            if (view[i].thing == ui.cursor_thing && id == ui.cursor_key) { found = i; break; }  // (a freed instance's place is reused: the ID too)
+            if (id == ui.cursor_key && std::abs(view[i].index - ui.cursor_index) < best) { best = std::abs(view[i].index - ui.cursor_index); found = i; }
         }
         if (found >= 0) move_cursor(found);
     }
@@ -10301,7 +10325,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     // The mouse: the pointer over a row highlights it (A, or the click that is A, then acts on it), a click on a tab or a chip is that
     // tab's or chip's key. The pointer is in the menus' 320 x 240 units, the page in texels (o.x, o.y and o.sx are screen pixels).
     {
-        static uint32_t seen_moves[2] = {}, seen_clicks[2] = {};
+        static uint32_t seen_moves[3] = {}, seen_clicks[3] = {};
         float mx = 0.0f, my = 0.0f;
         uint32_t moves = 0, clicks = 0;
         auto to_page = [&](float ux, float uy, float* tx, float* ty) { *tx = (ux * hs - o.x) / o.sx; *ty = (uy * vs - o.y) / o.sy; };
@@ -10335,7 +10359,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     }
     if (pos >= 0) {  // what the cursor is on now
         ui.cursor_thing = view[pos].thing;
-        ui.cursor_id = MEM_HU(0, view[pos].thing);
+        ui.cursor_key = view[pos].key;
         ui.cursor_index = view[pos].index;
     }
     if (pos >= 0) {
@@ -10346,12 +10370,12 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     ui.top = std::clamp(ui.top, 0, std::max(0, (int)view.size() - visible));
 
     // ---- the card or the doll ----
-    static int hover_frames[2] = {};
+    static int hover_frames[3] = {};
     hover_frames[kind] = std::max(0, hover_frames[kind] - 1);
     if (hover_moved_over_rows[kind]) hover_frames[kind] = 150;  // a mouse over the rows shows the card for a while even with Details off
     hover_moved_over_rows[kind] = false;
     if (settings.details || hover_frames[kind] > 0) {
-        g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : draw_spell_card(rdram, ctx, g, o, list);
+        g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : kind == 1 ? draw_spell_card(rdram, ctx, g, o, list) : draw_skill_card(rdram, ctx, g, o, list);
     }
 
     // ---- pictures ----
@@ -10402,8 +10426,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         const float x = tabs_x + t * (tab_w + tab_gap);
         const bool on = t == ui.tab;
         const int a = counts[t] == 0 ? alpha / 2 : alpha;
-        if (t == 0) {
-            g = ctl_text(rdram, ctx, g, "All", X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), 0.5f, on ? hot : ink, a, false, true);
+        if (t == 0 || kind == 2) {
+            g = ctl_text(rdram, ctx, g, skill_tab_names[kind == 2 ? t : 0], X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), kind == 2 && t > 0 ? 0.4f : 0.5f, on ? hot : ink, a, false, true);
         } else if (tab_icon_row[t] != 0) {
             const gpr thing = MEM_W(0x7C, tab_icon_row[t]);
             const gpr ic = kind == 0 ? card_icon(rdram, ctx, MEM_HU(0, thing)) : [&] {
@@ -10413,7 +10437,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             }();
             g = draw_borg_icon(rdram, ctx, g, ic, X(x + 2.4f), Y(kTabsY + 1.6f), 10.0f * o.sx / hs, a);
         }
-        if (counts[t] > 0 && t > 0) {
+        if (counts[t] > 0 && t > 0 && kind != 2) {
             g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 0.8f), Y(kTabsY + 7.6f), 0.42f, brown, a, true);
         }
     }
@@ -10435,6 +10459,15 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         const gpr ic = kind == 0 ? card_icon(rdram, ctx, e.item) : e.icon;
         g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha);
         if (!e.qty.empty()) g = ctl_text(rdram, ctx, g, e.qty, X(kListX0 + 29.0f), Y(y + 0.5f), 0.55f, sel ? hot : dim, alpha, true);
+        if (kind == 2) {  // the level, what changes it, and a bar for how far up the scale it is (the game's top is 10)
+            g = ctl_text(rdram, ctx, g, std::to_string(e.level), X(kListX1 - 42.0f), Y(y + 0.3f), 0.6f, sel ? hot : ink, alpha, true);
+            if (e.mod != 0) g = ctl_text(rdram, ctx, g, "(" + std::string(e.mod > 0 ? "+" : "") + std::to_string(e.mod) + ")", X(kListX1 - 26.0f), Y(y + 0.5f), 0.5f, e.mod > 0 ? 0x2F6B3A : 0x8E2323, alpha, true);
+            const float bx0 = X(kListX1 - 23.0f), bx1 = X(kListX1 - 2.0f), by0 = Y(y + 3.2f), by1 = Y(y + 5.0f);
+            g = rect_state(rdram, g);
+            g = rect(rdram, g, bx0, by0, bx1, by1, 0x7B556000u | (uint32_t)(alpha / 4), hs, vs);
+            g = rect(rdram, g, bx0, by0, bx0 + (bx1 - bx0) * (float)std::clamp(e.level, 0, 10) / 10.0f, by1, 0x6B4A9A00u | (uint32_t)alpha, hs, vs);
+            g = ctl_state(rdram, ctx, g);
+        }
         g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 32.0f), Y(y + 0.3f), 0.6f, sel ? hot : ink, alpha);
         if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + 0.7f), 0.5f, sel ? hot : dim, alpha, true);
     }
