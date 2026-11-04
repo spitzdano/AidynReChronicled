@@ -321,6 +321,7 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     }
     // The right stick turns the menu's pages (LB and RB did, and still do where they aren't the tabs): a flick left or right is L or R.
     if (menu_mode.load(std::memory_order_relaxed)) {
+        b &= ~(L | R);  // LB and RB turn no pages (spitzdano, 2026-11-04: confusing beside the lists' tabs); the right stick does
         static bool flicked = false;
         static long long pulse_until = 0;
         static uint16_t pulse_bit = 0;

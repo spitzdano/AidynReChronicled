@@ -297,7 +297,10 @@ extern "C" void aidyn_menu_drawn(void) {
 // similar) until the menu closes. A TV's overscan and the game's black borders hid those edges. Here they showed as a
 // narrower page, and the journal slid in under that clip was cut into texture strips the HD pack doesn't have, so it
 // fell back to the original parchment. aidyn.us.toml hooks the "menu open" store to finish the reveal at 0..320.
+gpr pause_scroll_base = 0;  // &gGlobals.scrollLocation - 0x18 (the hook's s7): the clip the pages are drawn through is the s16 pair at +0x18
+
 extern "C" void aidyn_menu_opened(uint8_t* rdram, gpr scroll) {
+    pause_scroll_base = scroll;
     MEM_H(0x18, scroll) = 0;    // gGlobals.scrollLocation[0]
     MEM_H(0x1A, scroll) = 320;  // gGlobals.scrollLocation[1]
 }
@@ -3830,8 +3833,22 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                        branding_index("hint_switch") }, 192.0f);
         }
     }
+    bool page_clipped = false;
     if (inventory_page.seen && inventory_page.alpha != 0 && !treasure_title.seen && heap_pointer(doll_lists)) {
         const gpr lists = doll_lists;
+        // What the port draws on the page is clipped as the page is, to the scroll's window (gGlobals.scrollLocation: while the page slides
+        // in or out, the lists and the card would otherwise show beyond the parchment's edge, over the roller and the next page).
+        if (heap_pointer(pause_scroll_base)) {
+            const int l0 = std::clamp((int)(int16_t)MEM_HU(0x18, pause_scroll_base), 0, 320), l1 = std::clamp((int)(int16_t)MEM_HU(0x1A, pause_scroll_base), 0, 320);
+            const float hsu = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vsu = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+            // ...and to the page itself (its 320 texels from the page's own origin), so what slides past the roller isn't drawn over it
+            const float cx0 = std::max(l0 * hsu, inventory_page.x), cx1 = std::min(l1 * hsu, inventory_page.x + 320.0f * inventory_page.sx);
+            GfxCommand c[1];
+            c[0].values.word0 = 0xED000000 | (((uint32_t)std::max(0.0f, cx0 * 4.0f) & 0xFFF) << 12);
+            c[0].values.word1 = (((uint32_t)std::max(0.0f, cx1 * 4.0f) & 0xFFF) << 12) | ((uint32_t)(240.0f * vsu * 4.0f) & 0xFFF);
+            g = put_cmds(rdram, g, c, 1);
+            page_clipped = true;
+        }
         const uint32_t index = MEM_BU(0x90, lists), count = MEM_BU(0x92, lists);
         const gpr shown = index < 4 ? MEM_W(0x7C + 4 * index, lists) : 0, inventory = MEM_W(0x94, lists);
         const int lists_hint = count > 1 ? branding_index("hint_lists") : -1;
@@ -3877,9 +3894,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         const bool trained = MEM_W(0xA8, lists) != 0 || (pause_state != 7 && pause_state != 3);  // (the game's own lists there: shops and trainers are not redone yet)
         const bool own_lists = aidyn::settings::graphics().tabbed_lists && frame_ctx != nullptr && !trained && inventory_page.alpha != 0;
         hide_list_ttl = std::max(0, hide_list_ttl - 1);
+        bool own_drawn = false;
         if (frame_ctx != nullptr && !trained && (on_inventory || on_spells || on_skills)) {
             uint32_t edges = 0;
             if (own_lists) {
+                own_drawn = true;
                 menu_keys = 0x0004 | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;
                 edges = aidyn::input::take_menu_keys();
                 g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : on_spells ? 1 : 2, on_inventory ? inventory : on_spells ? spells_list : skills_list, edges);
@@ -3901,13 +3920,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 g = prompt_state(rdram, g, inventory_page.alpha);
             }
         }
-        // DETAILS and its X are painted into the page (art/pages, tools/hdui/scroll_pages.py: the button 9.4 texels square at
-        // 282.6, 205.75, 85% of the game's): with the keyboard in use a cap covers it, centred on it.
-        if (aidyn::input::keyboard_last()) {
-            const TitleSeen& o = inventory_page;
-            g = prompt_state(rdram, g, o.alpha);
-            g = draw_button_cap(rdram, g, "CD", std::round(o.x + 281.8f * o.sx), std::round(o.y + 205.75f * o.sy), o.sx, o.sy, 13.0f * kPromptScale,
-                                11.0f * kPromptScale, true);
+        // DETAILS and its X are no longer painted into the page: where the port's lists have their Details chip they would be twice, and
+        // elsewhere (the Stats list, a trainer, after a battle, the game's own lists) the hint is drawn here, like the others.
+        if (!own_drawn) {
+            const int row[] = { branding_index("hint_details") };
+            g = draw_hint_row(rdram, g, inventory_page, row, 1, 232.0f, 204.0f, false);
         }
         // The party switch beside the portraits (their frames span x 21..150, y 25..66). The pictures take the last colour set: after the
         // lists' words that was a highlighted row's violet (the plates turned purple on the last rows), so the tint is set white first.
@@ -3921,6 +3938,13 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 g = draw_rgba16(rdram, g, next, o.x + 153.0f * o.sx, o.y + 40.0f * o.sy, o.sx, o.sy);
             }
         }
+    }
+    if (page_clipped) {  // the whole picture again
+        const uint32_t hh = MEM_HU(kHres1, (gpr)gGfxManager), vv = MEM_HU(kVres1, (gpr)gGfxManager);
+        GfxCommand c[1];
+        c[0].values.word0 = 0xED000000;
+        c[0].values.word1 = ((hh * 4) & 0xFFF) << 12 | ((vv * 4) & 0xFFF);
+        g = put_cmds(rdram, g, c, 1);
     }
     if (combat_menu_box.seen) {
         // Under the box, centred on it.
@@ -9761,7 +9785,7 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
             const float size = 24.0f * k;
             g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon,
                                               f32_bits(X(26.0f)), f32_bits(Y(88.0f)),
-                                              { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
+                                              { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size * (o.sy / vs) / (o.sx / hs) / ih), 255, 255, 255, (uint32_t)alpha });
         }
     }
     const uint32_t ink = 0x40386A, brown = 0x7B5560, green = 0x2F6B3A, red = 0x8E2323;
@@ -10069,6 +10093,7 @@ namespace {
         uint16_t item = 0;    // an inventory row's item ID (its icon)
         gpr icon = 0;         // a spell row's icon (Borg8)
         gpr portrait = 0;     // the wearer's portrait (Borg8)
+        gpr portrait_widget = 0;  // the game's own widget for it (SMIItem userPortrait)
         std::string qty, right;
         bool worn = false;
     };
@@ -10165,7 +10190,12 @@ namespace {
                 e.tab = inventory_tab_of(type);
                 e.group = type_rank(type);
                 e.worn = user != 0xFF;
-                e.portrait = e.worn ? wearer_portrait(rdram, user) : 0;
+                // The picture the game's own row shows: its portrait widget's (SMIItem userPortrait +0x84, Borg8 at +0x6C), the party portrait
+                // (not the character sheet's own +0x44, another picture of them cropped differently, which looked stretched).
+                const gpr pw = e.worn ? MEM_W(0x84, row) : 0;
+                const gpr pb = heap_pointer(pw) ? MEM_W(0x6C, pw) : 0;
+                e.portrait = heap_pointer(pb) ? pb : (e.worn ? wearer_portrait(rdram, user) : 0);
+                e.portrait_widget = heap_pointer(pw) && heap_pointer(pb) ? pw : 0;
                 if (quantity > 1) e.qty = std::to_string(quantity);
                 e.right = inventory_stat(rdram, row, thing, type, id);
             } else if (kind == 2) {
@@ -10201,17 +10231,20 @@ namespace {
     }
 
     // square: a picture that isn't square (a portrait; the game's own rows show them squashed) is cropped to a square from its top middle, not stretched.
-    gpr draw_borg_icon(uint8_t* rdram, recomp_context* ctx, gpr g, gpr icon, float x, float y, float size, int alpha, bool square = false) {
+    // yk: the vertical scale over the horizontal one when the picture's units aren't square (a window wider than 4:3: hs != vs).
+    gpr draw_borg_icon(uint8_t* rdram, recomp_context* ctx, gpr g, gpr icon, float x, float y, float size, int alpha, bool square = false, float yk = 1.0f) {
         if (!heap_pointer(icon)) return g;
         const uint32_t iw = MEM_HU(0x0A, icon), ih = MEM_HU(0x0C, icon);
         if (iw == 0 || ih == 0 || iw > 1024 || ih > 1024) return g;
+        static const bool log = std::getenv("AIDYN_LIST_LOG") != nullptr;
+        if (log && square) fprintf(stderr, "list portrait %08X: %u x %u (units %.2f x %.2f)\n", (uint32_t)icon, iw, ih, size, size * yk);
         if (square && iw != ih) {
             const uint32_t m = std::min(iw, ih), x0 = (iw - m) / 2;
             return (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon, f32_bits(x), f32_bits(y),
-                                                 { x0, 0, x0 + m, m, f32_bits(size / m), f32_bits(size / m), 255, 255, 255, (uint32_t)alpha });
+                                                 { x0, 0, x0 + m, m, f32_bits(size / m), f32_bits(size * yk / m), 255, 255, 255, (uint32_t)alpha });
         }
         return (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon, f32_bits(x), f32_bits(y),
-                                             { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
+                                             { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size * yk / ih), 255, 255, 255, (uint32_t)alpha });
     }
 }
 
@@ -10221,6 +10254,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     const int tab_count = kind == 0 ? kInventoryTabs : kind == 1 ? kSpellTabs : kSkillTabs;
     const int alpha = o.alpha;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    const float yk = (o.sy / vs) / (o.sx / hs);
     auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };   // page texel -> the text's units
     auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
     auto PX = [&](float tx) { return std::round(o.x + tx * o.sx); };  // -> screen pixels
@@ -10430,7 +10464,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
         const float y = kRowsY + (i - ui.top) * kListRowStep;
         if (view[i].heading) g = pic(g, heading_pic, kListX0, y + 2.4f, kListX1, y + 7.4f);
-        else if (i == pos) g = pic(g, hl_pic, kListX0, y - 0.6f, kListX1, y + kListRowStep - 0.2f);
+        else if (i == pos) g = pic(g, hl_pic, kListX0, y - 0.5f, kListX1, y + 8.5f);
     }
     // The scroll bar, when there is more than fits.
     if ((int)view.size() > visible) {
@@ -10459,7 +10493,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
                 const gpr b = heap_pointer(w) ? MEM_W(0x6C, w) : 0;
                 return heap_pointer(b) ? b : (gpr)0;
             }();
-            g = draw_borg_icon(rdram, ctx, g, ic, X(x + 1.3f), Y(kTabsY + 3.0f), 8.2f * o.sx / hs, a);
+            g = draw_borg_icon(rdram, ctx, g, ic, X(x + 1.3f), Y(kTabsY + 3.0f), 8.2f * o.sx / hs, a, false, yk);
         }
         if (counts[t] > 0 && t > 0 && kind != 2) {
             g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 1.0f), Y(kTabsY + 1.3f), 0.36f, 0x5A3A44, a, true);
@@ -10480,10 +10514,25 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             continue;
         }
         const bool sel = i == pos;
-        if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha, true);
+        if (e.portrait_widget != 0) {
+            // The portrait is drawn by the game's own widget (its Render, WidgetBorg8: the same call as in the game's list), set in the
+            // place and size wanted: a picture of mine drawn the same way came out low resolution (the redrawn portraits replace it only
+            // as the game draws it).
+            const gpr pw = e.portrait_widget;
+            const gpr vt = MEM_W(0x78, pw);
+            recomp_func_t* render = heap_pointer(vt) || (uint32_t)vt >= 0x800C0000u ? get_function(MEM_W(0x44, vt)) : nullptr;
+            if (render != nullptr) {
+                const int ux = (int)std::lround(X(kListX0 + 1.5f)), uy = (int)std::lround(Y(y + 0.1f)), us = (int)std::lround(7.8f * o.sx / hs);
+                MEM_H(0x60, pw) = (int16_t)ux; MEM_H(0x62, pw) = (int16_t)uy;
+                MEM_H(0x64, pw) = 0; MEM_H(0x66, pw) = 320; MEM_H(0x68, pw) = 0; MEM_H(0x6A, pw) = 240;
+                MEM_HU(0x74, pw) = (uint16_t)us; MEM_HU(0x72, pw) = (uint16_t)us;
+                MEM_B(0x58, pw) = (int8_t)0xFF; MEM_B(0x59, pw) = (int8_t)0xFF; MEM_B(0x5A, pw) = (int8_t)0xFF; MEM_B(0x5B, pw) = (int8_t)alpha;
+                g = (gpr)(int32_t)call_game_stack(rdram, ctx, render, (uint32_t)(pw + (int16_t)MEM_HU(0x40, vt)), (uint32_t)g, 0, 0, { 320, 240 });
+            }
+        } else if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha, true, yk);
         const gpr ic = kind == 0 ? card_icon(rdram, ctx, e.item) : e.icon;
-        g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha);
-        constexpr float kRowScale = 0.58f, kRowDy = 0.5f;  // name, quantity and the number at the right share a size, so a baseline
+        g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha, false, yk);
+        constexpr float kRowScale = 0.58f, kRowDy = 1.2f;  // name, quantity and the number at the right share a size, so a baseline
         if (!e.qty.empty()) g = ctl_text(rdram, ctx, g, e.qty, X(kListX0 + 29.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
         if (kind == 2) {  // the level, what changes it, and a bar for how far up the scale it is (the game's top is 10)
             g = ctl_text(rdram, ctx, g, std::to_string(e.level), X(kListX1 - 42.0f), Y(y + kRowDy), kRowScale, sel ? hot : ink, alpha, true);

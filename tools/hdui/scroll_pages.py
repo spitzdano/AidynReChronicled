@@ -445,7 +445,7 @@ def main():
         if text == "DETAILS":  # a button hint like the menus' (make_branding.py menu_hint: "Sell", "Switch"), below
             continue
         stats = repaint.draw_word(W, H, stats, (x0, y0, bw, bh), text, colour, FONT, S)
-    pages[1] = draw_details(as_float(W, H, stats))
+    pages[1] = as_float(W, H, stats)  # (DETAILS and its button are now a hint the port draws: the lists have their own Details chip)
     draw_rings(pages[2], calendar_rings(orig["PauseBGMap"]), orig["PauseBGMap"])
     _, numbers = repaint.clean(orig["PauseBGMap"], MAP_LABELS["numbers"])
     mp = bytearray((np.clip(pages[2], 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
