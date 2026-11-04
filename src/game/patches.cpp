@@ -9611,6 +9611,20 @@ namespace {
         return 0;
     }
 
+    // The items' description texts (the details popup's romstring_items: ROM 0xB1FCEF60, 0xED0 bytes, ending where the spells'
+    // begin), by the ID table in ItemDetails.cpp (letters, ingredients, hides, scrolls, amulets): {item ID, text index}.
+    std::vector<std::string> item_texts;
+    std::string item_description(uint8_t* rdram, recomp_context* ctx, uint32_t id) {
+        static const uint16_t kItemText[][2] = { {0x0100,0}, {0x0101,1}, {0x0102,2}, {0x0103,3}, {0x0104,4}, {0x010e,5}, {0x0111,6}, {0x0112,7}, {0x0113,8}, {0x0119,9}, {0x011e,10}, {0x0121,11}, {0x0122,12}, {0x0123,13}, {0x0124,14}, {0x1100,15}, {0x1101,16}, {0x1102,17}, {0x1103,18}, {0x1104,19}, {0x1105,20}, {0x1107,21}, {0x1108,22}, {0x1109,23}, {0x110a,24}, {0x110c,25}, {0x110d,26}, {0x110e,27}, {0x110f,28}, {0x1110,29}, {0x1111,30}, {0x112e,31}, {0x1132,32}, {0x1133,33}, {0x1134,34}, {0x1135,35}, {0x1136,36}, {0x1137,37}, {0x1138,38}, {0x1139,39}, {0x113b,40}, {0x113c,41}, {0x113d,42}, {0x113e,43}, {0x113f,44}, {0x1140,45}, {0x1143,46}, {0x1144,47}, {0x1145,48}, {0x1146,49}, {0x1147,50}, {0x1148,51}, {0x1149,52}, {0x114a,53}, {0x114c,54}, {0x114d,55}, {0x114e,56}, {0x1150,57}, {0x1151,58}, {0x1152,59}, {0x1153,60}, {0x1154,61}, {0x1155,62}, {0x1156,63}, {0x1157,64}, {0x1158,65}, {0x1159,66}, {0x115a,67}, {0x115b,68}, {0x115c,69}, {0x115d,70}, {0x115e,71}, {0x115f,72}, {0x1307,73}, {0x1300,74}, {0x1301,75}, {0x1302,76}, {0x1303,77}, {0x1304,78}, {0x1305,79}, {0x1306,80}, {0x1309,81} };
+        int index = -1;
+        for (const auto& e : kItemText) {
+            if (e[0] == id) { index = e[1]; break; }
+        }
+        if (index < 0) return "";
+        if (item_texts.empty()) item_texts = load_romstrings(rdram, ctx, 0xB1FCEC70u, 0xED0u, 82);
+        return (size_t)index < item_texts.size() ? item_texts[index] : "";
+    }
+
     const char* item_kind(uint32_t type) {
         switch (type) {
         case 1: return "Item";
@@ -9812,8 +9826,8 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         const std::string sn = heap_pointer(spell) ? game_string(rdram, MEM_W(4, spell)) : "";
         if (!sn.empty()) line(type == 13 ? common_string(rdram, 0x227, "Charges") : std::string("Casts"), type == 13 ? sn + " x" + std::to_string(MEM_BU(4, charges)) : sn);
     }
-    if (type == 16) {  // a potion: what it does (the combat descriptions' text)
-        const std::string text = combat_entry_text(rdram, ctx, 0x20000u | (id & 0xFF));
+    {  // what it does: a potion's text (the combat descriptions'), or an item's (a scroll, an amulet, an ingredient...)
+        const std::string text = type == 16 ? combat_entry_text(rdram, ctx, 0x20000u | (id & 0xFF)) : item_description(rdram, ctx, id);
         if (!text.empty()) {
             for (const std::string& l : wrap_lines(rdram, ctx, text, X(144.0f) - X(28.0f), 0.55f)) {
                 if (y > 168.0f) break;
