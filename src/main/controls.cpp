@@ -83,6 +83,9 @@ namespace {
     // The pointer in the window (SDL_MOUSEMOTION while not captured) and the window's size then; a count of moves.
     int g_pointer_x = 0, g_pointer_y = 0, g_window_w = 0, g_window_h = 0;
     uint32_t g_pointer_moves = 0;
+    // The last left click: where, and a count (click()).
+    int g_click_x = 0, g_click_y = 0, g_click_w = 0, g_click_h = 0;
+    uint32_t g_clicks = 0;
 
     int64_t now_ms() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -465,6 +468,14 @@ void handle_event(const SDL_Event& event) {
     case SDL_MOUSEBUTTONDOWN: {
         std::lock_guard g(g_event_lock);
         if (g_listening) g_pressed.push_back(mouse(event.button.button));
+        if (event.button.button == SDL_BUTTON_LEFT && SDL_GetRelativeMouseMode() != SDL_TRUE) {
+            if (SDL_Window* w = SDL_GetWindowFromID(event.button.windowID)) {
+                int ww = 0, wh = 0;
+                SDL_GetWindowSize(w, &ww, &wh);
+                g_click_x = event.button.x, g_click_y = event.button.y, g_click_w = ww, g_click_h = wh;
+                g_clicks++;
+            }
+        }
         break;
     }
     case SDL_KEYDOWN: {
@@ -476,6 +487,16 @@ void handle_event(const SDL_Event& event) {
     default:
         break;
     }
+}
+
+bool click(float* x, float* y, uint32_t* count) {
+    std::lock_guard g(g_event_lock);
+    if (g_click_h <= 0 || g_clicks == 0) return false;
+    const float unit = std::min((float)g_click_h / 240.0f, (float)g_click_w / 320.0f);
+    *x = (g_click_x - (g_click_w - 320.0f * unit) / 2.0f) / unit;
+    *y = (g_click_y - (g_click_h - 240.0f * unit) / 2.0f) / unit;
+    *count = g_clicks;
+    return true;
 }
 
 bool pointer(float* x, float* y, uint32_t* moves) {

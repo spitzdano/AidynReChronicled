@@ -506,7 +506,7 @@ IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
           ("edition_action", EDITION_W, EDITION_H, edition_line("edition-action-edition.png")),
           ("ver_original", 50, 12, version_label("Original")), ("ver_patch", 50, 12, version_label("Aidyn Patch")),
           ("fast_forward", 20, 12, fast_forward), ("ctl_panel", 4, 4, panel),
-          ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")),
+          ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")), ("prompt_rs", 11, 8, page_prompt("RS")),
           ("art_off", 64, 8, art_off)]
 IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
 IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in HINTS]
@@ -929,7 +929,7 @@ def sparkle(w, h):
 IMAGES.append(("sparkle", 16, 16, sparkle))
 
 # The twins: every picture with a button icon in it, with the icons left as blank slots (keyed above).
-ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
+ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "prompt_rs": ["RS"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],
                 "dlg_skip": ["START"], "dlg_stop": ["START"],
                 "chint_choose": ["DPAD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
@@ -940,7 +940,7 @@ for _name, _buttons in ICON_BUTTONS.items():
     _w, _h, _d = _by_name[_name]
     # (Twins that would be the same picture once their icons are blank are one texel wider for the second of the pair: no
     # two share a texture's hash.)
-    _wk = slot_width(_buttons[0]) if _name in ("prompt_lb", "prompt_rb", "party_prev", "party_next", "ver_x", "ver_y") \
+    _wk = slot_width(_buttons[0]) if _name in ("prompt_lb", "prompt_rb", "prompt_rs", "party_prev", "party_next", "ver_x", "ver_y") \
         else _w + sum(slot_width(b) for b in _buttons)
     _wk += 1 if _name in ("prompt_rb", "party_next", "ver_y", "chint_use_spells") else 0
     IMAGES.append((_name + "_k", _wk, _h, keyed(_name, _d)))

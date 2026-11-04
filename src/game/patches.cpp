@@ -3781,7 +3781,8 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         journal_page.seen = false;
         return g;
     }
-    const int lb = branding_index("prompt_lb"), rb = branding_index("prompt_rb");
+    // The right stick turns the menu's pages (spitzdano, 2026-11-03; LB and RB are the lists' tabs): its icon at each end of the arrow.
+    const int lb = title_image("prompt_rs"), rb = lb;
     for (const PageArrow& a : page_arrows) {
         if (lb < 0 || rb < 0) {
             break;
@@ -5216,8 +5217,12 @@ namespace {
             "The menus also show button hints, such as \\x7F Equip or Lists. The card and the hints can each be "
             "turned off on the ReChronicled page of the Menu." } },
         { "Menus", {
-            "In the pause menu, LB and RB turn the scroll to the previous or next page. On the equipment page, "
-            "in shops and with trainers, \\x87 and \\x81 choose the previous or next member of your party.",
+            "In the pause menu, flick the right stick left or right to turn the scroll to the previous or next page. "
+            "On the equipment page, in shops and with trainers, \\x87 and \\x81 choose the previous or next member of your party.",
+            "The Inventory and Spells lists have tabs: \\x88 and \\x89 change them. \\x83 changes the order (the game's own, by type "
+            "or by name) and \\x84 switches Details on or off: with it on, what the highlighted item, spell or skill is and does "
+            "shows on the left, in place of the paper doll, and what your party member wears is compared with it. "
+            "With a mouse, point at a row to highlight it and click a tab.",
             "The Menu page's Display and ReChronicled entries hold this edition's options: widescreen, the new "
             "textures, the draw distance, the turn order and more. Each change takes effect at once." } },
         { "Saving", {
@@ -10063,6 +10068,7 @@ namespace {
     } list_ui[2];
 
     constexpr int kInventoryTabs = 7, kSpellTabs = 6;
+    bool hover_moved_over_rows[2] = {};
     constexpr float kListX0 = 160.0f, kListX1 = 296.0f, kTabsY = 99.0f, kChipY = 115.5f, kRowsY = 125.0f, kRowsBottom = 205.5f, kListRowStep = 8.8f;
 
     int inventory_tab_of(uint32_t type) {
@@ -10291,12 +10297,47 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (keys & 0x0400) { do want++; while (want < (int)view.size() && view[want].heading); }
         if (want != pos && want >= first_row && want <= last_row) { move_cursor(want); rc_sound(rdram, ctx, 0x73B, 30); }
     }
+    const int visible = std::max(1, (int)((kRowsBottom - kRowsY) / kListRowStep));
+    // The mouse: the pointer over a row highlights it (A, or the click that is A, then acts on it), a click on a tab or a chip is that
+    // tab's or chip's key. The pointer is in the menus' 320 x 240 units, the page in texels (o.x, o.y and o.sx are screen pixels).
+    {
+        static uint32_t seen_moves[2] = {}, seen_clicks[2] = {};
+        float mx = 0.0f, my = 0.0f;
+        uint32_t moves = 0, clicks = 0;
+        auto to_page = [&](float ux, float uy, float* tx, float* ty) { *tx = (ux * hs - o.x) / o.sx; *ty = (uy * vs - o.y) / o.sy; };
+        if (aidyn::controls::pointer(&mx, &my, &moves) && moves != seen_moves[kind]) {
+            seen_moves[kind] = moves;
+            float tx, ty;
+            to_page(mx, my, &tx, &ty);
+            static const bool log = std::getenv("AIDYN_LIST_LOG") != nullptr;
+            if (log) fprintf(stderr, "list pointer: units %.1f,%.1f -> page %.1f,%.1f (origin %.1f,%.1f scale %.2f,%.2f hs %.2f vs %.2f)\n", mx, my, tx, ty, o.x, o.y, o.sx, o.sy, hs, vs);
+            if (tx >= kListX0 && tx <= kListX1 && ty >= kRowsY && ty < kRowsY + visible * kListRowStep) {
+                const int i = ui.top + (int)((ty - kRowsY) / kListRowStep);
+                if (i >= 0 && i < (int)view.size() && !view[i].heading && i != pos) { move_cursor(i); rc_sound(rdram, ctx, 0x73B, 30); }
+                hover_moved_over_rows[kind] = true;
+            }
+        }
+        if (aidyn::controls::click(&mx, &my, &clicks) && clicks != seen_clicks[kind]) {
+            seen_clicks[kind] = clicks;
+            float tx, ty;
+            to_page(mx, my, &tx, &ty);
+            const float tab_w_c = 14.8f, tab_gap_c = 0.8f, tabs_x_c = 172.0f + (7 - tab_count) * 7.8f;
+            if (ty >= kTabsY && ty < kTabsY + 14.0f) {
+                const int t = (int)((tx - tabs_x_c) / (tab_w_c + tab_gap_c));
+                if (tx >= tabs_x_c && t >= 0 && t < tab_count && (t == 0 || counts[t] > 0) && t != ui.tab) {
+                    ui.tab = t; ui.top = 0; rc_sound(rdram, ctx, 0x73D, 30);
+                }
+            } else if (ty >= kChipY && ty < kChipY + 8.0f) {
+                if (tx >= 161.0f && tx < 197.0f) { settings.inventory_sort = (settings.inventory_sort + 1) % 3; aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort); }
+                else if (tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
+            }
+        }
+    }
     if (pos >= 0) {  // what the cursor is on now
         ui.cursor_thing = view[pos].thing;
         ui.cursor_id = MEM_HU(0, view[pos].thing);
         ui.cursor_index = view[pos].index;
     }
-    const int visible = std::max(1, (int)((kRowsBottom - kRowsY) / kListRowStep));
     if (pos >= 0) {
         int need_top = pos > 0 && view[pos - 1].heading ? pos - 1 : pos;
         if (need_top < ui.top) ui.top = need_top;
@@ -10305,7 +10346,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     ui.top = std::clamp(ui.top, 0, std::max(0, (int)view.size() - visible));
 
     // ---- the card or the doll ----
-    if (settings.details) {
+    static int hover_frames[2] = {};
+    hover_frames[kind] = std::max(0, hover_frames[kind] - 1);
+    if (hover_moved_over_rows[kind]) hover_frames[kind] = 150;  // a mouse over the rows shows the card for a while even with Details off
+    hover_moved_over_rows[kind] = false;
+    if (settings.details || hover_frames[kind] > 0) {
         g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : draw_spell_card(rdram, ctx, g, o, list);
     }
 

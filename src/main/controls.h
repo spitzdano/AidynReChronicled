@@ -65,6 +65,8 @@ namespace aidyn::controls {
     // The pointer over the menus, in their 320 x 240 units (the picture's middle 4:3); moves counts its movements (a
     // page follows it only when it has moved). False before it has moved over the window.
     bool pointer(float* x, float* y, uint32_t* moves);
+    // The last left click in the menus' units; count rises with each (compare with the one last seen). False before any.
+    bool click(float* x, float* y, uint32_t* count);
 
     // Events from the window (main thread): the mouse's motion, buttons and wheel, and key presses for listening.
     void handle_event(const SDL_Event& event);
