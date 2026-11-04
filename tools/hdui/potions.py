@@ -14,6 +14,8 @@ Scrolls and wands (IconItemScroll, IconItemWand: every one the same, a purple ri
 school colour the same way on their blue instead of their red ("blue" mode: the grey is min of red and green, the
 amount blue minus that): Chaos red, Elemental amber, Naming green, Necromancy violet, Star blue.
 """
+from pathlib import Path
+
 import numpy as np
 
 # PotionEnum order (decomp potion.h); None: the original red.
@@ -96,10 +98,42 @@ def recolour_rgba8(rgba, colour, blue=False):
     return out.astype(np.uint8).tobytes()
 
 
+# MDoulos's painted icons (art/items/mdoulos, credited in the README): a picture of its own for every potion (PotionEnum order, as COLOURS;
+# None keeps the recoloured bottle: the Aspect and Jumping potions the game never uses). His "literacy" is the Clarity potion, which he renamed.
+MDOULOS_POTIONS = ["fire", "inferno", "sleep-gas", "acid", "healing", "stamina", "curing", "antidote", "restore", "strength", "dexterity",
+                   None, None, "literacy", "charisma", "defense", "stealth"]
+# ...and a scroll for each school (MagicSchoolEnum order, as SCHOOL_COLOURS): Chaos, which is every school, has his neutral one.
+MDOULOS_SCROLLS = ["neutral", "elemental", "naming", "necromancy", None, "star"]
+MDOULOS = Path(__file__).resolve().parents[2] / "art/items/mdoulos"
+
+
 def write_art(art, folder):
-    """Adds the recoloured painted bottles to art ({name: path}), written into folder."""
+    """Adds the recoloured painted bottles to art ({name: path}), written into folder; MDoulos's own pictures where he has one."""
     from pngio import read_png, write_png
     folder.mkdir(parents=True, exist_ok=True)
+    return _write_recoloured(art, folder, read_png, write_png)
+
+
+def _mdoulos(art):
+    """Replaces the recoloured copies with MDoulos's pictures (a missing file keeps the copy)."""
+    def have(stem):
+        p = MDOULOS / f"{stem}.png"
+        return p if p.exists() else None
+    for k, stem in enumerate(MDOULOS_POTIONS):
+        p = have(f"potion-{stem}") if stem else None
+        if p is not None:
+            art[BASE if COLOURS[k] is None else name(k)] = p  # Healing is the bottle itself
+    for k, stem in enumerate(MDOULOS_SCROLLS):
+        p = have(f"scroll-{stem}") if stem else None
+        if p is not None:
+            art[school_name("IconItemScroll", k)] = p
+    neutral = have("scroll-neutral")
+    if neutral is not None:  # a scroll whose spell has no school (Dispel Necro's has none) draws the plain scroll: his neutral one
+        art["IconItemScroll"] = neutral
+    return art
+
+
+def _write_recoloured(art, folder, read_png, write_png):
     if BASE in art:
         w, h, rgba = read_png(art[BASE])
         for k, colour in enumerate(COLOURS):
@@ -118,4 +152,4 @@ def write_art(art, folder):
             path = folder / f"{school_name(base, k)}.png"
             write_png(path, w, h, recolour_rgba8(rgba, colour, blue=True))
             art[school_name(base, k)] = path
-    return art
+    return _mdoulos(art)

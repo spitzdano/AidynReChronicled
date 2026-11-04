@@ -897,6 +897,9 @@ start), for checking sound changes without listening.
 - **Action Edition** by MDoulos: the community mod the port can run as a fourth version (not included: each player
   brings their own ROM of it); its shop stock is the Original's Better shops (Fair play), with his agreement.
 - **MDoulos** ([mdoulos](https://github.com/mdoulos)): a collaborator, sharing art, fixes and findings with his own project.
+  **The potion and scroll icons are his work**: a painted bottle for every potion and a painted scroll for each school of
+  magic (`art/items/mdoulos`), which he shared with this project. (He also painted three potions for his own project that
+  this game doesn't have, and renamed Clarity to Literacy; the Clarity potion uses his Literacy bottle.)
 - **Fonts** (SIL Open Font License 1.1, licences beside them): Marcellus SC, Kanit, Uncial Antiqua, Alegreya Sans.
 - **[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)**: the upscaler behind the HD texture packs (a tool, not part
   of the game).

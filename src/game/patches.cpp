@@ -2401,6 +2401,8 @@ extern "C" int aidyn_potion_borg(uint8_t* rdram, recomp_context* ctx) {
     school_pending = -1;
     item_icon_variant = -1;
     const bool blue = school >= 0 && (icon == kScrollIcon || icon == kWandIcon);
+    static const bool log = std::getenv("AIDYN_ICON_LOG") != nullptr;
+    if (log && (icon == kScrollIcon || icon == kWandIcon)) fprintf(stderr, "scroll/wand icon %04X: school %d blue %d\n", icon, school, (int)blue);
     if (!item && !blue && (k < 0 || k >= kPotionCount || k == kHealing || icon != kPotionIcon)) {
         return 0;
     }
