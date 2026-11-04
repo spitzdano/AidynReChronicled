@@ -3240,10 +3240,12 @@ namespace {
     gpr doll_lists = 0;
     gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);  // "Details card", below
     gpr inventory_highlighted_item(uint8_t* rdram, gpr list);
-    void sort_inventory_list(uint8_t* rdram, gpr list, int mode);
     gpr draw_spell_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on, int sort_mode);
+    gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys);  // "Inventory page lists", below
+    gpr hide_list_a = 0, hide_list_b = 0;  // the game's own inventory / spells lists (scroll menu widgets) while the port draws them
+    int hide_list_ttl = 0;
     void card_icons_free(uint8_t* rdram, recomp_context* ctx);
     bool card_icons_empty();
 
@@ -3755,12 +3757,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         page_arrows.clear();  // the map page's arrow, under the journal
         map_page.seen = false;
     }
-    bool details_active = false;  // the inventory list is up: X is the Details switch
-    bool sort_active = false;     // the same list: Y changes its order
+    uint32_t menu_keys = 0;       // the buttons the pause menu's lists keep for themselves this frame (aidyn::input::set_menu_keys)
     if (mode == 0 && page_arrows.empty() && !treasure_title.seen && !inventory_page.seen && !combat_menu_box.seen &&
         !map_page.seen && !journal_page.seen) {
-        aidyn::input::set_details_switch(false);
-        aidyn::input::set_sort_switch(false);
+        aidyn::input::set_menu_keys(0);
+        hide_list_ttl = 0;
         return g;
     }
     copy_branding(rdram);
@@ -3868,30 +3869,35 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         const bool on_inventory = shown != 0 && shown == inventory && heap_pointer(inventory);
         const bool on_spells = shown != 0 && shown == spells_list && heap_pointer(spells_list);
         const bool on_skills = shown != 0 && shown == skills_list && heap_pointer(skills_list);
-        if (on_inventory && MEM_W(0xA8, lists) == 0) {  // the order (Y), kept every frame: a rebuilt list starts in the game's order
-            sort_active = true;
-            if (aidyn::input::sort_pressed()) {
-                const int next = (aidyn::settings::graphics().inventory_sort + 1) % 3;
-                aidyn::settings::graphics_rw().inventory_sort = next;
-                aidyn::settings::save_number("graphics", "inventory_sort", next);
+        // The inventory and spells lists are drawn by the port (list_overlay, "Inventory page lists"): tabs, headings, sorting. Their
+        // keys (X Details, Y sort, the D-pad, LB / RB) are the port's, and the game's own list is hidden under them. The skills list
+        // is the game's, with X as the Details switch. Not after a battle (the Train panel).
+        const bool trained = MEM_W(0xA8, lists) != 0;
+        const bool own_lists = aidyn::settings::graphics().tabbed_lists && frame_ctx != nullptr && !trained && inventory_page.alpha != 0;
+        hide_list_ttl = std::max(0, hide_list_ttl - 1);
+        if (frame_ctx != nullptr && !trained && (on_inventory || on_spells || on_skills)) {
+            uint32_t edges = 0;
+            if (own_lists && (on_inventory || on_spells)) {
+                menu_keys = 0x0004 | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;
+                edges = aidyn::input::take_menu_keys();
+                g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : 1, on_inventory ? inventory : spells_list, edges);
+            } else {
+                menu_keys = 0x0004;
+                edges = aidyn::input::take_menu_keys();
+                if (edges & 0x0004) {
+                    const bool on = !aidyn::settings::graphics().details;
+                    aidyn::settings::graphics_rw().details = on;
+                    aidyn::settings::save_bool("graphics", "details", on);
+                }
+                const bool on = aidyn::settings::graphics().details;
+                if (on) {
+                    g = on_inventory ? draw_details_card(rdram, frame_ctx, g, inventory_page, inventory)
+                      : on_spells ? draw_spell_card(rdram, frame_ctx, g, inventory_page, spells_list)
+                                  : draw_skill_card(rdram, frame_ctx, g, inventory_page, skills_list);
+                }
+                g = draw_details_state(rdram, frame_ctx, g, inventory_page, on, -1);
+                g = prompt_state(rdram, g, inventory_page.alpha);
             }
-            sort_inventory_list(rdram, inventory, aidyn::settings::graphics().inventory_sort);
-        }
-        if (frame_ctx != nullptr && (on_inventory || on_spells || on_skills) && MEM_W(0xA8, lists) == 0) {
-            details_active = true;
-            if (aidyn::input::details_pressed()) {
-                const bool on = !aidyn::settings::graphics().details;
-                aidyn::settings::graphics_rw().details = on;
-                aidyn::settings::save_bool("graphics", "details", on);
-            }
-            const bool on = aidyn::settings::graphics().details;
-            if (on) {
-                g = on_inventory ? draw_details_card(rdram, frame_ctx, g, inventory_page, inventory)
-                  : on_spells ? draw_spell_card(rdram, frame_ctx, g, inventory_page, spells_list)
-                              : draw_skill_card(rdram, frame_ctx, g, inventory_page, skills_list);
-            }
-            g = draw_details_state(rdram, frame_ctx, g, inventory_page, on, on_inventory ? aidyn::settings::graphics().inventory_sort : -1);
-            g = prompt_state(rdram, g, inventory_page.alpha);
         }
         // DETAILS and its X are painted into the page (art/pages, tools/hdui/scroll_pages.py: the button 9.4 texels square at
         // 282.6, 205.75, 85% of the game's): with the keyboard in use a cap covers it, centred on it.
@@ -3941,9 +3947,9 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             g = draw_hint_row(rdram, g, journal_page, row, 2, 153.0f, 222.0f, true);
         }
     }
-    aidyn::input::set_details_switch(details_active);
-    aidyn::input::set_sort_switch(sort_active);
-    if (!details_active && frame_ctx != nullptr && !card_icons_empty()) card_icons_free(rdram, frame_ctx);
+    aidyn::input::set_menu_keys(menu_keys);
+    if (menu_keys == 0 && frame_ctx != nullptr && !card_icons_empty()) card_icons_free(rdram, frame_ctx);
+    if (!inventory_page.seen) hide_list_ttl = 0;
     treasure_title.seen = false;
     inventory_page.seen = false;
     combat_menu_box.seen = false;
@@ -9638,14 +9644,6 @@ namespace {
         return (size_t)index < item_texts.size() ? item_texts[index] : "";
     }
 
-    // The inventory list's order (Y: as the game keeps it, by type, by name). The list's rows (scroll menu substruct +0x18, count
-    // +0x20, highlight +0x1E) are laid out one under the other in the order of that array every tick, and what A does belongs to
-    // each row's item (SMIItem +0x7C), not to its place, so the array can simply be put in another order, the highlight kept on
-    // the same row. The game's own order is remembered per row (the first time it is seen), so "as the game keeps it" comes back.
-    std::map<gpr, int> inventory_seq;  // row -> its place in the game's order
-    gpr inventory_seq_list = 0;
-    int inventory_next_seq = 0;
-
     int type_rank(uint32_t type) {
         switch (type) {
         case 7: return 0;   // weapons
@@ -9664,130 +9662,6 @@ namespace {
         case 1: return 13;  // ingredients and other items
         case 18: return 14; // key items
         default: return 15;
-        }
-    }
-
-    // The list is rebuilt by the game now and then (a member switch, an equip, a page turn): its rows are freed and made again and
-    // the array can hold stale pointers for a moment. So nothing is written until the list has looked the same (menu, substruct,
-    // array, count and every row a widget of the same kind) for a few frames; and the row that was highlighted before a rebuild
-    // (its item's ID, then its ItemInstance) gets the highlight back, so an equip leaves the cursor on the item.
-    struct SortWatch {
-        gpr menu = 0, sub = 0, items = 0;
-        uint32_t count = 0;
-        std::vector<gpr> rows;
-        int stable = 0;
-        bool restore = false;
-        uint16_t item_id = 0;
-        gpr item_ptr = 0;
-    } sort_watch;
-
-    void sort_inventory_list(uint8_t* rdram, gpr list, int mode) {
-        SortWatch& w = sort_watch;
-        static const bool off = std::getenv("AIDYN_NO_SORT") != nullptr;  // for bisecting a crash
-        if (off) return;
-        const gpr menu = MEM_W(0x80, list);
-        const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
-        const gpr items = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
-        const uint32_t count = heap_pointer(sub) ? MEM_HU(0x20, sub) : 0;
-        if (!heap_pointer(items) || count == 0 || count > 200) { w = SortWatch{}; return; }
-        std::vector<gpr> current;
-        uint32_t vtable = 0;
-        for (uint32_t i = 0; i < count; i++) {
-            const gpr row = MEM_W(4 * i, items);
-            if (!heap_pointer(row)) { w = SortWatch{}; return; }
-            const uint32_t vt = (uint32_t)MEM_W(0, row);
-            if (i == 0) vtable = vt;
-            if (vt != vtable || !heap_pointer(MEM_W(0x7C, row))) { w = SortWatch{}; return; }
-            current.push_back(row);
-        }
-        // Did the rows change since last frame (as a set; our own reordering keeps the set)?
-        std::vector<gpr> a = current, b = w.rows;
-        std::sort(a.begin(), a.end());
-        std::sort(b.begin(), b.end());
-        const bool same_set = w.menu == menu && w.sub == sub && w.items == items && w.count == count && a == b;
-        const uint32_t highlight = MEM_HU(0x1E, sub);
-        if (!same_set) {
-            // A rebuild: remember what the cursor was on (from the rows we last saw), and wait.
-            if (!w.rows.empty() && w.item_id != 0) w.restore = true;
-            w.menu = menu; w.sub = sub; w.items = items; w.count = count;
-            w.rows = current;
-            w.stable = 0;
-            return;
-        }
-        w.rows = current;
-        if (w.stable < 3) { w.stable++; return; }
-        // Settled: the game's own order first (a row's place the first time it is seen), then ours.
-        if (list != inventory_seq_list) {
-            inventory_seq.clear();
-            inventory_seq_list = list;
-            inventory_next_seq = 0;
-        }
-        // The game keeps the worn items first (the rows with an owner: SMIItem userIndex +0x81 not 0xFF, a portrait +0x84), then
-        // the carried ones, and its own re-sorts (WidgetInvShop::SortA on a member switch or an equip) take the first
-        // inventorySize rows to be the worn ones (a carried row has no portrait: a null read). So the two groups stay where they
-        // are and each is put in order by itself; the worn rows by their owner (the page's member first) and then the order.
-        struct Entry { gpr row; int seq; int rank; bool carried; int owner; std::string name; };
-        std::vector<Entry> rows;
-        const int picker = (int)MEM_BU(0, (gpr)(int32_t)0x800DE9F0);
-        for (gpr row : current) {
-            auto it = inventory_seq.find(row);
-            if (it == inventory_seq.end()) it = inventory_seq.emplace(row, inventory_next_seq++).first;
-            const gpr item = MEM_W(0x7C, row);
-            const uint32_t user = MEM_BU(0x81, row);
-            Entry e{ row, it->second, 15, user == 0xFF, user == 0xFF ? 0 : ((int)user - picker + 4) % 4, game_string(rdram, MEM_W(4, item)) };
-            e.rank = type_rank(MEM_HU(0, item) >> 8);
-            for (char& c : e.name) c = (char)std::tolower((unsigned char)c);
-            rows.push_back(std::move(e));
-        }
-        for (auto it = inventory_seq.begin(); it != inventory_seq.end();) {  // forget rows that have gone
-            const bool present = std::any_of(rows.begin(), rows.end(), [&](const Entry& e) { return e.row == it->first; });
-            it = present ? std::next(it) : inventory_seq.erase(it);
-        }
-        // Which row gets the highlight: the one it is on, or after a rebuild the item it was on.
-        gpr keep = highlight < count ? MEM_W(4 * highlight, items) : 0;
-        if (w.restore) {
-            gpr found = 0;
-            for (gpr row : current) {
-                const gpr item = MEM_W(0x7C, row);
-                if (item == w.item_ptr) { found = row; break; }
-            }
-            for (gpr row : current) {
-                if (found != 0) break;
-                if (MEM_HU(0, MEM_W(0x7C, row)) == w.item_id) found = row;
-            }
-            if (found != 0) keep = found;
-            w.restore = false;
-        }
-        std::stable_sort(rows.begin(), rows.end(), [&](const Entry& x, const Entry& y) {
-            if (x.carried != y.carried) return !x.carried;       // the worn ones stay first
-            if (!x.carried && x.owner != y.owner) return x.owner < y.owner;
-            if (mode == 0) return x.seq < y.seq;
-            if (mode == 1 && x.rank != y.rank) return x.rank < y.rank;
-            if (x.name != y.name) return x.name < y.name;
-            return x.seq < y.seq;
-        });
-        bool changed = false;
-        uint32_t new_highlight = highlight;
-        for (uint32_t i = 0; i < count; i++) {
-            if (MEM_W(4 * i, items) != rows[i].row) changed = true;
-            if (rows[i].row == keep) new_highlight = i;
-        }
-        if (new_highlight != highlight) changed = true;
-        if (changed) {
-            for (uint32_t i = 0; i < count; i++) MEM_W(4 * i, items) = (int32_t)rows[i].row;
-            MEM_HU(0x1E, sub) = (uint16_t)new_highlight;
-            // The list is a WidgetFastScrollMenu: it sets its rows' places only in Update(), which its Tick calls when the highlighted
-            // row's place is outside the box (posY +0x62 against boundY0 / boundY1), so a row put far above makes it lay them all out again.
-            if (!std::getenv("AIDYN_SORT_NOPOKE")) MEM_HU(0x62, rows[new_highlight].row) = (uint16_t)(int16_t)-2000;
-            w.rows.clear();
-            for (const Entry& e : rows) w.rows.push_back(e.row);
-        }
-        // What the cursor is on now, for a rebuild's sake.
-        const gpr now_row = new_highlight < count ? rows[new_highlight].row : 0;
-        if (heap_pointer(now_row)) {
-            const gpr item = MEM_W(0x7C, now_row);
-            w.item_ptr = item;
-            w.item_id = MEM_HU(0, item);
         }
     }
 
@@ -10148,6 +10022,381 @@ gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSe
     return g;
 }
 }  // namespace
+
+// ---- Inventory page lists ----
+// The pause menu's Inventory and Spells lists, drawn by the port over the game's own (spitzdano, 2026-11-03: tabs on LB / RB, a sort on Y,
+// the Details switch on X, group headings, a highlighted row's wash, a scroll bar; the pieces are Codex's, art/menu). The game's list stays
+// as it is (its rows are the items and what A, X and the rest do to them; its highlight is the cursor) but is not drawn: its Render is
+// skipped (the hooks on func_800289C8, WidgetFastScrollMenu::Render, and WidgetScrollMenu::Render: aidyn_hide_list) while a list of the
+// port's is up. The port reads the rows each frame (scroll menu substruct +0x40: rows +0x18, highlight +0x1E, count +0x20; an inventory row
+// SMIItem: ItemInstance +0x7C, quantity +0x80, wearer +0x81; a spells row WidgetSpellEntry: SpellInstance +0x7C, icon widget +0x88 whose
+// Borg8 is +0x6C), shows those of the tab, in the order of the Y sort, and moves the game's highlight itself (the D-pad and the left stick's
+// up / down never reach the game while the list is up: aidyn::input::set_menu_keys), so A, Z and the rest act on the row it is on.
+extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
+    const gpr widget = (gpr)(int32_t)(uint32_t)ctx->r4;
+    return hide_list_ttl > 0 && widget != 0 && (widget == hide_list_a || widget == hide_list_b);
+}
+
+namespace {
+    struct ListEntry {
+        gpr row = 0;
+        gpr thing = 0;        // its ItemInstance / SpellInstance
+        int index = 0;        // the row's place in the game's array
+        int tab = 0;          // the tab it is under (1..)
+        int group = 0;        // the heading it sorts under
+        bool heading = false;
+        std::string text;     // a heading's words, or the name
+        std::string lname;
+        uint16_t item = 0;    // an inventory row's item ID (its icon)
+        gpr icon = 0;         // a spell row's icon (Borg8)
+        gpr portrait = 0;     // the wearer's portrait (Borg8)
+        std::string qty, right;
+        bool worn = false;
+    };
+    struct ListUi {
+        int tab = 0, top = 0;
+        int last_highlight = -1;
+        gpr last_list = 0;
+        gpr cursor_thing = 0;     // what the cursor was on, to keep it there when the game rebuilds the list (an equip, a member switch)
+        uint32_t cursor_id = 0;
+        int cursor_index = 0;
+    } list_ui[2];
+
+    constexpr int kInventoryTabs = 7, kSpellTabs = 6;
+    constexpr float kListX0 = 160.0f, kListX1 = 296.0f, kTabsY = 99.0f, kChipY = 115.5f, kRowsY = 125.0f, kRowsBottom = 205.5f, kListRowStep = 8.8f;
+
+    int inventory_tab_of(uint32_t type) {
+        switch (type) {
+        case 7: return 1;
+        case 5: case 6: case 9: case 10: case 11: case 14: case 15: return 2;
+        case 12: case 19: return 3;
+        case 13: case 17: return 4;
+        case 16: return 5;
+        default: return 6;
+        }
+    }
+    const char* inventory_group_name(int rank) {
+        static const char* const names[] = { "Weapons", "Armour", "Shields", "Helmets", "Cloaks", "Gloves", "Belts", "Boots", "Rings", "Amulets",
+                                              "Wands", "Potions", "Scrolls", "Items", "Key items", "Other" };
+        return names[std::clamp(rank, 0, 15)];
+    }
+    const char* spell_school_name(int school) {
+        static const char* const names[] = { "Chaos", "Elemental", "Naming", "Necromancy", "Other", "Star" };
+        return names[std::clamp(school, 0, 5)];
+    }
+    int spell_tab_of(int school) {  // Elemental, Chaos, Naming, Necromancy, Star
+        switch (school) {
+        case 1: return 1;
+        case 0: return 2;
+        case 2: return 3;
+        case 3: return 4;
+        case 5: return 5;
+        default: return 1;
+        }
+    }
+
+    // The party member's portrait (CharSheet +0x44), or 0.
+    gpr wearer_portrait(uint8_t* rdram, uint32_t who) {
+        const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+        const gpr sheet = heap_pointer(party) && who < 4 ? MEM_W(4 * who, party) : 0;
+        const gpr portrait = heap_pointer(sheet) ? MEM_W(0x44, sheet) : 0;
+        return heap_pointer(portrait) ? portrait : 0;
+    }
+
+    // The right-hand number: what a weapon or armour does (carried ones from the game's database).
+    std::string inventory_stat(uint8_t* rdram, gpr row, gpr item, uint32_t type, uint32_t id) {
+        const bool carried = MEM_BU(0x81, row) == 0xFF;
+        const gpr ram = carried && (type == 5 || type == 6 || type == 7) ? database_entry(rdram, type, id) : 0;
+        if (type == 7) {
+            const int v = carried ? (ram != 0 ? (int)MEM_BU(0x1B, ram) : -1) : (int)MEM_BU(0x26, item);
+            return v >= 0 ? "Dmg " + std::to_string(v) : "";
+        }
+        if (type == 5 || type == 6) {
+            const int v = carried ? (ram != 0 ? (int)MEM_BU(0x1C, ram) : -1) : (int)MEM_BU(0x25, item);
+            return v >= 0 ? "Prot " + std::to_string(v) : "";
+        }
+        return "";
+    }
+
+    std::vector<ListEntry> list_collect(uint8_t* rdram, int kind, gpr list) {
+        std::vector<ListEntry> out;
+        const gpr menu = MEM_W(0x80, list);
+        const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
+        const gpr items = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
+        const uint32_t count = heap_pointer(sub) ? MEM_HU(0x20, sub) : 0;
+        if (!heap_pointer(items) || count > 220) return out;
+        for (uint32_t i = 0; i < count; i++) {
+            const gpr row = MEM_W(4 * i, items);
+            if (!heap_pointer(row)) continue;
+            const gpr thing = MEM_W(0x7C, row);
+            if (!heap_pointer(thing)) continue;
+            ListEntry e;
+            e.row = row;
+            e.thing = thing;
+            e.index = (int)i;
+            e.text = game_string(rdram, MEM_W(4, thing));
+            e.lname = e.text;
+            for (char& c : e.lname) c = (char)std::tolower((unsigned char)c);
+            if (kind == 0) {
+                const uint32_t id = MEM_HU(0, thing), type = id >> 8, user = MEM_BU(0x81, row), quantity = MEM_BU(0x80, row);
+                e.item = (uint16_t)id;
+                e.tab = inventory_tab_of(type);
+                e.group = type_rank(type);
+                e.worn = user != 0xFF;
+                e.portrait = e.worn ? wearer_portrait(rdram, user) : 0;
+                if (quantity > 1) e.qty = std::to_string(quantity);
+                e.right = inventory_stat(rdram, row, thing, type, id);
+            } else {
+                const uint32_t school = MEM_BU(0x15, thing);
+                e.tab = spell_tab_of((int)school);
+                e.group = e.tab;
+                const gpr widget = MEM_W(0x88, row);
+                const gpr borg = heap_pointer(widget) ? MEM_W(0x6C, widget) : 0;
+                e.icon = heap_pointer(borg) ? borg : 0;
+                e.qty = std::to_string(MEM_BU(0x14, thing));
+                e.right = "ST " + std::to_string(MEM_BU(0x17, thing));
+            }
+            out.push_back(std::move(e));
+        }
+        return out;
+    }
+
+    gpr draw_borg_icon(uint8_t* rdram, recomp_context* ctx, gpr g, gpr icon, float x, float y, float size, int alpha) {
+        if (!heap_pointer(icon)) return g;
+        const uint32_t iw = MEM_HU(0x0A, icon), ih = MEM_HU(0x0C, icon);
+        if (iw == 0 || ih == 0 || iw > 1024 || ih > 1024) return g;
+        return (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon, f32_bits(x), f32_bits(y),
+                                             { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
+    }
+}
+
+namespace {
+gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int kind, gpr list, uint32_t keys) {
+    ListUi& ui = list_ui[kind];
+    const int tab_count = kind == 0 ? kInventoryTabs : kSpellTabs;
+    const int alpha = o.alpha;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };   // page texel -> the text's units
+    auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
+    auto PX = [&](float tx) { return std::round(o.x + tx * o.sx); };  // -> screen pixels
+    auto PY = [&](float ty) { return std::round(o.y + ty * o.sy); };
+    // A picture stretched over a rectangle of page texels.
+    auto pic = [&](gpr gg, int image, float x0, float y0, float x1, float y1) {
+        if (image < 0) return gg;
+        const auto& img = aidyn::branding::kImages[image];
+        const float px0 = PX(x0), py0 = PY(y0), px1 = PX(x1), py1 = PY(y1);
+        return draw_rgba16(rdram, gg, (size_t)image, px0, py0, (px1 - px0) / (float)img.w, (py1 - py0) / (float)img.h);
+    };
+
+    // ---- the rows, the tab, the order ----
+    std::vector<ListEntry> all = list_collect(rdram, kind, list);
+    const gpr menu = MEM_W(0x80, list);
+    const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
+    const gpr items = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
+    if (!heap_pointer(sub) || !heap_pointer(items)) return g;
+    if (ui.last_list != list) { ui.last_list = list; ui.top = 0; }
+    hide_list_ttl = 3;
+    (kind == 0 ? hide_list_a : hide_list_b) = menu;
+
+    int counts[8] = {};
+    gpr tab_icon_row[8] = {};
+    for (const ListEntry& e : all) {
+        counts[0]++;
+        counts[e.tab]++;
+        if (tab_icon_row[e.tab] == 0) tab_icon_row[e.tab] = e.row;
+    }
+    auto& settings = aidyn::settings::graphics_rw();
+    // Keys: X Details, Y the order, LB / RB the tabs.
+    if (keys & 0x0004) {
+        settings.details = !settings.details;
+        aidyn::settings::save_bool("graphics", "details", settings.details);
+    }
+    if (keys & 0x0008) {
+        settings.inventory_sort = (settings.inventory_sort + 1) % 3;
+        aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort);
+    }
+    int tab_step = 0;
+    if (keys & 0x0020) tab_step = -1;
+    if (keys & 0x0010) tab_step = 1;
+    if (tab_step != 0) {
+        int t = ui.tab;
+        for (int n = 0; n < tab_count; n++) {
+            t = (t + tab_step + tab_count) % tab_count;
+            if (t == 0 || counts[t] > 0) break;
+        }
+        if (t != ui.tab) { ui.tab = t; ui.top = 0; rc_sound(rdram, ctx, 0x73D, 30); }
+    }
+    if (ui.tab != 0 && counts[ui.tab] == 0) ui.tab = 0;
+    const int mode = settings.inventory_sort;  // 0 as the game keeps it, 1 by type (or school), 2 by name
+
+    std::vector<ListEntry> rows;
+    for (const ListEntry& e : all) {
+        if (ui.tab == 0 || e.tab == ui.tab) rows.push_back(e);
+    }
+    std::stable_sort(rows.begin(), rows.end(), [&](const ListEntry& a, const ListEntry& b) {
+        if (mode == 0) return a.index < b.index;
+        if (mode == 1 && a.group != b.group) return a.group < b.group;
+        if (a.lname != b.lname) return a.lname < b.lname;
+        return a.index < b.index;
+    });
+    std::vector<ListEntry> view;  // with the headings
+    {
+        int groups = 0, last = -1;
+        for (const ListEntry& e : rows) if (e.group != last) { groups++; last = e.group; }
+        last = -1;
+        for (const ListEntry& e : rows) {
+            if (mode == 1 && groups > 1 && e.group != last) {
+                ListEntry h;
+                h.heading = true;
+                h.text = kind == 0 ? inventory_group_name(e.group) : spell_school_name(e.tab == 2 ? 0 : e.tab == 1 ? 1 : e.tab == 3 ? 2 : e.tab == 4 ? 3 : 5);
+                view.push_back(h);
+            }
+            last = e.group;
+            view.push_back(e);
+        }
+    }
+    // The cursor: the game's highlight, on a row of this view (else the first).
+    const uint32_t count = MEM_HU(0x20, sub);
+    uint32_t highlight = MEM_HU(0x1E, sub);
+    gpr cursor = highlight < count ? MEM_W(4 * highlight, items) : 0;
+    int pos = -1, first_row = -1, last_row = -1;
+    for (int i = 0; i < (int)view.size(); i++) {
+        if (view[i].heading) continue;
+        if (first_row < 0) first_row = i;
+        last_row = i;
+        if (view[i].row == cursor) pos = i;
+    }
+    auto move_cursor = [&](int i) {
+        if (i < 0 || i >= (int)view.size() || view[i].heading) return;
+        MEM_HU(0x1E, sub) = (uint16_t)view[i].index;
+        pos = i;
+        cursor = view[i].row;
+    };
+    // The game rebuilds the list now and then (an equip, a member switch) and puts its highlight on whatever row it likes: the cursor
+    // stays on the item it was on (the same instance, else one of the same kind nearest its old place).
+    if (ui.cursor_thing != 0 && (pos < 0 || view[pos].thing != ui.cursor_thing || MEM_HU(0, view[pos].thing) != ui.cursor_id)) {
+        int found = -1, best = 1 << 30;
+        for (int i = 0; i < (int)view.size(); i++) {
+            if (view[i].heading) continue;
+            const uint32_t id = MEM_HU(0, view[i].thing);
+            if (view[i].thing == ui.cursor_thing && id == ui.cursor_id) { found = i; break; }  // (a freed instance's place is reused: the ID too)
+            if (id == ui.cursor_id && std::abs(view[i].index - ui.cursor_index) < best) { best = std::abs(view[i].index - ui.cursor_index); found = i; }
+        }
+        if (found >= 0) move_cursor(found);
+    }
+    if (pos < 0 && first_row >= 0) move_cursor(first_row);
+    if (pos >= 0) {
+        int want = pos;
+        if (keys & 0x0800) { do want--; while (want >= 0 && view[want].heading); }
+        if (keys & 0x0400) { do want++; while (want < (int)view.size() && view[want].heading); }
+        if (want != pos && want >= first_row && want <= last_row) { move_cursor(want); rc_sound(rdram, ctx, 0x73B, 30); }
+    }
+    if (pos >= 0) {  // what the cursor is on now
+        ui.cursor_thing = view[pos].thing;
+        ui.cursor_id = MEM_HU(0, view[pos].thing);
+        ui.cursor_index = view[pos].index;
+    }
+    const int visible = std::max(1, (int)((kRowsBottom - kRowsY) / kListRowStep));
+    if (pos >= 0) {
+        int need_top = pos > 0 && view[pos - 1].heading ? pos - 1 : pos;
+        if (need_top < ui.top) ui.top = need_top;
+        if (pos >= ui.top + visible) ui.top = pos - visible + 1;
+    }
+    ui.top = std::clamp(ui.top, 0, std::max(0, (int)view.size() - visible));
+
+    // ---- the card or the doll ----
+    if (settings.details) {
+        g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : draw_spell_card(rdram, ctx, g, o, list);
+    }
+
+    // ---- pictures ----
+    g = prompt_state(rdram, g, alpha);
+    const int tab_off = branding_index("mt_off"), tab_on = branding_index("mt_on"), rule = branding_index("mt_rule");
+    const float tab_w = 14.8f, tab_gap = 0.8f, tabs_w = tab_count * tab_w + (tab_count - 1) * tab_gap, tabs_x = 172.0f + (7 - tab_count) * 7.8f;
+    for (int t = 0; t < tab_count; t++) {
+        const float x = tabs_x + t * (tab_w + tab_gap);
+        g = pic(g, t == ui.tab ? tab_on : tab_off, x, kTabsY, x + tab_w, kTabsY + (t == ui.tab ? 14.0f : 13.0f));
+    }
+    g = pic(g, rule, kListX0 + 2.0f, kTabsY + 13.0f, kListX1, kTabsY + 14.6f);
+    {
+        const int lb = title_image("prompt_lb"), rb = title_image("prompt_rb");
+        if (lb >= 0) g = draw_rgba16(rdram, g, (size_t)lb, PX(kListX0 + 0.5f), PY(kTabsY + 3.0f), o.sx * 0.8f, o.sy * 0.8f);
+        if (rb >= 0) g = draw_rgba16(rdram, g, (size_t)rb, PX(tabs_x + tabs_w + 1.5f), PY(kTabsY + 3.0f), o.sx * 0.8f, o.sy * 0.8f);
+    }
+    // The two chips.
+    const float sort_x = 161.0f, sort_w = 36.0f, det_x = 244.0f, det_w = 52.0f;
+    g = pic(g, branding_index("mc_chip"), sort_x, kChipY, sort_x + sort_w, kChipY + 8.0f);
+    g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, kChipY, det_x + det_w, kChipY + 8.0f);
+    {
+        const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
+        if (y_icon >= 0) g = draw_rgba16(rdram, g, (size_t)y_icon, PX(sort_x + 1.4f), PY(kChipY - 0.2f), o.sx * 0.66f, o.sy * 0.66f);
+        if (x_icon >= 0) g = draw_rgba16(rdram, g, (size_t)x_icon, PX(det_x + 1.4f), PY(kChipY - 0.2f), o.sx * 0.66f, o.sy * 0.66f);
+    }
+    // The rows' washes and heading rules.
+    const int hl_pic = branding_index("mc_hl"), heading_pic = branding_index("mc_heading");
+    for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
+        const float y = kRowsY + (i - ui.top) * kListRowStep;
+        if (view[i].heading) g = pic(g, heading_pic, kListX0, y + 2.4f, kListX1, y + 7.4f);
+        else if (i == pos) g = pic(g, hl_pic, kListX0, y - 0.6f, kListX1, y + kListRowStep - 0.2f);
+    }
+    // The scroll bar, when there is more than fits.
+    if ((int)view.size() > visible) {
+        const float bar_x = 297.0f, bar_y = kRowsY, bar_h = kRowsBottom - kRowsY;
+        g = pic(g, branding_index("mc_track"), bar_x, bar_y, bar_x + 3.0f, bar_y + bar_h);
+        const float thumb_h = std::max(8.0f, bar_h * visible / (float)view.size());
+        const float thumb_y = bar_y + (bar_h - thumb_h) * (float)ui.top / (float)std::max(1, (int)view.size() - visible);
+        g = pic(g, branding_index("mc_thumb_t"), bar_x, thumb_y, bar_x + 3.0f, thumb_y + 1.0f);
+        g = pic(g, branding_index("mc_thumb_m"), bar_x, thumb_y + 1.0f, bar_x + 3.0f, thumb_y + thumb_h - 1.0f);
+        g = pic(g, branding_index("mc_thumb_b"), bar_x, thumb_y + thumb_h - 1.0f, bar_x + 3.0f, thumb_y + thumb_h);
+    }
+
+    // ---- words and icons ----
+    g = ctl_state(rdram, ctx, g);
+    const uint32_t ink = 0x825050, dim = 0x9A7A80, hot = 0x4B3174, brown = 0x7B5560;
+    for (int t = 0; t < tab_count; t++) {
+        const float x = tabs_x + t * (tab_w + tab_gap);
+        const bool on = t == ui.tab;
+        const int a = counts[t] == 0 ? alpha / 2 : alpha;
+        if (t == 0) {
+            g = ctl_text(rdram, ctx, g, "All", X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), 0.5f, on ? hot : ink, a, false, true);
+        } else if (tab_icon_row[t] != 0) {
+            const gpr thing = MEM_W(0x7C, tab_icon_row[t]);
+            const gpr ic = kind == 0 ? card_icon(rdram, ctx, MEM_HU(0, thing)) : [&] {
+                const gpr w = MEM_W(0x88, tab_icon_row[t]);
+                const gpr b = heap_pointer(w) ? MEM_W(0x6C, w) : 0;
+                return heap_pointer(b) ? b : (gpr)0;
+            }();
+            g = draw_borg_icon(rdram, ctx, g, ic, X(x + 2.4f), Y(kTabsY + 1.6f), 10.0f * o.sx / hs, a);
+        }
+        if (counts[t] > 0 && t > 0) {
+            g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 0.8f), Y(kTabsY + 7.6f), 0.42f, brown, a, true);
+        }
+    }
+    static const char* const sort_names[] = { "Order", "Type", "Name" };
+    g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + 10.0f), Y(kChipY + 1.1f), 0.5f, ink, alpha);
+    g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + 10.0f), Y(kChipY + 1.1f), 0.5f, settings.details ? hot : ink, alpha);
+    if (view.empty()) {
+        g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(kRowsY + 20.0f), 0.6f, dim, alpha, false, true);
+    }
+    for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
+        const ListEntry& e = view[i];
+        const float y = kRowsY + (i - ui.top) * kListRowStep;
+        if (e.heading) {
+            g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 15.0f), Y(y + 0.2f), 0.45f, brown, alpha);
+            continue;
+        }
+        const bool sel = i == pos;
+        if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha);
+        const gpr ic = kind == 0 ? card_icon(rdram, ctx, e.item) : e.icon;
+        g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha);
+        if (!e.qty.empty()) g = ctl_text(rdram, ctx, g, e.qty, X(kListX0 + 29.0f), Y(y + 0.5f), 0.55f, sel ? hot : dim, alpha, true);
+        g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 32.0f), Y(y + 0.3f), 0.6f, sel ? hot : ink, alpha);
+        if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + 0.7f), 0.5f, sel ? hot : dim, alpha, true);
+    }
+    return g;
+}
+}  // namespace
+
 
 
 // ---- Display (title menu) ----

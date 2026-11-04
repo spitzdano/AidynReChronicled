@@ -71,6 +71,7 @@ namespace aidyn::settings {
         bool smooth_animation_loops = true; // no repeated pose and no stop in the stride when a walk/run cycle loops
         bool controls_card = true;   // the card of button prompts in the field and in combat (View shows / hides it)
         int inventory_sort = 1;      // the pause menu's inventory list order (Y): 0 as the game keeps it, 1 by type, 2 by name
+        bool tabbed_lists = true;    // the pause menu's inventory and spells lists drawn by the port (tabs, headings, sorting); false: the game's own
         bool details = false;        // the pause menu's Details switch (X on the inventory): a card for the highlighted item in place of the paper doll
         bool button_prompts = true;  // the port's other prompts: menu hints (Equip, Lists, Take...), LB / RB at page arrows, party switch
         bool turn_order = true;      // combat: the round's turn order across the top of the screen, then the next round's

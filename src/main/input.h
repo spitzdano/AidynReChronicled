@@ -17,10 +17,8 @@ namespace aidyn::input {
     bool quicksave_asked();                 // LB pressed in the field since last asked (src/game/patches.cpp)
     void set_dialogue(int state);           // a conversation: 0 none, 1 a line to move on from, 2 answers offered
     bool dialogue_skipping();               // View skipping the conversation (A pressed for the player, line by line)
-    void set_details_switch(bool active);   // the pause menu's inventory is up: X toggles Details (and doesn't reach the game); refresh every frame
-    bool details_pressed();
-    void set_sort_switch(bool active);      // the inventory list is up: Y (C-up) changes its order (and doesn't reach the game)
-    bool sort_pressed();                 // X was pressed since the last call
+    void set_menu_keys(uint32_t mask);      // the pause menu's own lists are up: those of C-down 4, C-up 8, D-up 0x800, D-down 0x400, L 0x20, R 0x10 are the port's (a mask with D-up / down takes the left stick's too); 0 = none; refresh every frame
+    uint32_t take_menu_keys();              // their presses since the last call, as N64 button bits (C-down 4, C-up 8, D-up 0x800, D-down 0x400, L 0x20, R 0x10); a held up / down repeats
     bool controls_card();                   // the controls card shown (settings.json graphics.controls_card)
     bool keyboard_last();                   // the keyboard or mouse was used last (a pad's presses count for the pad): prompts show keys
     bool pad_b_held();                      // the pad's own B held (the Controls page: it cancels listening)

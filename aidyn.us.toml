@@ -1084,3 +1084,16 @@ text = "extern void aidyn_message_box_begin(uint8_t* rdram, recomp_context* ctx)
 func = "CombatTextboxWidget_Tick"
 before_vram = 0x800879E4
 text = "extern void aidyn_message_box_end(uint8_t* rdram, recomp_context* ctx); aidyn_message_box_end(rdram, ctx);"
+
+# The pause menu's inventory and spells lists drawn by the port (src/game/patches.cpp, "Inventory page lists"): the game's own list is not
+# drawn while the port's is up. WidgetFastScrollMenu::Render (vtable 0x800CEAC0, the slot after Unlink) and WidgetScrollMenu::Render: a0 is
+# the widget, a1 the display list (returned in v0).
+[[patches.hook]]
+func = "func_800289C8"
+before_vram = 0x800289C8
+text = "extern int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx); if (aidyn_hide_list(rdram, ctx)) { ctx->r2 = ctx->r5; return; }"
+
+[[patches.hook]]
+func = "WidgetScrollMenu__Render"
+before_vram = 0x800AFDA8
+text = "extern int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx); if (aidyn_hide_list(rdram, ctx)) { ctx->r2 = ctx->r5; return; }"
