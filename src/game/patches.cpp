@@ -9833,34 +9833,29 @@ namespace {
 }
 
 namespace {
-// The card's frame over the doll's place.
+// The card's frame over the doll's place: Codex's MenuCard (art/menu, 132 x 138 texels from page texel (20, 72), its notch at the
+// top left and its foot tab below the bottom) as 3 x 3 pictures of 44 x 46 texels (tools/branding/menu_art.py), laid edge to edge
+// at whole pixels so no seam shows. The pictures stand in for the doll, which the card covers.
 gpr draw_card_frame(uint8_t* rdram, gpr g, const TitleSeen& o) {
-    const int alpha = o.alpha;
-    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
-    auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
-    auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
-    // The card: parchment colour, a brown frame and a lighter line inside it.
-    const uint32_t fill = 0xEDCFA800u | (uint32_t)alpha, frame = 0x8A607000u | (uint32_t)alpha, inner = 0xF8E8C800u | (uint32_t)alpha;
-    // The doll's page area: x 20..152 (the list's portraits start at 160), y 82..206, with a cap over the helmet slot (x 56..76
-    // from y 72) so none of the slot peeks out; the effect icons at the top left (y < 80, x < 46) stay.
-    const float cx0 = 20.0f, cy0 = 82.0f, cx1 = 152.0f, cy1 = 206.0f, capx0 = 48.0f, capy0 = 72.0f;
-    g = rect_state(rdram, g);
-    g = rect(rdram, g, X(cx0), Y(cy0), X(cx1), Y(cy1), fill, hs, vs);
-    g = rect(rdram, g, X(capx0), Y(capy0), X(cx1), Y(cy0), fill, hs, vs);
-    g = rect(rdram, g, X(capx0), Y(capy0), X(cx1), Y(capy0) + 1.0f, frame, hs, vs);      // top
-    g = rect(rdram, g, X(capx0), Y(capy0), X(capx0) + 1.0f, Y(cy0), frame, hs, vs);       // cap's left
-    g = rect(rdram, g, X(cx0), Y(cy0), X(capx0), Y(cy0) + 1.0f, frame, hs, vs);           // step
-    g = rect(rdram, g, X(cx0), Y(cy0), X(cx0) + 1.0f, Y(cy1), frame, hs, vs);             // left
-    g = rect(rdram, g, X(cx0), Y(cy1) - 1.0f, X(cx1), Y(cy1), frame, hs, vs);             // bottom
-    g = rect(rdram, g, X(cx1) - 1.0f, Y(capy0), X(cx1), Y(cy1), frame, hs, vs);           // right
-    // and under it, over the boot slot (x 56..78, to y 209)
-    const float footx0 = 52.0f, footx1 = 80.0f, footy1 = 210.0f;
-    g = rect(rdram, g, X(footx0), Y(cy1) - 1.0f, X(footx1), Y(footy1), fill, hs, vs);
-    g = rect(rdram, g, X(footx0), Y(cy1), X(footx0) + 1.0f, Y(footy1), frame, hs, vs);
-    g = rect(rdram, g, X(footx1) - 1.0f, Y(cy1), X(footx1), Y(footy1), frame, hs, vs);
-    g = rect(rdram, g, X(footx0), Y(footy1) - 1.0f, X(footx1), Y(footy1), frame, hs, vs);
-    g = rect(rdram, g, X(footx0) + 1.0f, Y(cy1) - 1.0f, X(footx1) - 1.0f, Y(cy1), fill, hs, vs);
-    g = rect(rdram, g, X(cx0) + 2.0f, Y(cy1) - 3.0f, X(cx1) - 2.0f, Y(cy1) - 2.0f, inner, hs, vs);
+    constexpr float kX0 = 20.0f, kY0 = 72.0f;
+    constexpr int kTileW = 44, kTileH = 46;
+    int tiles[3][3];
+    for (int j = 0; j < 3; j++) {
+        for (int i = 0; i < 3; i++) {
+            const std::string name = "mc_" + std::to_string(i) + "_" + std::to_string(j);
+            tiles[j][i] = branding_index(name.c_str());
+            if (tiles[j][i] < 0) return g;
+        }
+    }
+    g = prompt_state(rdram, g, o.alpha);
+    auto edge_x = [&](int i) { return std::round(o.x + (kX0 + (float)(i * kTileW)) * o.sx); };
+    auto edge_y = [&](int j) { return std::round(o.y + (kY0 + (float)(j * kTileH)) * o.sy); };
+    for (int j = 0; j < 3; j++) {
+        for (int i = 0; i < 3; i++) {
+            const float x0 = edge_x(i), x1 = edge_x(i + 1), y0 = edge_y(j), y1 = edge_y(j + 1);
+            g = draw_rgba16(rdram, g, (size_t)tiles[j][i], x0, y0, (x1 - x0) / (float)kTileW, (y1 - y0) / (float)kTileH);
+        }
+    }
     return g;
 }
 
@@ -10026,6 +10021,15 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         for (int n = 0; heap_pointer(gear_items) && n < 12; n++) add(MEM_W(4 * n, gear_items));
         g = ctl_text(rdram, ctx, g, "Wearing", X(28.0f), Y(194.0f), 0.45f, brown, alpha);
         float x = 54.0f;
+        const int slot = branding_index("mc_wear");
+        if (slot >= 0) {  // a small plate under each icon
+            g = prompt_state(rdram, g, o.alpha);
+            for (size_t n = 0; n < ids.size() && n < 9; n++) {
+                const float px = o.x + (x + 10.5f * (float)n) * o.sx, py = o.y + 191.25f * o.sy;
+                g = draw_rgba16(rdram, g, (size_t)slot, std::round(px), std::round(py), o.sx * 10.0f / 12.0f, o.sy * 10.0f / 12.0f);
+            }
+            g = ctl_state(rdram, ctx, g);
+        }
         for (size_t n = 0; n < ids.size() && n < 9; n++) {
             const gpr ic = card_icon(rdram, ctx, ids[n]);
             if (heap_pointer(ic)) {
