@@ -3241,6 +3241,8 @@ namespace {
     gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);  // "Details card", below
     gpr inventory_highlighted_item(uint8_t* rdram, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on);
+    void card_icons_free(uint8_t* rdram, recomp_context* ctx);
+    bool card_icons_empty();
 
     // Combat menu hints. In combat the items (Y) and spells and skills (X) are menus held open: the game keeps one
     // while its button is held (combat_control_case_0x16 / 0x17) and, when it is let go, uses the highlighted entry
@@ -3918,6 +3920,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         }
     }
     aidyn::input::set_details_switch(details_active);
+    if (!details_active && frame_ctx != nullptr && !card_icons_empty()) card_icons_free(rdram, frame_ctx);
     treasure_title.seen = false;
     inventory_page.seen = false;
     combat_menu_box.seen = false;
@@ -9499,6 +9502,52 @@ namespace {
 }
 
 namespace {
+    // The card's icons (the item and what the character wears), loaded once each (GetItemImage, then loadBorg8) and freed
+    // when the inventory page goes (a loaded game's heap is another one).
+    std::map<uint16_t, gpr> card_icons;
+
+    gpr card_icon(uint8_t* rdram, recomp_context* ctx, uint16_t item) {
+        auto it = card_icons.find(item);
+        if (it != card_icons.end()) return it->second;
+        MEM_W(0, kIconIndexSlot) = 0;
+        call_game(rdram, ctx, GetItemImage, item, (uint32_t)kIconIndexSlot);
+        const uint32_t index = (uint32_t)MEM_W(0, kIconIndexSlot);
+        const gpr icon = index != 0 ? (gpr)(int32_t)call_game(rdram, ctx, loadBorg8, index) : 0;
+        card_icons[item] = icon;
+        return icon;
+    }
+
+    bool card_icons_empty() { return card_icons.empty(); }
+
+    void card_icons_free(uint8_t* rdram, recomp_context* ctx) {
+        for (auto& [id, icon] : card_icons) {
+            if (heap_pointer(icon)) call_game(rdram, ctx, borg8_free, (uint32_t)icon);
+        }
+        card_icons.clear();
+    }
+
+    // The party member whose page it is (gPartyPicker 0x800DE9F0; party 0x800D9684, Members[] at +0): their CharSheet.
+    gpr page_sheet(uint8_t* rdram) {
+        const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+        const uint32_t who = MEM_BU(0, (gpr)(int32_t)0x800DE9F0);
+        const gpr sheet = heap_pointer(party) && who < 4 ? MEM_W(4 * who, party) : 0;
+        return heap_pointer(sheet) ? sheet : 0;
+    }
+
+    // What they wear in the item's slot (an ItemInstance, or 0): CharSheet armor** +0x20 (chest, shield), weapons* +0x24.
+    gpr worn_in_slot(uint8_t* rdram, gpr sheet, uint32_t type) {
+        gpr worn = 0;
+        if (type == 5 || type == 6) {
+            const gpr armour = MEM_W(0x20, sheet);
+            worn = heap_pointer(armour) ? MEM_W(4 * (type - 5), armour) : 0;
+        } else if (type == 7) {
+            worn = MEM_W(0x24, sheet);
+        }
+        return heap_pointer(worn) ? worn : 0;
+    }
+}
+
+namespace {
     gpr inventory_highlighted_item(uint8_t* rdram, gpr list) {
         const gpr menu = MEM_W(0x80, list);
         if (!heap_pointer(menu)) return 0;
@@ -9589,7 +9638,7 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     g = rect(rdram, g, X(cx0) + 2.0f, Y(cy1) - 3.0f, X(cx1) - 2.0f, Y(cy1) - 2.0f, inner, hs, vs);
     g = ctl_state(rdram, ctx, g);
     // The icon.
-    const gpr icon = item_icon(rdram, ctx, (uint16_t)id);
+    const gpr icon = card_icon(rdram, ctx, (uint16_t)id);
     if (heap_pointer(icon)) {
         const uint32_t iw = MEM_HU(0x0A, icon), ih = MEM_HU(0x0C, icon);
         if (iw != 0 && ih != 0) {
@@ -9599,15 +9648,14 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
                                               { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
         }
     }
-    const uint32_t ink = 0x40386A, brown = 0x7B5560, green = 0x2F6B3A;
+    const uint32_t ink = 0x40386A, brown = 0x7B5560, green = 0x2F6B3A, red = 0x8E2323;
     const std::string name = game_string(rdram, MEM_W(4, item));
     g = ctl_text(rdram, ctx, g, name.empty() ? "?" : name, X(56.0f), Y(90.0f), 0.8f, ink, alpha);
     std::string kind = item_kind(type);
-    gpr weapon_text = 0;
     if (type == 7) {
         const gpr table = MEM_W(0, (gpr)(int32_t)0x800E2FC4);  // weapon_strings
         const uint32_t wt = MEM_BU(0x24, item);
-        weapon_text = heap_pointer(table) && wt < 32 ? MEM_W(4 * wt, table) : 0;
+        const gpr weapon_text = heap_pointer(table) && wt < 32 ? MEM_W(4 * wt, table) : 0;
         const std::string w = game_string(rdram, weapon_text);
         if (!w.empty()) kind = w;
     }
@@ -9617,39 +9665,58 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     g = rect_state(rdram, g);
     g = rect(rdram, g, line_x0, Y(117.0f), line_x1, Y(117.0f) + 1.0f, 0x8A607000u | (uint32_t)(alpha * 3 / 4), hs, vs);
     g = ctl_state(rdram, ctx, g);
-    // The lines: label at the left, value at the right.
+    const gpr font = MEM_W(0, kFontPtr);
+    // The character whose page it is, and what they wear in this item's slot: the numbers are shown against it.
+    const gpr sheet = page_sheet(rdram);
+    const gpr worn = sheet != 0 ? worn_in_slot(rdram, sheet, type) : 0;
+    const gpr compare = (worn != 0 && worn != item) ? worn : 0;
+    // The lines: label at the left, value at the right, and how it differs from what they wear in green or red.
     float y = 121.0f;
-    auto line = [&](const std::string& label, const std::string& value, uint32_t colour = 0x40386A) {
-        if (y > 197.0f) return;
+    auto line = [&](const std::string& label, const std::string& value, uint32_t colour = 0x40386A, int delta = 0) {
+        if (y > 168.0f) return;
         g = ctl_text(rdram, ctx, g, label, X(28.0f), Y(y), 0.55f, brown, alpha);
-        g = ctl_text(rdram, ctx, g, value, X(144.0f), Y(y), 0.55f, colour, alpha, true);
+        float right = X(144.0f);
+        if (delta != 0) {
+            const std::string d = "(" + signed_number(delta) + ")";
+            g = ctl_text(rdram, ctx, g, d, right, Y(y), 0.55f, delta > 0 ? green : red, alpha, true);
+            right -= (heap_pointer(font) ? ctl_width(rdram, ctx, font, d, 0.55f) : 14.0f) + 3.0f;
+        }
+        g = ctl_text(rdram, ctx, g, value, right, Y(y), 0.55f, colour, alpha, true);
         y += 9.0f;
     };
     auto mods = [&](gpr mod, bool skill) {
-        if (!heap_pointer(mod) && ((uint32_t)mod < 0x80000400u || (uint32_t)mod >= 0x80E6A000u)) return;
+        const uint32_t u = (uint32_t)mod;
+        if (u < 0x80000400u || u >= 0x80E6A000u) return;
         const int stat = (int)(int8_t)MEM_BU(0, mod), amount = (int)(int8_t)MEM_BU(1, mod);
         if (stat == 255 || stat == -1 || amount == 0) return;
         const char* label = skill ? skill_name(stat) : stat_name(stat);
-        if (*label != 0) line(label, signed_number(amount), amount > 0 ? green : 0x8E2323);
+        if (*label != 0) line(label, signed_number(amount), amount > 0 ? green : red);
+    };
+    auto diff = [&](uint32_t offset, bool is_signed) {  // this item's byte at offset less the worn one's
+        if (compare == 0) return 0;
+        const int a = is_signed ? (int)(int8_t)MEM_BU(offset, item) : (int)MEM_BU(offset, item);
+        const int b = is_signed ? (int)(int8_t)MEM_BU(offset, compare) : (int)MEM_BU(offset, compare);
+        return a - b;
     };
     if (type == 7) {  // a weapon
         if (MEM_BU(0x17, item) != 0) line(common_string(rdram, 0x219, "Strength needed"), std::to_string(MEM_BU(0x17, item)));
-        line(common_string(rdram, 0x21A, "Base hit"), std::to_string(MEM_BU(0x25, item)));
-        line(common_string(rdram, 0x21B, "Damage"), std::to_string(MEM_BU(0x26, item)));
+        line(common_string(rdram, 0x21A, "Base hit"), std::to_string(MEM_BU(0x25, item)), ink, diff(0x25, false));
+        line(common_string(rdram, 0x21B, "Damage"), std::to_string(MEM_BU(0x26, item)), ink, diff(0x26, false));
         mods(MEM_W(0xC, item), false);
         mods(MEM_W(0x18, item), true);
     } else if (type == 5 || type == 6) {  // armour, a shield
-        line(common_string(rdram, 0x220, "Protection"), std::to_string(MEM_BU(0x25, item)));
-        if (type == 6) line(common_string(rdram, 0x221, "Defence"), std::to_string(MEM_BU(0x24, item)));
+        line(common_string(rdram, 0x220, "Protection"), std::to_string(MEM_BU(0x25, item)), ink, diff(0x25, false));
+        if (type == 6) line(common_string(rdram, 0x221, "Defence"), std::to_string(MEM_BU(0x24, item)), ink, diff(0x24, false));
         const int dex = (int)(int8_t)MEM_BU(0x26, item), stealth = (int)(int8_t)MEM_BU(0x27, item);
-        line(common_string(rdram, 0x222, "Dexterity"), signed_number(dex), dex < 0 ? 0x8E2323 : 0x40386A);
-        if (stealth != 0) line(common_string(rdram, 0x223, "Stealth"), signed_number(stealth), stealth < 0 ? 0x8E2323 : green);
+        line(common_string(rdram, 0x222, "Dexterity"), signed_number(dex), dex < 0 ? red : ink, diff(0x26, true));
+        if (stealth != 0 || diff(0x27, true) != 0)
+            line(common_string(rdram, 0x223, "Stealth"), signed_number(stealth), stealth < 0 ? red : green, diff(0x27, true));
         mods(MEM_W(0xC, item), false);
         mods(MEM_W(0x18, item), true);
     } else if (type >= 9 && type <= 15) {  // gear (helmet, cloak, gloves, ring, wand, belt, boots)
         const int dmg = (int)(int8_t)MEM_BU(0x14, item), prot = (int)(int8_t)MEM_BU(0x15, item);
-        if (dmg != 0) line(common_string(rdram, 0x21B, "Damage"), signed_number(dmg), dmg < 0 ? 0x8E2323 : green);
-        if (prot != 0) line(common_string(rdram, 0x220, "Protection"), signed_number(prot), prot < 0 ? 0x8E2323 : green);
+        if (dmg != 0) line(common_string(rdram, 0x21B, "Damage"), signed_number(dmg), dmg < 0 ? red : green);
+        if (prot != 0) line(common_string(rdram, 0x220, "Protection"), signed_number(prot), prot < 0 ? red : green);
         mods(MEM_W(0xC, item), false);
         mods(MEM_W(0x18, item), true);
     } else if (type == 19) {  // an amulet
@@ -9665,19 +9732,52 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         const std::string text = combat_entry_text(rdram, ctx, 0x20000u | (id & 0xFF));
         if (!text.empty()) {
             for (const std::string& l : wrap_lines(rdram, ctx, text, X(144.0f) - X(28.0f), 0.55f)) {
-                if (y > 197.0f) break;
+                if (y > 168.0f) break;
                 g = ctl_text(rdram, ctx, g, l, X(28.0f), Y(y), 0.55f, ink, alpha);
                 y += 8.0f;
             }
         }
     }
+    // What it would replace, and what it's worth.
+    if (compare != 0) {
+        const std::string was = game_string(rdram, MEM_W(4, compare));
+        if (!was.empty()) {
+            g = ctl_text(rdram, ctx, g, "Replaces", X(28.0f), Y(171.0f), 0.5f, brown, alpha);
+            g = ctl_text(rdram, ctx, g, was, X(144.0f), Y(171.0f), 0.5f, ink, alpha, true);
+        }
+    }
     const int price = (int)MEM_HU(0xA, item);
     if (price > 0) {
-        g = ctl_text(rdram, ctx, g, "Worth " + std::to_string(price) + " g", X(28.0f), Y(197.0f), 0.5f, brown, alpha);
+        g = ctl_text(rdram, ctx, g, "Worth " + std::to_string(price) + " g", X(28.0f), Y(181.0f), 0.5f, brown, alpha);
+    }
+    // What the page's character is wearing, as a row of small icons along the bottom (the doll is hidden).
+    if (sheet != 0) {
+        std::vector<uint16_t> ids;
+        auto add = [&](gpr it) { if (heap_pointer(it)) ids.push_back(MEM_HU(0, it)); };
+        const gpr armour = MEM_W(0x20, sheet);
+        if (heap_pointer(armour)) { add(MEM_W(0, armour)); add(MEM_W(4, armour)); }
+        add(MEM_W(0x24, sheet));
+        const gpr gear = MEM_W(0x28, sheet);
+        const gpr gear_items = heap_pointer(gear) ? MEM_W(0, gear) : 0;
+        for (int n = 0; heap_pointer(gear_items) && n < 12; n++) add(MEM_W(4 * n, gear_items));
+        g = ctl_text(rdram, ctx, g, "Wearing", X(28.0f), Y(194.0f), 0.45f, brown, alpha);
+        float x = 54.0f;
+        for (size_t n = 0; n < ids.size() && n < 9; n++) {
+            const gpr ic = card_icon(rdram, ctx, ids[n]);
+            if (heap_pointer(ic)) {
+                const uint32_t iw = MEM_HU(0x0A, ic), ih = MEM_HU(0x0C, ic);
+                if (iw != 0 && ih != 0) {
+                    const float size = 10.5f * k;
+                    g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)ic,
+                                                      f32_bits(X(x)), f32_bits(Y(192.0f)),
+                                                      { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
+                }
+            }
+            x += 10.5f;
+        }
     }
     return g;
 }
-
 
 gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, bool on) {
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
