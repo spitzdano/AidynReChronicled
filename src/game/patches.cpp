@@ -3909,7 +3909,9 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             g = draw_button_cap(rdram, g, "CD", std::round(o.x + 281.8f * o.sx), std::round(o.y + 205.75f * o.sy), o.sx, o.sy, 13.0f * kPromptScale,
                                 11.0f * kPromptScale, true);
         }
-        // The party switch beside the portraits (their frames span x 21..150, y 25..66).
+        // The party switch beside the portraits (their frames span x 21..150, y 25..66). The pictures take the last colour set: after the
+        // lists' words that was a highlighted row's violet (the plates turned purple on the last rows), so the tint is set white first.
+        g = prompt_state(rdram, g, inventory_page.alpha);
         const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party
         if (heap_pointer(party) && MEM_BU(0x24, party) > 1) {     // PartySize
             const int prev = branding_index("party_prev"), next = branding_index("party_next");
@@ -9900,13 +9902,14 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         const gpr gear_items = heap_pointer(gear) ? MEM_W(0, gear) : 0;
         for (int n = 0; heap_pointer(gear_items) && n < 12; n++) add(MEM_W(4 * n, gear_items));
         g = ctl_text(rdram, ctx, g, "Wearing", X(28.0f), Y(194.0f), 0.45f, brown, alpha);
-        float x = 54.0f;
+        float x = 52.5f;
+        constexpr float kPitch = 10.8f, kPlate = 11.2f, kIconSize = 9.6f;  // a plate round each icon, the icon in the middle of it
         const int slot = branding_index("mc_wear");
         if (slot >= 0) {  // a small plate under each icon
             g = prompt_state(rdram, g, o.alpha);
             for (size_t n = 0; n < ids.size() && n < 9; n++) {
-                const float px = o.x + (x + 10.5f * (float)n) * o.sx, py = o.y + 191.25f * o.sy;
-                g = draw_rgba16(rdram, g, (size_t)slot, std::round(px), std::round(py), o.sx * 10.0f / 12.0f, o.sy * 10.0f / 12.0f);
+                const float px = o.x + (x + kPitch * (float)n) * o.sx, py = o.y + 191.7f * o.sy;
+                g = draw_rgba16(rdram, g, (size_t)slot, std::round(px), std::round(py), o.sx * kPlate / 12.0f, o.sy * kPlate / 12.0f);
             }
             g = ctl_state(rdram, ctx, g);
         }
@@ -9915,13 +9918,13 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
             if (heap_pointer(ic)) {
                 const uint32_t iw = MEM_HU(0x0A, ic), ih = MEM_HU(0x0C, ic);
                 if (iw != 0 && ih != 0) {
-                    const float size = 10.5f * k;
+                    const float size = kIconSize * k;
                     g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)ic,
-                                                      f32_bits(X(x)), f32_bits(Y(192.0f)),
+                                                      f32_bits(X(x + (kPlate - kIconSize) / 2.0f)), f32_bits(Y(191.7f + (kPlate - kIconSize) / 2.0f)),
                                                       { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
                 }
             }
-            x += 10.5f;
+            x += kPitch;
         }
     }
     return g;
@@ -10398,8 +10401,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, kChipY, det_x + det_w, kChipY + 8.0f);
     {
         const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
-        if (y_icon >= 0) g = draw_rgba16(rdram, g, (size_t)y_icon, PX(sort_x + 1.4f), PY(kChipY - 0.2f), o.sx * 0.66f, o.sy * 0.66f);
-        if (x_icon >= 0) g = draw_rgba16(rdram, g, (size_t)x_icon, PX(det_x + 1.4f), PY(kChipY - 0.2f), o.sx * 0.66f, o.sy * 0.66f);
+        if (y_icon >= 0) g = draw_rgba16(rdram, g, (size_t)y_icon, PX(sort_x + 0.7f), PY(kChipY + 0.35f), o.sx * 0.6f, o.sy * 0.6f);
+        if (x_icon >= 0) g = draw_rgba16(rdram, g, (size_t)x_icon, PX(det_x + 0.7f), PY(kChipY + 0.35f), o.sx * 0.6f, o.sy * 0.6f);
     }
     // The rows' washes and heading rules.
     const int hl_pic = branding_index("mc_hl"), heading_pic = branding_index("mc_heading");
@@ -10435,10 +10438,10 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
                 const gpr b = heap_pointer(w) ? MEM_W(0x6C, w) : 0;
                 return heap_pointer(b) ? b : (gpr)0;
             }();
-            g = draw_borg_icon(rdram, ctx, g, ic, X(x + 2.4f), Y(kTabsY + 1.6f), 10.0f * o.sx / hs, a);
+            g = draw_borg_icon(rdram, ctx, g, ic, X(x + 1.3f), Y(kTabsY + 3.0f), 8.2f * o.sx / hs, a);
         }
         if (counts[t] > 0 && t > 0 && kind != 2) {
-            g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 0.8f), Y(kTabsY + 7.6f), 0.42f, brown, a, true);
+            g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 1.0f), Y(kTabsY + 1.3f), 0.36f, 0x5A3A44, a, true);
         }
     }
     static const char* const sort_names[] = { "Order", "Type", "Name" };
@@ -10458,18 +10461,19 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha);
         const gpr ic = kind == 0 ? card_icon(rdram, ctx, e.item) : e.icon;
         g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha);
-        if (!e.qty.empty()) g = ctl_text(rdram, ctx, g, e.qty, X(kListX0 + 29.0f), Y(y + 0.5f), 0.55f, sel ? hot : dim, alpha, true);
+        constexpr float kRowScale = 0.58f, kRowDy = 0.5f;  // name, quantity and the number at the right share a size, so a baseline
+        if (!e.qty.empty()) g = ctl_text(rdram, ctx, g, e.qty, X(kListX0 + 29.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
         if (kind == 2) {  // the level, what changes it, and a bar for how far up the scale it is (the game's top is 10)
-            g = ctl_text(rdram, ctx, g, std::to_string(e.level), X(kListX1 - 42.0f), Y(y + 0.3f), 0.6f, sel ? hot : ink, alpha, true);
-            if (e.mod != 0) g = ctl_text(rdram, ctx, g, "(" + std::string(e.mod > 0 ? "+" : "") + std::to_string(e.mod) + ")", X(kListX1 - 26.0f), Y(y + 0.5f), 0.5f, e.mod > 0 ? 0x2F6B3A : 0x8E2323, alpha, true);
+            g = ctl_text(rdram, ctx, g, std::to_string(e.level), X(kListX1 - 42.0f), Y(y + kRowDy), kRowScale, sel ? hot : ink, alpha, true);
+            if (e.mod != 0) g = ctl_text(rdram, ctx, g, "(" + std::string(e.mod > 0 ? "+" : "") + std::to_string(e.mod) + ")", X(kListX1 - 26.0f), Y(y + kRowDy), 0.5f, e.mod > 0 ? 0x2F6B3A : 0x8E2323, alpha, true);
             const float bx0 = X(kListX1 - 23.0f), bx1 = X(kListX1 - 2.0f), by0 = Y(y + 3.2f), by1 = Y(y + 5.0f);
             g = rect_state(rdram, g);
             g = rect(rdram, g, bx0, by0, bx1, by1, 0x7B556000u | (uint32_t)(alpha / 4), hs, vs);
             g = rect(rdram, g, bx0, by0, bx0 + (bx1 - bx0) * (float)std::clamp(e.level, 0, 10) / 10.0f, by1, 0x6B4A9A00u | (uint32_t)alpha, hs, vs);
             g = ctl_state(rdram, ctx, g);
         }
-        g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 32.0f), Y(y + 0.3f), 0.6f, sel ? hot : ink, alpha);
-        if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + 0.7f), 0.5f, sel ? hot : dim, alpha, true);
+        g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 32.0f), Y(y + kRowDy), kRowScale, sel ? hot : ink, alpha);
+        if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
     }
     return g;
 }
