@@ -370,15 +370,23 @@ void aidyn::set_render_height(int lines) {
     aidyn::refresh_aspect();
 }
 
+// With supersampling the picture is drawn at 2x its size each way already, and 8x MSAA on top of that took the pause menu (which
+// draws the most full-screen layers) from 144 to 24 frames a second at 1440 lines (spitzdano, 2026-11-04: 100 down to 23 at 3440x1440;
+// MSAA 4x with the same supersampling holds 120). So MSAA stops at 4x while supersampling is on (settings.json keeps what was asked).
+static int effective_msaa(int msaa, int supersampling) {
+    return supersampling > 1 && msaa > 4 ? 4 : msaa;
+}
+
 void aidyn::set_antialiasing(int msaa, int supersampling) {
     aidyn::settings::graphics_rw().msaa = msaa;
     aidyn::settings::graphics_rw().supersampling = supersampling;
     aidyn::settings::save_number("graphics", "msaa", msaa);
     aidyn::settings::save_number("graphics", "supersampling", supersampling);
     ultramodern::renderer::GraphicsConfig config = ultramodern::renderer::get_graphics_config();
-    config.msaa_option = msaa == 8 ? ultramodern::renderer::Antialiasing::MSAA8X
-                       : msaa == 4 ? ultramodern::renderer::Antialiasing::MSAA4X
-                       : msaa == 2 ? ultramodern::renderer::Antialiasing::MSAA2X
+    const int shown_msaa = effective_msaa(msaa, supersampling);
+    config.msaa_option = shown_msaa == 8 ? ultramodern::renderer::Antialiasing::MSAA8X
+                       : shown_msaa == 4 ? ultramodern::renderer::Antialiasing::MSAA4X
+                       : shown_msaa == 2 ? ultramodern::renderer::Antialiasing::MSAA2X
                                    : ultramodern::renderer::Antialiasing::None;
     ultramodern::renderer::set_graphics_config(config);
     aidyn::refresh_aspect();
@@ -770,7 +778,7 @@ int main(int argc, char** argv) {
     graphics.api_option = ultramodern::renderer::GraphicsApi::Auto;
 #endif
     graphics.ar_option = ultramodern::renderer::AspectRatio::Original;
-    switch (aidyn::settings::graphics().msaa) {
+    switch (effective_msaa(aidyn::settings::graphics().msaa, aidyn::settings::graphics().supersampling)) {
         case 2: graphics.msaa_option = ultramodern::renderer::Antialiasing::MSAA2X; break;
         case 4: graphics.msaa_option = ultramodern::renderer::Antialiasing::MSAA4X; break;
         case 8: graphics.msaa_option = ultramodern::renderer::Antialiasing::MSAA8X; break;
