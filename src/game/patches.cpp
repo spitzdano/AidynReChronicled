@@ -11983,6 +11983,7 @@ namespace {
             if (mouse_look()) return { "", "key_mouse_move" };
             return { keys_text({ kCamUp, kCamLeft, kCamDown, kCamRight }) };
         }
+        if (button == "RSH") return { keys_text({ kCamLeft, kCamRight }) };  // the right stick left / right: the menu pages
         if (button == "DPAD") return { keys_text({ kMoveLeft, kMoveRight }) };
         return { "?" };
     }

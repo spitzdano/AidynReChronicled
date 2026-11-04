@@ -270,7 +270,7 @@ ROW_W, ROW_H = 84, 7
 # game draws the twin and a key cap or mouse picture in each slot (src/game/patches.cpp, "Keys on the prompts").
 KEYS = {"on": False, "slots": []}
 SLOTS = {}  # name_k -> (icon height, [(x, w, button)])
-SLOT_W = {"LS": 24, "DPAD": 15, "L3": 15, "R3": 13, "RS": 13}
+SLOT_W = {"LS": 24, "DPAD": 15, "L3": 15, "R3": 13, "RS": 13, "RSH": 16}
 
 
 def slot_width(button):
@@ -350,14 +350,14 @@ def panel(w, h):
     return img
 
 
-def page_prompt(button):
-    """LB / RB at the ends of a pause page's arrow (the arrow is 8 texels tall)."""
+def page_prompt(button, key_button=None):
+    """LB / RB at the ends of a pause page's arrow (the arrow is 8 texels tall); key_button: what the keyboard twin's slot stands for."""
     def draw(w, h):
         img = np.zeros((h * SS, w * SS, 4), np.float32)
         bw, px = icon(button, h)
         x0 = (w - bw) * SS // 2
         if px is None:
-            KEYS["slots"].append((x0 // SS, bw, button))
+            KEYS["slots"].append((x0 // SS, bw, key_button or button))
         else:
             over(img[:, x0:x0 + bw * SS], px[..., :3] / np.maximum(px[..., 3:], 1e-6), px[..., 3])
         return img
@@ -506,7 +506,7 @@ IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
           ("edition_action", EDITION_W, EDITION_H, edition_line("edition-action-edition.png")),
           ("ver_original", 50, 12, version_label("Original")), ("ver_patch", 50, 12, version_label("Aidyn Patch")),
           ("fast_forward", 20, 12, fast_forward), ("ctl_panel", 4, 4, panel),
-          ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")), ("prompt_rs", 11, 8, page_prompt("RS")),
+          ("prompt_lb", 11, 8, page_prompt("L")), ("prompt_rb", 11, 8, page_prompt("R")), ("prompt_rs", 11, 8, page_prompt("RS", "RSH")),
           ("art_off", 64, 8, art_off)]
 IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
 IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in HINTS]
@@ -940,7 +940,7 @@ for _name, _buttons in ICON_BUTTONS.items():
     _w, _h, _d = _by_name[_name]
     # (Twins that would be the same picture once their icons are blank are one texel wider for the second of the pair: no
     # two share a texture's hash.)
-    _wk = slot_width(_buttons[0]) if _name in ("prompt_lb", "prompt_rb", "prompt_rs", "party_prev", "party_next", "ver_x", "ver_y") \
+    _wk = slot_width("RSH" if _name == "prompt_rs" else _buttons[0]) if _name in ("prompt_lb", "prompt_rb", "prompt_rs", "party_prev", "party_next", "ver_x", "ver_y") \
         else _w + sum(slot_width(b) for b in _buttons)
     _wk += 1 if _name in ("prompt_rb", "party_next", "ver_y", "chint_use_spells") else 0
     IMAGES.append((_name + "_k", _wk, _h, keyed(_name, _d)))
