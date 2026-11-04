@@ -42,6 +42,11 @@ mods, fixed and improved.
 - **Fast-forward** (3x) and a **faster walk** (1.5x by default, up to 2x).
 - **Clearer combat**: a turn-order bar, a combat log, framed portraits with HP, stamina and a tired mark, easier aiming, what a
   spell, skill or potion does and costs shown while you choose it, and faster turns if you like (your party's and the enemies').
+- **Better inventory, spells and skills lists**: tabs on LB and RB (weapons, armour, jewellery, magic, potions, items; the spell
+  schools; skills and arms), a sort on Y (the game's order, by type, by name), group headings, and a Details switch on X: a
+  card for the highlighted item, spell or skill in place of the paper doll, with what it is and does, how it compares with what the
+  character wears, and what the character is wearing. The right stick turns the menu's pages. With a mouse, point at a row
+  and click a tab.
 - **Help built in**: a controls card on screen, button hints in the menus, a ReChronicled topic in the help book and a
   PC edition of the manual (F1).
 - **Changed while you play**: the Display and ReChronicled pages of the pause menu hold all of this edition's options,
@@ -400,6 +405,9 @@ these defaults on the first run:
 | `walk_speed` | 1 (original) to 2: in the field Alaron's walk and run cycles play this many times faster, and as the game moves him by them, his pace with them; nothing else is sped up (`1.5`) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
+| `tabbed_lists` | the pause menu's Inventory, Spells and Skills lists drawn by the port: tabs, sorting, headings, the Details switch (`false`: the game's own lists, X still switches Details) |
+| `inventory_sort` | the order of those lists (Y): 0 the game's, 1 by type or school (default), 2 by name |
+| `details` | Details on (X): a card for the highlighted entry beside the list; off in a new game, remembered |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
 | `combat_descriptions` | combat: what the highlighted spell, skill or item does, beside its menu (the ReChronicled page's Combat descriptions; `false`: none) |
 | `fps_counter` | `true`: the frames shown a second at the top right (left of the fast-forward marker when that shows), over everything, in the game's font (the Display page; default `false`) |
