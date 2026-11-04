@@ -3240,6 +3240,8 @@ namespace {
     gpr doll_lists = 0;
     gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);  // "Details card", below
     gpr inventory_highlighted_item(uint8_t* rdram, gpr list);
+    gpr draw_spell_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
+    gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on);
     void card_icons_free(uint8_t* rdram, recomp_context* ctx);
     bool card_icons_empty();
@@ -3859,7 +3861,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         // Details (X) on the inventory list: a switch, remembered (settings.json graphics.details; off in a new game). On, a
         // card for the highlighted item takes the paper doll's place (draw_details_card). Not after a battle (the Train
         // panel) and not on the other lists, where X still opens the game's own details.
-        if (frame_ctx != nullptr && shown != 0 && shown == inventory && heap_pointer(inventory) && MEM_W(0xA8, lists) == 0) {
+        const gpr spells_list = MEM_W(0x98, lists), skills_list = MEM_W(0x9C, lists);
+        const bool on_inventory = shown != 0 && shown == inventory && heap_pointer(inventory);
+        const bool on_spells = shown != 0 && shown == spells_list && heap_pointer(spells_list);
+        const bool on_skills = shown != 0 && shown == skills_list && heap_pointer(skills_list);
+        if (frame_ctx != nullptr && (on_inventory || on_spells || on_skills) && MEM_W(0xA8, lists) == 0) {
             details_active = true;
             if (aidyn::input::details_pressed()) {
                 const bool on = !aidyn::settings::graphics().details;
@@ -3867,7 +3873,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 aidyn::settings::save_bool("graphics", "details", on);
             }
             const bool on = aidyn::settings::graphics().details;
-            if (on) g = draw_details_card(rdram, frame_ctx, g, inventory_page, inventory);
+            if (on) {
+                g = on_inventory ? draw_details_card(rdram, frame_ctx, g, inventory_page, inventory)
+                  : on_spells ? draw_spell_card(rdram, frame_ctx, g, inventory_page, spells_list)
+                              : draw_skill_card(rdram, frame_ctx, g, inventory_page, skills_list);
+            }
             g = draw_details_state(rdram, frame_ctx, g, inventory_page, on);
             g = prompt_state(rdram, g, inventory_page.alpha);
         }
@@ -9548,6 +9558,19 @@ namespace {
 }
 
 namespace {
+    // A list's highlighted row (any of the doll lists): scroll menu +0x80 -> substruct +0x40 -> rows +0x18, highlight +0x1E, count +0x20.
+    gpr highlighted_row(uint8_t* rdram, gpr list) {
+        const gpr menu = MEM_W(0x80, list);
+        if (!heap_pointer(menu)) return 0;
+        const gpr sub = MEM_W(0x40, menu);
+        if (!heap_pointer(sub)) return 0;
+        const gpr items = MEM_W(0x18, sub);
+        const uint32_t highlight = MEM_HU(0x1E, sub), count = MEM_HU(0x20, sub);
+        if (!heap_pointer(items) || highlight >= count) return 0;
+        const gpr row = MEM_W(4 * highlight, items);
+        return heap_pointer(row) ? row : 0;
+    }
+
     gpr inventory_highlighted_item(uint8_t* rdram, gpr list) {
         const gpr menu = MEM_W(0x80, list);
         if (!heap_pointer(menu)) return 0;
@@ -9604,16 +9627,12 @@ namespace {
 }
 
 namespace {
-gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, gpr list) {
-    const gpr row = inventory_highlighted_item(rdram, list);
-    if (row == 0 || o.alpha == 0) return g;
-    const gpr item = MEM_W(0x7C, row);
-    const uint32_t id = MEM_HU(0, item), type = id >> 8;
+// The card's frame over the doll's place.
+gpr draw_card_frame(uint8_t* rdram, gpr g, const TitleSeen& o) {
     const int alpha = o.alpha;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
     auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
-    const float k = o.sx / hs;  // units a page texel is
     // The card: parchment colour, a brown frame and a lighter line inside it.
     const uint32_t fill = 0xEDCFA800u | (uint32_t)alpha, frame = 0x8A607000u | (uint32_t)alpha, inner = 0xF8E8C800u | (uint32_t)alpha;
     // The doll's page area: x 20..152 (the list's portraits start at 160), y 82..206, with a cap over the helmet slot (x 56..76
@@ -9636,6 +9655,20 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     g = rect(rdram, g, X(footx0), Y(footy1) - 1.0f, X(footx1), Y(footy1), frame, hs, vs);
     g = rect(rdram, g, X(footx0) + 1.0f, Y(cy1) - 1.0f, X(footx1) - 1.0f, Y(cy1), fill, hs, vs);
     g = rect(rdram, g, X(cx0) + 2.0f, Y(cy1) - 3.0f, X(cx1) - 2.0f, Y(cy1) - 2.0f, inner, hs, vs);
+    return g;
+}
+
+gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, gpr list) {
+    const gpr row = inventory_highlighted_item(rdram, list);
+    if (row == 0 || o.alpha == 0) return g;
+    const gpr item = MEM_W(0x7C, row);
+    const uint32_t id = MEM_HU(0, item), type = id >> 8;
+    const int alpha = o.alpha;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
+    auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
+    const float k = o.sx / hs;  // units a page texel is
+    g = draw_card_frame(rdram, g, o);
     g = ctl_state(rdram, ctx, g);
     // The icon.
     const gpr icon = card_icon(rdram, ctx, (uint16_t)id);
@@ -9777,6 +9810,94 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         }
     }
     return g;
+}
+
+// The spells list's card: its row (WidgetSpellEntry) holds the SpellInstance at +0x7C (id u16 +0, name char* +4, level +0x14,
+// school +0x15, stamina +0x17, wizard rank needed +0x1A, ingredient +0x1D: 0 none, 1 spice, 2 herb, 3 gemstone), the
+// description is the pause menu's Details text (the combat descriptions' romstring).
+gpr draw_text_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, const std::string& title,
+                   const std::string& kind, const std::string& text,
+                   const std::vector<std::pair<std::string, std::string>>& facts) {
+    const int alpha = o.alpha;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
+    auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
+    const uint32_t ink = 0x40386A, brown = 0x7B5560;
+    g = draw_card_frame(rdram, g, o);
+    g = ctl_state(rdram, ctx, g);
+    g = ctl_text(rdram, ctx, g, title, X(28.0f), Y(90.0f), 0.85f, ink, alpha);
+    g = ctl_text(rdram, ctx, g, kind, X(28.0f), Y(105.0f), 0.5f, brown, alpha);
+    g = rect_state(rdram, g);
+    g = rect(rdram, g, X(28.0f), Y(117.0f), X(144.0f), Y(117.0f) + 1.0f, 0x8A607000u | (uint32_t)(alpha * 3 / 4), hs, vs);
+    g = ctl_state(rdram, ctx, g);
+    float y = 122.0f;
+    for (const std::string& l : wrap_lines(rdram, ctx, text, X(144.0f) - X(28.0f), 0.6f)) {
+        if (y > 172.0f) break;
+        g = ctl_text(rdram, ctx, g, l, X(28.0f), Y(y), 0.6f, ink, alpha);
+        y += 9.0f;
+    }
+    float fy = 204.0f - 9.0f * (float)facts.size();
+    for (const auto& [label, value] : facts) {
+        g = ctl_text(rdram, ctx, g, label, X(28.0f), Y(fy), 0.55f, brown, alpha);
+        g = ctl_text(rdram, ctx, g, value, X(144.0f), Y(fy), 0.55f, ink, alpha, true);
+        fy += 9.0f;
+    }
+    return g;
+}
+
+gpr draw_spell_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, gpr list) {
+    const gpr row = highlighted_row(rdram, list);
+    const gpr spell = row != 0 ? MEM_W(0x7C, row) : 0;
+    if (!heap_pointer(spell) || o.alpha == 0) return g;
+    static const char* const schools[] = { "Chaos", "Elemental", "Naming", "Necromancy", "", "Star" };
+    const uint32_t id = MEM_HU(0, spell), level = MEM_BU(0x14, spell), school = MEM_BU(0x15, spell);
+    std::string kind = school < 6 && *schools[school] != 0 ? std::string(schools[school]) + " spell" : "Spell";
+    kind += ", level " + std::to_string(level);
+    std::vector<std::pair<std::string, std::string>> facts;
+    facts.push_back({ "Stamina", std::to_string(MEM_BU(0x17, spell)) });
+    const uint32_t wizard = MEM_BU(0x1A, spell);
+    if (wizard != 0) {
+        std::string label = common_string(rdram, 0x215, "Min. Wizard Rank: %d");  // CommonStrings WinWizard (0x216 is "Requires:")
+        const size_t at = label.find("%d");
+        facts.push_back(at == std::string::npos ? std::pair<std::string, std::string>{ label, std::to_string(wizard) }
+                                                 : std::pair<std::string, std::string>{ label.substr(0, at) + std::to_string(wizard) + label.substr(at + 2), "" });
+    }
+    static const char* const ingredient[] = { "", "Spice", "Herb", "Gemstone" };
+    const uint32_t use = MEM_BU(0x1D, spell);
+    if (use >= 1 && use <= 3) facts.push_back({ common_string(rdram, 0x216, "Ingredient"), ingredient[use] });
+    return draw_text_card(rdram, ctx, g, o, game_string(rdram, MEM_W(4, spell)), kind,
+                          combat_entry_text(rdram, ctx, 0x10000u | id), facts);
+}
+
+// The skills list's card: its row (WidgetSkillInfo) has varU16 +0x5E: type << 8 | subtype (0 a skill, 1 a weapon skill,
+// 2 the shield); the description is the pause menu's (String/SkillDetails, 18 texts: the skills, then the weapon skills
+// through the game's table, the shield last).
+gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, gpr list) {
+    const gpr row = highlighted_row(rdram, list);
+    if (row == 0 || o.alpha == 0) return g;
+    const uint32_t key = MEM_HU(0x5E, row), type = key >> 8, sub = key & 0xFF;
+    std::string name, kind;
+    size_t index = 0;
+    if (type == 0) {
+        name = skill_name((int)sub);
+        kind = "Skill";
+        index = sub;
+    } else if (type == 1) {
+        static const uint16_t kWeaponText[] = { 0, 0, 0, 12, 13, 14, 0, 0, 15, 16 };
+        const gpr table = MEM_W(0, (gpr)(int32_t)0x800E2FC4);  // weapon_strings
+        name = heap_pointer(table) && sub < 32 ? game_string(rdram, MEM_W(4 * sub, table)) : "";
+        kind = "Weapon skill";
+        index = sub < 10 ? kWeaponText[sub] : 0;
+    } else if (type == 2) {
+        name = "Shield";
+        kind = "Shield skill";
+        index = 17;
+    } else {
+        return g;
+    }
+    if (skill_texts.empty()) skill_texts = load_romstrings(rdram, ctx, kSkillStrings, kSkillStringsSize, 18);
+    const std::string text = index < skill_texts.size() ? skill_texts[index] : "";
+    return draw_text_card(rdram, ctx, g, o, name.empty() ? "?" : name, kind, text, {});
 }
 
 gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, bool on) {
