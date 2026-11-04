@@ -17,6 +17,8 @@ namespace aidyn::input {
     bool quicksave_asked();                 // LB pressed in the field since last asked (src/game/patches.cpp)
     void set_dialogue(int state);           // a conversation: 0 none, 1 a line to move on from, 2 answers offered
     bool dialogue_skipping();               // View skipping the conversation (A pressed for the player, line by line)
+    void set_details_switch(bool active);   // the pause menu's inventory is up: X toggles Details (and doesn't reach the game); refresh every frame
+    bool details_pressed();                 // X was pressed since the last call
     bool controls_card();                   // the controls card shown (settings.json graphics.controls_card)
     bool keyboard_last();                   // the keyboard or mouse was used last (a pad's presses count for the pad): prompts show keys
     bool pad_b_held();                      // the pad's own B held (the Controls page: it cancels listening)

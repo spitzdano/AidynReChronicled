@@ -53,6 +53,8 @@ namespace {
     std::atomic_int dialogue_state{ 0 };  // aidyn::input::set_dialogue
     std::atomic_bool dialogue_skip{ false };
     std::atomic_bool start{ false };
+    std::atomic<long long> details_until_ms{ 0 };  // aidyn::input::set_details_switch
+    std::atomic_bool details_press{ false };
     std::atomic_int last_device{ -1 };  // 0 the pad, 1 the keyboard or mouse, -1 neither yet (the keyboard if there is no pad)
     std::atomic_bool pad_b{ false };  // the pad's B (not the keyboard's or the mouse's)
     std::atomic_bool quicksave_pressed{ false };  // LB pressed in the field: aidyn::input::quicksave_asked
@@ -288,6 +290,17 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         }
         b &= ~(CL | L);
     }
+    // The pause menu's inventory: X (C-down) switches Details on or off instead of opening the game's popup.
+    {
+        static bool cd_was_down = false;
+        const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const bool cd = (b & CD) != 0;
+        if (now_ms < details_until_ms.load(std::memory_order_relaxed)) {
+            if (cd && !cd_was_down) details_press.store(true, std::memory_order_relaxed);
+            b &= ~CD;
+        }
+        cd_was_down = cd;
+    }
     // In a conversation Start skips it (spitzdano: as Start skips the cinematics): A is pressed for the player, about
     // eight times a second, so every line goes by and everything the conversation does still happens (a flag, an item,
     // someone joining), until it offers answers (the player chooses: the skip ends) or it ends; Start again stops it.
@@ -338,6 +351,15 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     *x = sx;
     *y = sy;
     return true;
+}
+
+void aidyn::input::set_details_switch(bool active) {
+    const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    details_until_ms.store(active ? now_ms + 250 : 0, std::memory_order_relaxed);
+}
+
+bool aidyn::input::details_pressed() {
+    return details_press.exchange(false, std::memory_order_relaxed);
 }
 
 void aidyn::input::set_menu_mode(bool on) {

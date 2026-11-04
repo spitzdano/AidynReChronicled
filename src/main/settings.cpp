@@ -116,6 +116,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         j["graphics"]["hud_at_edges"] = g_graphics.hud_at_edges;
         j["graphics"]["controls_card"] = g_graphics.controls_card;
         j["graphics"]["button_prompts"] = g_graphics.button_prompts;
+        j["graphics"]["details"] = g_graphics.details;
         j["graphics"]["turn_order"] = g_graphics.turn_order;
         j["graphics"]["combat_log"] = g_graphics.combat_log;
         j["graphics"]["combat_descriptions"] = g_graphics.combat_descriptions;
@@ -173,6 +174,7 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
         g_graphics.hud_at_edges = gfx.value("hud_at_edges", g_graphics.hud_at_edges);
         g_graphics.controls_card = gfx.value("controls_card", g_graphics.controls_card);
         g_graphics.button_prompts = gfx.value("button_prompts", g_graphics.button_prompts);
+        g_graphics.details = gfx.value("details", g_graphics.details);
         g_graphics.turn_order = gfx.value("turn_order", g_graphics.turn_order);
         g_graphics.combat_log = gfx.value("combat_log", g_graphics.combat_log);
         g_graphics.combat_descriptions = gfx.value("combat_descriptions", g_graphics.combat_descriptions);
