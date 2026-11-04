@@ -9902,29 +9902,27 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         const gpr gear_items = heap_pointer(gear) ? MEM_W(0, gear) : 0;
         for (int n = 0; heap_pointer(gear_items) && n < 12; n++) add(MEM_W(4 * n, gear_items));
         g = ctl_text(rdram, ctx, g, "Wearing", X(28.0f), Y(194.0f), 0.45f, brown, alpha);
-        float x = 52.5f;
-        constexpr float kPitch = 10.8f, kPlate = 11.2f, kIconSize = 9.6f;  // a plate round each icon, the icon in the middle of it
+        // Plates and icons in whole pixels, each icon in the middle of its own plate (rounded edges, not rounded sizes: the plates differed by a
+        // pixel and the icons looked pushed to one side).
+        constexpr float kX0 = 52.5f, kPitch = 11.0f, kPlate = 10.6f, kTop = 191.9f, kIconFrac = 0.84f;
         const int slot = branding_index("mc_wear");
-        if (slot >= 0) {  // a small plate under each icon
-            g = prompt_state(rdram, g, o.alpha);
-            for (size_t n = 0; n < ids.size() && n < 9; n++) {
-                const float px = o.x + (x + kPitch * (float)n) * o.sx, py = o.y + 191.7f * o.sy;
-                g = draw_rgba16(rdram, g, (size_t)slot, std::round(px), std::round(py), o.sx * kPlate / 12.0f, o.sy * kPlate / 12.0f);
+        const size_t shown = std::min<size_t>(ids.size(), 9);
+        for (size_t n = 0; n < shown; n++) {
+            const float x0 = std::round(o.x + (kX0 + kPitch * (float)n) * o.sx), x1 = std::round(o.x + (kX0 + kPitch * (float)n + kPlate) * o.sx);
+            const float y0 = std::round(o.y + kTop * o.sy), y1 = std::round(o.y + (kTop + kPlate) * o.sy);
+            if (slot >= 0) {
+                g = prompt_state(rdram, g, o.alpha);
+                g = draw_rgba16(rdram, g, (size_t)slot, x0, y0, (x1 - x0) / 12.0f, (y1 - y0) / 12.0f);
+                g = ctl_state(rdram, ctx, g);
             }
-            g = ctl_state(rdram, ctx, g);
-        }
-        for (size_t n = 0; n < ids.size() && n < 9; n++) {
             const gpr ic = card_icon(rdram, ctx, ids[n]);
-            if (heap_pointer(ic)) {
-                const uint32_t iw = MEM_HU(0x0A, ic), ih = MEM_HU(0x0C, ic);
-                if (iw != 0 && ih != 0) {
-                    const float size = kIconSize * k;
-                    g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)ic,
-                                                      f32_bits(X(x + (kPlate - kIconSize) / 2.0f)), f32_bits(Y(191.7f + (kPlate - kIconSize) / 2.0f)),
-                                                      { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
-                }
-            }
-            x += kPitch;
+            if (!heap_pointer(ic)) continue;
+            const uint32_t iw = MEM_HU(0x0A, ic), ih = MEM_HU(0x0C, ic);
+            if (iw == 0 || ih == 0) continue;
+            const float size = std::round((x1 - x0) * kIconFrac);
+            const float ix = std::round(x0 + ((x1 - x0) - size) / 2.0f), iy = std::round(y0 + ((y1 - y0) - size) / 2.0f);
+            g = (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)ic, f32_bits(ix / hs), f32_bits(iy / vs),
+                                              { 0, 0, iw, ih, f32_bits(size / hs / iw), f32_bits(size / vs / ih), 255, 255, 255, (uint32_t)alpha });
         }
     }
     return g;
@@ -10043,7 +10041,17 @@ gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSe
 // up / down never reach the game while the list is up: aidyn::input::set_menu_keys), so A, Z and the rest act on the row it is on.
 extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     const gpr widget = (gpr)(int32_t)(uint32_t)ctx->r4;
-    return hide_list_ttl > 0 && widget != 0 && (widget == hide_list_a || widget == hide_list_b || widget == hide_list_c);
+    if (widget == 0 || !aidyn::settings::graphics().tabbed_lists || !heap_pointer(doll_lists)) return 0;
+    // The game's own lists are never drawn while the port's stand for them, also while the page opens and slides away (the overlay itself
+    // is only drawn once the page is seen): the pause menu proper (state 7, or 3 in a fight) with its lists up, none after a battle.
+    const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);  // gGlobals.BigAssMenu: the pause menu is up
+    const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
+    if (!heap_pointer(big) || (state != 7 && state != 3) || MEM_W(0xA8, doll_lists) != 0) return 0;
+    for (uint32_t off : { 0x94u, 0x98u, 0x9Cu }) {  // the inventory, spells and skills lists of the doll page's lists widget
+        const gpr list = MEM_W(off, doll_lists);
+        if (heap_pointer(list) && widget == MEM_W(0x80, list)) return 1;
+    }
+    return 0;
 }
 
 namespace {
@@ -10192,10 +10200,16 @@ namespace {
         return out;
     }
 
-    gpr draw_borg_icon(uint8_t* rdram, recomp_context* ctx, gpr g, gpr icon, float x, float y, float size, int alpha) {
+    // square: a picture that isn't square (a portrait; the game's own rows show them squashed) is cropped to a square from its top middle, not stretched.
+    gpr draw_borg_icon(uint8_t* rdram, recomp_context* ctx, gpr g, gpr icon, float x, float y, float size, int alpha, bool square = false) {
         if (!heap_pointer(icon)) return g;
         const uint32_t iw = MEM_HU(0x0A, icon), ih = MEM_HU(0x0C, icon);
         if (iw == 0 || ih == 0 || iw > 1024 || ih > 1024) return g;
+        if (square && iw != ih) {
+            const uint32_t m = std::min(iw, ih), x0 = (iw - m) / 2;
+            return (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon, f32_bits(x), f32_bits(y),
+                                                 { x0, 0, x0 + m, m, f32_bits(size / m), f32_bits(size / m), 255, 255, 255, (uint32_t)alpha });
+        }
         return (gpr)(int32_t)call_game_stack(rdram, ctx, N64BorgImageDraw, (uint32_t)g, (uint32_t)icon, f32_bits(x), f32_bits(y),
                                              { 0, 0, iw, ih, f32_bits(size / iw), f32_bits(size / ih), 255, 255, 255, (uint32_t)alpha });
     }
@@ -10399,10 +10413,17 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     const float sort_x = 161.0f, sort_w = 36.0f, det_x = 244.0f, det_w = 52.0f;
     g = pic(g, branding_index("mc_chip"), sort_x, kChipY, sort_x + sort_w, kChipY + 8.0f);
     g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, kChipY, det_x + det_w, kChipY + 8.0f);
-    {
+    {  // the button icons in the middle of where the slot was (4 texels in, 4 down: the chip is 8 tall), 6.4 texels across
         const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
-        if (y_icon >= 0) g = draw_rgba16(rdram, g, (size_t)y_icon, PX(sort_x + 0.7f), PY(kChipY + 0.35f), o.sx * 0.6f, o.sy * 0.6f);
-        if (x_icon >= 0) g = draw_rgba16(rdram, g, (size_t)x_icon, PX(det_x + 0.7f), PY(kChipY + 0.35f), o.sx * 0.6f, o.sy * 0.6f);
+        auto centred = [&](int image, float chip_x) {
+            if (image < 0) return;
+            const auto& img = aidyn::branding::kImages[image];
+            const float f = 6.4f / 10.0f, w = img.w * f, h = img.h * f;
+            g = draw_rgba16(rdram, g, (size_t)image, std::round(o.x + (chip_x + 4.0f) * o.sx - w * o.sx / 2.0f),
+                            std::round(o.y + (kChipY + 4.0f) * o.sy - h * o.sy / 2.0f), o.sx * f, o.sy * f);
+        };
+        centred(y_icon, sort_x);
+        centred(x_icon, det_x);
     }
     // The rows' washes and heading rules.
     const int hl_pic = branding_index("mc_hl"), heading_pic = branding_index("mc_heading");
@@ -10445,8 +10466,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         }
     }
     static const char* const sort_names[] = { "Order", "Type", "Name" };
-    g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + 10.0f), Y(kChipY + 1.1f), 0.5f, ink, alpha);
-    g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + 10.0f), Y(kChipY + 1.1f), 0.5f, settings.details ? hot : ink, alpha);
+    // The words are centred in the chip's room right of the button (its 8 texels).
+    g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(kChipY + 1.6f), 0.5f, ink, alpha, false, true);
+    g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + (8.0f + det_w) / 2.0f), Y(kChipY + 1.6f), 0.5f, settings.details ? hot : ink, alpha, false, true);
     if (view.empty()) {
         g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(kRowsY + 20.0f), 0.6f, dim, alpha, false, true);
     }
@@ -10458,7 +10480,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             continue;
         }
         const bool sel = i == pos;
-        if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha);
+        if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha, true);
         const gpr ic = kind == 0 ? card_icon(rdram, ctx, e.item) : e.icon;
         g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha);
         constexpr float kRowScale = 0.58f, kRowDy = 0.5f;  // name, quantity and the number at the right share a size, so a baseline

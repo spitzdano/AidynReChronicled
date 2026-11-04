@@ -51,8 +51,26 @@ def _whole(name):
 
 IMAGES = [(f"mc_{i}_{j}", TILE_W, TILE_H, _tile(i, j)) for j in range(3) for i in range(3)]
 IMAGES += [("mc_wear", 12, 12, _whole("MenuWearSlot"))]
+def _chip(name):
+    """MenuChip / MenuChipOn without the round slot Codex painted at the left end: the game's own button icon (a round picture) is drawn
+    there, and the two circles never lined up (spitzdano, 2026-11-04). The slot (centre 32, 32 of 320 x 64 px, radius about 25) is
+    filled from the plain paper 58 pixels to its right, which keeps the grain and the vertical shading."""
+    def draw(w, h):
+        a = _load(name)
+        ys, xs = np.mgrid[0:a.shape[0], 0:a.shape[1]]
+        inside = (xs - 32.0) ** 2 + (ys - 32.0) ** 2 <= 27.0 ** 2
+        src = np.roll(a, -58, axis=1)
+        # soften the join: blend over the last 2 pixels of the disc
+        d = np.sqrt((xs - 32.0) ** 2 + (ys - 32.0) ** 2)
+        t = np.clip((27.0 - d) / 2.0, 0.0, 1.0)[..., None]
+        out = a * (1.0 - t) + src * t
+        assert out.shape[:2] == (h * S, w * S)
+        return out.astype(np.float32)
+    return draw
+
+
 IMAGES += [("mt_off", 16, 14, _whole("MenuTabOff")), ("mt_on", 16, 14, _whole("MenuTabOn")), ("mt_rule", 120, 4, _whole("MenuTabRule")),
-           ("mc_chip", 40, 8, _whole("MenuChip")), ("mc_chip_on", 40, 8, _whole("MenuChipOn")),
+           ("mc_chip", 40, 8, _chip("MenuChip")), ("mc_chip_on", 40, 8, _chip("MenuChipOn")),
            ("mc_heading", 120, 6, _whole("MenuHeading")), ("mc_hl", 120, 12, _whole("MenuRowHighlight")),
            ("mc_track", 3, 100, _whole("MenuScrollTrack")), ("mc_pagebar", 56, 6, _whole("MenuPageBar"))]
 
