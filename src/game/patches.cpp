@@ -10795,7 +10795,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             }
         } else if (e.portrait != 0) g = draw_borg_icon(rdram, ctx, g, e.portrait, X(kListX0 + 1.5f), Y(y + 0.2f), 7.6f * o.sx / hs, alpha, true, yk);
         const gpr ic = kind == 0 ? card_icon(rdram, ctx, e.item) : e.icon;
-        g = draw_borg_icon(rdram, ctx, g, ic, X(kListX0 + 11.0f), Y(y + 0.1f), 7.8f * o.sx / hs, alpha, false, yk);
+        g = draw_borg_icon(rdram, ctx, g, ic, std::round(X(kListX0 + 11.0f)), std::round(Y(y + 0.1f)), std::round(7.8f * o.sx / hs), alpha, false, yk);  // (whole units: a fraction cut the picture's top row)
         constexpr float kRowScale = 0.58f, kRowDy = 1.2f;  // name, quantity and the number at the right share a size, so a baseline
         if (!e.qty.empty()) g = ctl_text(rdram, ctx, g, e.qty, X(kListX0 + 29.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
         if (kind == 2) {  // the level, what changes it, and a bar for how far up the scale it is (the game's top is 10)
