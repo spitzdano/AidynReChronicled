@@ -9,6 +9,10 @@ name: macos
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version of this build (the .dmg is named after it), e.g. 1.0.4-beta.1'
+        default: '1.0.3-beta.0'
 
 permissions:
   contents: read
@@ -23,6 +27,9 @@ env:
   HOMEBREW_NO_INSTALL_CLEANUP: '1'
   BINUTILS_VERSION: '2.45.1'
   BINUTILS_SHA256: '5fe101e6fe9d18fdec95962d81ed670fdee5f37e3f48f0bef87bddf862513aa5'
+  VERSION: ${{ inputs.version || '1.0.3-beta.0' }}
+  SDL2_VERSION: '2.32.10'
+  SDL2_SHA256: '5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165'   # also GitHub's own digest of the release asset
 
 jobs:
   macos:
@@ -48,7 +55,7 @@ jobs:
       - name: Install tools
         if: steps.have.outputs.ok == 'true'
         run: |
-          brew install cmake ninja pkg-config sdl2 xxhash bash coreutils gnu-sed grep findutils
+          brew install cmake ninja pkg-config xxhash dylibbundler bash coreutils gnu-sed grep findutils
           # The project's scripts are bash 4 + GNU coreutils (mapfile, sha1sum, stat -c, readlink -f).
           P=$(brew --prefix)
           for d in "$P/bin" "$P/opt/coreutils/libexec/gnubin" "$P/opt/gnu-sed/libexec/gnubin" "$P/opt/grep/libexec/gnubin" "$P/opt/findutils/libexec/gnubin"; do
@@ -57,6 +64,26 @@ jobs:
           # RT64 turns its shaders into Metal libraries with Xcode's Metal compiler (Xcode 26 and later fetch it separately).
           xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
           xcrun -sdk macosx metal --version
+
+      # Official SDL2, built here: Homebrew's "sdl2" is sdl2-compat, which needs SDL3 loaded at run time.
+      - name: SDL2 (cached)
+        if: steps.have.outputs.ok == 'true'
+        id: sdl_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/sdl2
+          key: sdl2-${{ runner.os }}-${{ runner.arch }}-2.32.10-v1
+      - name: Build SDL2
+        if: steps.have.outputs.ok == 'true' && steps.sdl_cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/sdl2.tar.gz" "https://github.com/libsdl-org/SDL/releases/download/release-$SDL2_VERSION/SDL2-$SDL2_VERSION.tar.gz"
+          echo "$SDL2_SHA256  $RUNNER_TEMP/sdl2.tar.gz" | shasum -a 256 -c -
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/sdl2.tar.gz"
+          cmake -S "$RUNNER_TEMP/SDL2-$SDL2_VERSION" -B "$RUNNER_TEMP/sdl2-build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$HOME/sdl2" -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+              -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF
+          cmake --build "$RUNNER_TEMP/sdl2-build"
+          cmake --install "$RUNNER_TEMP/sdl2-build"
 
       - name: MIPS binutils (cached)
         if: steps.have.outputs.ok == 'true'
@@ -119,7 +146,8 @@ jobs:
       - name: Build
         if: steps.have.outputs.ok == 'true'
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/sdl2;$(brew --prefix)" \
+              -DAIDYN_VERSION="$VERSION"
           cmake --build build --target AidynReChronicled -j3 -- -k 0  # -k 0: every error at once, not the first
 
       - name: Smoke test
@@ -128,6 +156,26 @@ jobs:
           ./build/AidynReChronicled --version
           file build/AidynReChronicled
           otool -L build/AidynReChronicled
+
+      - name: Packs (from our newest release)
+        if: steps.have.outputs.ok == 'true'
+        run: python3 -I tools/macos/fetch_packs.py "$RUNNER_TEMP/packs"
+
+      - name: Package (.app, ROM guard, signature, .dmg)
+        if: steps.have.outputs.ok == 'true'
+        run: tools/macos/package_macos.sh "$VERSION" "$HOME/sdl2/lib" "$RUNNER_TEMP/packs" baserom.z64
+
+      # Only the .dmg and its checksum leave the job: no ROM and no recompiled source. One day, then it's gone.
+      - name: Keep the .dmg
+        if: steps.have.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: |
+            dist/macos/*.dmg
+            dist/macos/*.sha256
+          retention-days: 1
+          compression-level: 0
 
       - name: Remove the ROM
         if: always()
