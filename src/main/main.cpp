@@ -39,7 +39,7 @@
 #endif
 #include "aidyn_version.h"
 #include "SDL2/SDL.h"
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 #include "SDL2/SDL_syswm.h"
 #endif
 
@@ -325,7 +325,7 @@ static void graphics_memory_fallback(const std::filesystem::path& logs) {
     }
     const auto size = fs::file_size(log, ec);
     const auto when = fs::last_write_time(log, ec).time_since_epoch().count();
-    const std::string stamp = std::to_string(size) + " " + std::to_string(when);
+    const std::string stamp = std::to_string(size) + " " + std::to_string((long long)when);  // (libc++'s file clock counts in 128 bits)
     {
         std::ifstream in(seen);
         std::string old;
