@@ -3243,6 +3243,7 @@ namespace {
     }
     int shop_card_price = -2;       // the Details card's price line while a shop list is up (-2: none); set by list_overlay
     bool shop_card_buying = true;
+    bool list_frozen = false;       // a popup is over the shop's list: it takes no keys, pointer or clicks
 
     // Inventory page hints: the pause menu's inventory page (its background, PauseBGInventory, told by the texels of its
     // painted DETAILS) gets a row at its bottom left: what A does to the highlighted item (Equip, Unequip or Use, read
@@ -3882,10 +3883,17 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             // (the keeper's stock), B leaves, left / right still switch lists in the game's own way. The game's panel, titles and lists aren't drawn.
             hide_list_ttl = 3;
             if (frame_ctx != nullptr && inventory_page.alpha != 0) {
-                menu_keys = 0x0800 | 0x0400 | 0x0020 | 0x0010;
+                // A popup over the shop (the quantity to sell: DollBarterConfirm; the handler's last widget isn't the pause menu) has the keys, the
+                // pointer and the clicks: the list is drawn as it is and does nothing.
+                const gpr handler = MEM_W(0, (gpr)(int32_t)0x800D9690);
+                const bool popup = heap_pointer(handler) && MEM_W(4, handler) != MEM_W(0, (gpr)(int32_t)0x800D9558);
+                list_frozen = popup;
+                menu_keys = popup ? 0u : (0x0800u | 0x0400u | 0x0020u | 0x0010u);
                 const uint32_t edges = aidyn::input::take_menu_keys();
                 const gpr active = MEM_W(0x88, shop_now);
-                g = list_overlay(rdram, frame_ctx, g, inventory_page, 0, active, edges, shop_now);
+                g = list_overlay(rdram, frame_ctx, g, inventory_page, 0, active, popup ? 0u : edges, shop_now);
+                if (popup) aidyn::controls::set_click_zones(nullptr, -1);
+                list_frozen = false;
                 const bool buy = active == MEM_W(0x80, shop_now);
                 std::vector<int> row = { branding_index(buy ? "hint_buy" : "hint_sell") };
                 if (buy) row.push_back(branding_index("hint_appraise"));
@@ -10666,7 +10674,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     };
     // The mouse: the pointer over a row highlights it (A, or the click that is A, then acts on it), a click on a tab or a chip is that
     // tab's or chip's key. The pointer is in the menus' 320 x 240 units, the page in texels (o.x, o.y and o.sx are screen pixels).
-    {
+    if (!list_frozen) {
         static uint32_t seen_moves[3] = {}, seen_clicks[3] = {};
         float mx = 0.0f, my = 0.0f;
         uint32_t moves = 0, clicks = 0;
@@ -10740,7 +10748,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     hover_moved_over_rows[kind] = false;
     if (chr && chr_ui.strip && settings.details) {
         g = draw_attribute_card(rdram, ctx, g, o, chr_ui.stat);
-    } else if (settings.details || hover_frames[kind] > 0 || shop) {
+    } else if ((settings.details || hover_frames[kind] > 0 || shop) && !list_frozen) {  // (not under a popup: its words ran under the card)
         shop_card_price = shop && pos >= 0 ? price_of(view[pos]) : -2;
         shop_card_buying = ui.tab == 0;
         g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : kind == 1 ? draw_spell_card(rdram, ctx, g, o, list) : draw_skill_card(rdram, ctx, g, o, list);

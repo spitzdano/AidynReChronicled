@@ -538,6 +538,7 @@ bool click(float* x, float* y, uint32_t* count) {
 
 void set_click_zones(const float* rects, int count) {
     std::lock_guard g(g_event_lock);
+    if (count < 0) { g_zones.clear(); g_zones_until = 0; return; }
     g_zones.clear();
     for (int i = 0; i < count; i++) g_zones.push_back(Zone{ rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3] });
     g_zones_until = now_ms() + 250;

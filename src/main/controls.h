@@ -69,6 +69,7 @@ namespace aidyn::controls {
     bool click(float* x, float* y, uint32_t* count);
     // While a list is up (refresh every frame; lapses after 250 ms): the left button counts as a button (A) only when pressed inside one of
     // these rectangles (x0, y0, x1, y1 each, the menus' units). A click elsewhere is still seen by click() and pointer().
+    // (count < 0: no gate, every click counts.)
     void set_click_zones(const float* rects, int count);
 
     // Events from the window (main thread): the mouse's motion, buttons and wheel, and key presses for listening.
