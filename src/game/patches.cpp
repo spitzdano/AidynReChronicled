@@ -3231,6 +3231,18 @@ namespace {
     };
     TitleSeen treasure_title;  // this frame (game thread)
     gpr barter_widget = 0;
+    // A shop (the barter screen's invType 0; a treasure pile is invType 1, left as the game draws it): its two lists, Buy (the keeper's
+    // stock, WidgetBarter itemWidget +0x80) and Sell (the party's, unk84 +0x84), are drawn by the port as one list with two tabs
+    // (list_overlay, "Inventory page lists"). description +0x88 is the one the cursor is in. 0 when no shop is up.
+    gpr shop_barter(uint8_t* rdram) {
+        if (!aidyn::settings::graphics().tabbed_lists || MEM_BU(0, (gpr)(int32_t)0x800D9550) != 6) return 0;
+        const gpr b = barter_widget;
+        if (!heap_pointer(b) || MEM_BU(0x8C, b) != 0) return 0;
+        if (!heap_pointer(MEM_W(0x80, b)) || !heap_pointer(MEM_W(0x84, b)) || !heap_pointer(MEM_W(0x88, b))) return 0;
+        return b;
+    }
+    int shop_card_price = -2;       // the Details card's price line while a shop list is up (-2: none); set by list_overlay
+    bool shop_card_buying = true;
 
     // Inventory page hints: the pause menu's inventory page (its background, PauseBGInventory, told by the texels of its
     // painted DETAILS) gets a row at its bottom left: what A does to the highlighted item (Equip, Unequip or Use, read
@@ -3248,7 +3260,7 @@ namespace {
     gpr draw_spell_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on, int sort_mode);
-    gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys);  // "Inventory page lists", below
+    gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys, gpr shop = 0);  // "Inventory page lists", below
     // The Character page's attributes row: Up from the list's first row moves onto it, left / right choose an attribute, A trains it (the
     // experience the game keeps for training, CharExp +8, the cost the game's own: get_stat_train_price) after a confirm, Down goes back.
     struct CharUi {
@@ -3864,7 +3876,23 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         const uint32_t index = MEM_BU(0x90, lists), count = MEM_BU(0x92, lists);
         const gpr shown = index < 4 ? MEM_W(0x7C + 4 * index, lists) : 0, inventory = MEM_W(0x94, lists);
         const int lists_hint = count > 1 ? branding_index("hint_lists") : -1;
-        if (MEM_W(0xA8, lists) != 0) {
+        const gpr shop_now = shop_barter(rdram);
+        if (shop_now != 0) {
+            // A shop: one list with two tabs, Buy and Sell (LB / RB), the card for the highlighted item at the left. A buys or sells, Y appraises
+            // (the keeper's stock), B leaves, left / right still switch lists in the game's own way. The game's panel, titles and lists aren't drawn.
+            hide_list_ttl = 3;
+            if (frame_ctx != nullptr && inventory_page.alpha != 0) {
+                menu_keys = 0x0800 | 0x0400 | 0x0020 | 0x0010;
+                const uint32_t edges = aidyn::input::take_menu_keys();
+                const gpr active = MEM_W(0x88, shop_now);
+                g = list_overlay(rdram, frame_ctx, g, inventory_page, 0, active, edges, shop_now);
+                const bool buy = active == MEM_W(0x80, shop_now);
+                std::vector<int> row = { branding_index(buy ? "hint_buy" : "hint_sell") };
+                if (buy) row.push_back(branding_index("hint_appraise"));
+                row.push_back(branding_index("hint_leave"));
+                g = draw_hint_row(rdram, g, inventory_page, row.data(), (int)row.size(), 8.0f, 204.0f, false);
+            }
+        } else if (MEM_W(0xA8, lists) != 0) {
             // After a battle: inside the Train panel (x 0..160), above its experience lines (y 187 on).
             const int row[] = { branding_index("hint_train"), lists_hint };
             g = draw_hint_row(rdram, g, inventory_page, row, 2, 80.0f, 174.0f, true);
@@ -3935,7 +3963,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         }
         // DETAILS and its X are no longer painted into the page: where the port's lists have their Details chip they would be twice, and
         // elsewhere (the Stats list, a trainer, after a battle, the game's own lists) the hint is drawn here, like the others.
-        if (!own_drawn) {
+        if (!own_drawn && shop_now == 0) {
             const int row[] = { branding_index("hint_details") };
             g = draw_hint_row(rdram, g, inventory_page, row, 1, 232.0f, 204.0f, false);
         }
@@ -8156,6 +8184,14 @@ extern "C" void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
+    if (heap_pointer(w) && shop_barter(rdram) != 0) {  // a shop: its panel, shadow, titles and arrows (the card and the tabs stand for them)
+        const gpr b = MEM_W(0x6C, w), bg = MEM_W(0x90, barter_widget);
+        const uint32_t bw = heap_pointer(b) ? MEM_HU(0xA, b) : 0, bh = heap_pointer(b) ? MEM_HU(0xC, b) : 0;
+        if (w == bg || (bw == 162 && bh == 162) || (bw == 33 && bh == 17) || (bw == 39 && bh == 17) || (bw == 5 && bh == 8)) {
+            ctx->r2 = ctx->r5;
+            return 1;
+        }
+    }
     // The pause menu's Skills page is the Character page: its "Skills" title is the port's "Character" (list_overlay).
     if (heap_pointer(w) && heap_pointer(doll_lists) && aidyn::settings::graphics().tabbed_lists) {
         const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
@@ -9948,7 +9984,11 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
         }
     }
     const int price = (int)MEM_HU(0xA, item);
-    if (price > 0) {
+    if (shop_card_price != -2) {  // in a shop: what it costs, or what the keeper pays
+        const bool can = shop_card_buying ? shop_card_price > 0 : shop_card_price > 1;
+        g = ctl_text(rdram, ctx, g, shop_card_buying ? "Price" : "Keeper pays", X(28.0f), Y(181.0f), 0.55f, brown, alpha);
+        g = ctl_text(rdram, ctx, g, can ? std::to_string(shop_card_price) + " g" : "nothing", X(144.0f), Y(181.0f), 0.6f, ink, alpha, true);
+    } else if (price > 0) {
         g = ctl_text(rdram, ctx, g, "Worth " + std::to_string(price) + " g", X(28.0f), Y(181.0f), 0.5f, brown, alpha);
     }
     // What the page's character is wearing, as a row of small icons along the bottom (the doll is hidden).
@@ -10101,6 +10141,15 @@ gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSe
 // up / down never reach the game while the list is up: aidyn::input::set_menu_keys), so A, Z and the rest act on the row it is on.
 extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     const gpr widget = (gpr)(int32_t)(uint32_t)ctx->r4;
+    if (widget != 0) {  // a shop's two lists (the port draws them as one)
+        const gpr shop = shop_barter(rdram);
+        if (shop != 0) {
+            for (int off : { 0x80, 0x84 }) {
+                const gpr w = MEM_W(off, shop);
+                if (heap_pointer(w) && widget == MEM_W(0x80, w)) return 1;
+            }
+        }
+    }
     if (widget == 0 || !aidyn::settings::graphics().tabbed_lists || !heap_pointer(doll_lists)) return 0;
     // The game's own lists are never drawn while the port's stand for them, also while the page opens and slides away (the overlay itself
     // is only drawn once the page is seen): the pause menu proper (state 7, or 3 in a fight) with its lists up, none after a battle.
@@ -10412,13 +10461,13 @@ gpr draw_attribute_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleS
 }  // namespace
 
 namespace {
-gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int kind, gpr list, uint32_t keys) {
+gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int kind, gpr list, uint32_t keys, gpr shop) {
     ListUi& ui = list_ui[kind];
     // The skills list is the Character page: the six attributes and the experience above it, no tabs, headings or sort (the Stats page is
     // left out of the pause menu's pages: aidyn_doll_toggle), so its list starts lower and its Details chip sits on the experience line.
     const bool chr = kind == 2;
     const float rows_y = chr ? kCharRowsY : kRowsY, chip_y = chr ? kCharChipY : kChipY;
-    const int tab_count = kind == 0 ? kInventoryTabs : kind == 1 ? kSpellTabs : chr ? 1 : kSkillTabs;
+    const int tab_count = shop ? 2 : kind == 0 ? kInventoryTabs : kind == 1 ? kSpellTabs : chr ? 1 : kSkillTabs;
     const int alpha = o.alpha;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     const float yk = (o.sy / vs) / (o.sx / hs);
@@ -10451,6 +10500,10 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         counts[0]++;
         counts[e.tab]++;
         if (tab_icon_row[e.tab] == 0) tab_icon_row[e.tab] = e.row;
+    }
+    if (shop) {  // the tabs are the shop's two lists: Buy (0) and Sell (1), whichever the cursor is in
+        counts[0] = counts[1] = 1;
+        ui.tab = MEM_W(0x88, shop) == MEM_W(0x84, shop) ? 1 : 0;
     }
     auto& settings = aidyn::settings::graphics_rw();
     uint32_t list_keys = keys;  // what moves the list's cursor (the attributes row takes Down, and Up onto it)
@@ -10519,11 +10572,19 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (t != ui.tab) { ui.tab = t; ui.top = 0; rc_sound(rdram, ctx, 0x73D, 30); }
     }
     if (ui.tab != 0 && counts[ui.tab] == 0) ui.tab = 0;
-    const int mode = chr ? 0 : settings.inventory_sort;  // 0 as the game keeps it, 1 by type (or school), 2 by name
+    if (shop) {  // the tab changed: the cursor goes to that list (the game's own switch, WidgetBarter's Left and Right); Buy only when it has stock
+        const gpr want_widget = ui.tab == 1 ? MEM_W(0x84, shop) : MEM_W(0x80, shop);
+        if (MEM_W(0x88, shop) != want_widget) {
+            const gpr stock = MEM_W(0x80, MEM_W(0x80, shop)), stock_sub = heap_pointer(stock) ? MEM_W(0x40, stock) : 0;
+            if (ui.tab == 1 || (heap_pointer(stock_sub) && MEM_HU(0x20, stock_sub) > 0)) MEM_W(0x88, shop) = (int32_t)want_widget;
+            else ui.tab = 1;
+        }
+    }
+    const int mode = shop ? 1 : chr ? 0 : settings.inventory_sort;  // 0 as the game keeps it, 1 by type (or school), 2 by name
 
     std::vector<ListEntry> rows;
     for (const ListEntry& e : all) {
-        if (ui.tab == 0 || e.tab == ui.tab) rows.push_back(e);
+        if (shop || ui.tab == 0 || e.tab == ui.tab) rows.push_back(e);
     }
     std::stable_sort(rows.begin(), rows.end(), [&](const ListEntry& a, const ListEntry& b) {
         if (mode == 0) return a.index < b.index;
@@ -10589,6 +10650,20 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (want != pos && want >= first_row && want <= last_row) { move_cursor(want); rc_sound(rdram, ctx, 0x73B, 30); }
     }
     const int visible = std::max(1, (int)((kRowsBottom - rows_y) / kListRowStep));
+    // A shop's price for a row: what the game asks (WidgetInvShop::GetGoldPrice, vtable slot 28: it prices the highlighted row, so the highlight
+    // is put on the row for the call and back).
+    auto price_of = [&](const ListEntry& e) -> int {
+        if (!shop || e.heading) return -1;
+        const gpr vt = MEM_W(0x78, list);
+        if ((uint32_t)vt < 0x800C0000u || (uint32_t)vt >= 0x80100000u) return -1;
+        recomp_func_t* fn = get_function(MEM_W(0xEC, vt));
+        if (fn == nullptr) return -1;
+        const uint16_t keep = MEM_HU(0x1E, sub);
+        MEM_HU(0x1E, sub) = (uint16_t)e.index;
+        const int32_t p = (int32_t)call_game(rdram, ctx, fn, (uint32_t)(list + (int16_t)MEM_HU(0xE8, vt)), (uint32_t)e.key);
+        MEM_HU(0x1E, sub) = keep;
+        return p;
+    };
     // The mouse: the pointer over a row highlights it (A, or the click that is A, then acts on it), a click on a tab or a chip is that
     // tab's or chip's key. The pointer is in the menus' 320 x 240 units, the page in texels (o.x, o.y and o.sx are screen pixels).
     {
@@ -10624,8 +10699,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
                     ui.tab = t; ui.top = 0; rc_sound(rdram, ctx, 0x73D, 30);
                 }
             } else if (ty >= chip_y && ty < chip_y + 8.0f) {
-                if (!chr && tx >= 161.0f && tx < 197.0f) { settings.inventory_sort = (settings.inventory_sort + 1) % 3; aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort); }
-                else if (tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
+                if (!chr && !shop && tx >= 161.0f && tx < 197.0f) { settings.inventory_sort = (settings.inventory_sort + 1) % 3; aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort); }
+                else if (!shop && tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
             }
         }
     }
@@ -10665,8 +10740,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     hover_moved_over_rows[kind] = false;
     if (chr && chr_ui.strip && settings.details) {
         g = draw_attribute_card(rdram, ctx, g, o, chr_ui.stat);
-    } else if (settings.details || hover_frames[kind] > 0) {
+    } else if (settings.details || hover_frames[kind] > 0 || shop) {
+        shop_card_price = shop && pos >= 0 ? price_of(view[pos]) : -2;
+        shop_card_buying = ui.tab == 0;
         g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : kind == 1 ? draw_spell_card(rdram, ctx, g, o, list) : draw_skill_card(rdram, ctx, g, o, list);
+        shop_card_price = -2;
     }
 
     // ---- pictures ----
@@ -10685,8 +10763,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     }
     // The two chips.
     const float sort_x = 161.0f, sort_w = 36.0f, det_x = 244.0f, det_w = 52.0f;
-    if (!chr) g = pic(g, branding_index("mc_chip"), sort_x, chip_y, sort_x + sort_w, chip_y + 8.0f);
-    const bool chip_up = !(chr && (chr_ui.strip || chr_ui.msg_frames > 0));  // the attributes' line takes the Details chip's place while it speaks
+    const bool left_chip = !chr && (!shop || ui.tab == 0);  // Sort; in a shop Y appraises (the keeper's stock only)
+    if (left_chip) g = pic(g, branding_index("mc_chip"), sort_x, chip_y, sort_x + sort_w, chip_y + 8.0f);
+    const bool chip_up = !shop && !(chr && (chr_ui.strip || chr_ui.msg_frames > 0));  // the attributes' line takes the Details chip's place while it speaks
     if (chip_up) g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, chip_y, det_x + det_w, chip_y + 8.0f);
     {  // the button icons in the middle of where the slot was (4 texels in, 4 down: the chip is 8 tall), 6.4 texels across
         const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
@@ -10697,7 +10776,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             g = draw_rgba16(rdram, g, (size_t)image, std::round(o.x + (chip_x + 4.0f) * o.sx - w * o.sx / 2.0f),
                             std::round(o.y + (chip_y + 4.0f) * o.sy - h * o.sy / 2.0f), o.sx * f, o.sy * f);
         };
-        if (!chr) centred(y_icon, sort_x);
+        if (left_chip) centred(y_icon, sort_x);
         if (chip_up) centred(x_icon, det_x);
     }
     // The rows' washes and heading rules.
@@ -10729,8 +10808,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         const float x = tabs_x + t * (tab_w + tab_gap);
         const bool on = t == ui.tab;
         const int a = counts[t] == 0 ? alpha / 2 : alpha;
-        if (t == 0 || kind == 2) {
-            g = ctl_text(rdram, ctx, g, skill_tab_names[kind == 2 ? t : 0], X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), kind == 2 && t > 0 ? 0.4f : 0.5f, on ? hot : ink, a, false, true);
+        if (t == 0 || kind == 2 || shop) {
+            g = ctl_text(rdram, ctx, g, shop ? (t == 0 ? "Buy" : "Sell") : skill_tab_names[kind == 2 ? t : 0], X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), kind == 2 && t > 0 ? 0.4f : 0.5f, on ? hot : ink, a, false, true);
         } else if (tab_icon_row[t] != 0) {
             const gpr thing = MEM_W(0x7C, tab_icon_row[t]);
             const gpr ic = kind == 0 ? card_icon(rdram, ctx, MEM_HU(0, thing)) : [&] {
@@ -10740,13 +10819,14 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             }();
             g = draw_borg_icon(rdram, ctx, g, ic, X(x + 1.3f), Y(kTabsY + 3.0f), 8.2f * o.sx / hs, a, false, yk);
         }
-        if (counts[t] > 0 && t > 0 && kind != 2) {
+        if (counts[t] > 0 && t > 0 && kind != 2 && !shop) {
             g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 1.0f), Y(kTabsY + 1.3f), 0.36f, 0x5A3A44, a, true);
         }
     }
     {  // the page's title (halves: 4 KB of TMEM each), changing with the list
         static const char* const keys[3] = { "inv_title", "spl_title", "chr_title" };
-        const int title_l = branding_index((std::string(keys[kind]) + "_l").c_str()), title_r = branding_index((std::string(keys[kind]) + "_r").c_str());
+        const std::string key = shop ? (ui.tab == 0 ? "buy_title" : "sel_title") : keys[kind];
+        const int title_l = branding_index((key + "_l").c_str()), title_r = branding_index((key + "_r").c_str());
         g = prompt_state(rdram, g, alpha);
         if (title_l >= 0 && title_r >= 0) {
             const auto& il = aidyn::branding::kImages[title_l];
@@ -10760,12 +10840,14 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     {  // where the D-pad goes: the page to the left and to the right (the pages turn Inventory, Spells, Character; right is the previous index)
         static const char* const pages[3] = { "Inventory", "Spells", "Character" };
         // (no arrows: the game's font draws < and > as a skull and a heart)
-        g = ctl_text(rdram, ctx, g, pages[(kind + 1) % 3], X(228.0f), Y(208.4f), 0.45f, brown, alpha);
-        g = ctl_text(rdram, ctx, g, pages[(kind + 2) % 3], X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
+        if (!shop) {
+            g = ctl_text(rdram, ctx, g, pages[(kind + 1) % 3], X(228.0f), Y(208.4f), 0.45f, brown, alpha);
+            g = ctl_text(rdram, ctx, g, pages[(kind + 2) % 3], X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
+        }
     }
     static const char* const sort_names[] = { "Order", "Type", "Name" };
     // The words are centred in the chip's room right of the button (its 8 texels).
-    if (!chr) g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, ink, alpha, false, true);
+    if (left_chip) g = ctl_text(rdram, ctx, g, shop ? "Appraise" : sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, ink, alpha, false, true);
     if (chip_up) g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + (8.0f + det_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, settings.details ? hot : ink, alpha, false, true);
     if (view.empty()) {
         g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(rows_y + 20.0f), 0.6f, dim, alpha, false, true);
@@ -10819,7 +10901,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             }
             g = ctl_text(rdram, ctx, g, "(Use)", X(kListX0 + 32.0f) + w + 3.0f, Y(y + kRowDy + 0.6f), 0.42f, sel ? hot : 0x2F6B3A, alpha);
         }
-        if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+        if (shop) {  // the price, in gold (a keeper takes nothing worth a gold or less)
+            const int price = price_of(e);
+            const std::string text = price > 1 || (ui.tab == 0 && price > 0) ? std::to_string(price) + " g" : "-";
+            g = ctl_text(rdram, ctx, g, text, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+        } else if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
     }
     return g;
 }
