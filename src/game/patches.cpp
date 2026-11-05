@@ -3329,11 +3329,26 @@ namespace {
     }
 
     // Draws a row of hint pictures from page texel (x, y), 6 texels apart; returns the screen x after it.
+    // A picture stretched over a rectangle of a page's texels (the page at origin: its screen pixels and pixels a texel).
+    gpr page_pic(uint8_t* rdram, gpr g, const TitleSeen& o, int image, float x0, float y0, float x1, float y1) {
+        if (image < 0) return g;
+        const auto& img = aidyn::branding::kImages[image];
+        const float px0 = std::round(o.x + x0 * o.sx), py0 = std::round(o.y + y0 * o.sy), px1 = std::round(o.x + x1 * o.sx), py1 = std::round(o.y + y1 * o.sy);
+        return draw_rgba16(rdram, g, (size_t)image, px0, py0, (px1 - px0) / (float)img.w, (py1 - py0) / (float)img.h);
+    }
+
     gpr draw_hint_row(uint8_t* rdram, gpr g, const TitleSeen& origin, const int* row, int n, float x, float y,
-                      bool centred) {
+                      bool centred, bool plate = false) {
         float width = 0.0f;
         for (int k = 0; k < n; k++) width += row[k] < 0 ? 0.0f : ink_width(row[k]) * kPromptScale + 6.0f;
         if (centred) x -= (width - 6.0f) / 2.0f;
+        if (plate && width > 0.0f) {  // Codex's hint plate behind the prompts: 8 texel caps, the plain middle stretched (v2)
+            const float x0 = x - 5.0f, x1 = x + width - 6.0f + 5.0f, y0 = y - 1.5f, y1 = y0 + 12.0f;
+            g = prompt_state(rdram, g, origin.alpha);
+            g = page_pic(rdram, g, origin, branding_index("mc_hint_l"), x0, y0, x0 + 8.0f, y1);
+            g = page_pic(rdram, g, origin, branding_index("mc_hint_m"), x0 + 8.0f, y0, x1 - 8.0f, y1);
+            g = page_pic(rdram, g, origin, branding_index("mc_hint_r"), x1 - 8.0f, y0, x1, y1);
+        }
         g = prompt_state(rdram, g, origin.alpha);
         for (int k = 0; k < n; k++) {
             if (row[k] < 0) continue;
@@ -3908,7 +3923,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 if (popup) aidyn::controls::set_click_zones(nullptr, -1);
                 list_frozen = false;
                 const int row[] = { branding_index("hint_train"), branding_index("hint_leave") };
-                g = draw_hint_row(rdram, g, inventory_page, row, 2, 8.0f, 204.0f, false);
+                g = draw_hint_row(rdram, g, inventory_page, row, 2, 8.0f, 204.0f, false, true);
             }
         } else if (shop_now != 0) {
             // A shop: one list with two tabs, Buy and Sell (LB / RB), the card for the highlighted item at the left. A buys or sells, Y appraises
@@ -3930,7 +3945,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 std::vector<int> row = { branding_index(buy ? "hint_buy" : "hint_sell") };
                 if (buy) row.push_back(branding_index("hint_appraise"));
                 row.push_back(branding_index("hint_leave"));
-                g = draw_hint_row(rdram, g, inventory_page, row.data(), (int)row.size(), 8.0f, 204.0f, false);
+                g = draw_hint_row(rdram, g, inventory_page, row.data(), (int)row.size(), 8.0f, 204.0f, false, true);
             }
         } else if (MEM_W(0xA8, lists) != 0) {
             // After a battle: inside the Train panel (x 0..160), above its experience lines (y 187 on).
@@ -3957,7 +3972,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                     a = branding_index("hint_use");
                 }
             }
-            g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false);
+            g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false, a >= 0);
             g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 204.0f, false);
         }
         // Details (X) on the inventory list: a switch, remembered (settings.json graphics.details; off in a new game). On, a
@@ -9906,6 +9921,8 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
     const float k = o.sx / hs;  // units a page texel is
     g = draw_card_frame(rdram, g, o);
+    g = prompt_state(rdram, g, alpha);
+    g = page_pic(rdram, g, o, branding_index("mc_iconplate"), 24.0f, 86.0f, 52.0f, 114.0f);  // Codex's plate under the icon (v2)
     g = ctl_state(rdram, ctx, g);
     // The icon.
     const gpr icon = card_icon(rdram, ctx, (uint16_t)id);
@@ -9933,10 +9950,6 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     }
     if (MEM_BU(0x81, row) != 0xFF) kind += ", worn";
     g = ctl_text(rdram, ctx, g, kind, X(56.0f), Y(103.0f), 0.5f, brown, alpha);
-    const float line_x0 = X(28.0f), line_x1 = X(144.0f);
-    g = rect_state(rdram, g);
-    g = rect(rdram, g, line_x0, Y(117.0f), line_x1, Y(117.0f) + 1.0f, 0x8A607000u | (uint32_t)(alpha * 3 / 4), hs, vs);
-    g = ctl_state(rdram, ctx, g);
     const gpr font = MEM_W(0, kFontPtr);
     // The character whose page it is, and what they wear in this item's slot: the numbers are shown against it.
     const gpr sheet = page_sheet(rdram);
@@ -10045,7 +10058,12 @@ gpr draw_details_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSee
     if (shop_card_price != -2) {  // in a shop: what it costs, or what the keeper pays
         const bool can = shop_card_buying ? shop_card_price > 0 : shop_card_price > 1;
         g = ctl_text(rdram, ctx, g, shop_card_buying ? "Price" : "Keeper pays", X(28.0f), Y(181.0f), 0.55f, brown, alpha);
-        g = ctl_text(rdram, ctx, g, can ? std::to_string(shop_card_price) + " g" : "nothing", X(144.0f), Y(181.0f), 0.6f, ink, alpha, true);
+        g = ctl_text(rdram, ctx, g, can ? std::to_string(shop_card_price) : "nothing", X(can ? 135.0f : 144.0f), Y(181.0f), 0.6f, ink, alpha, true);
+        if (can) {  // (a coin, not "g")
+            g = prompt_state(rdram, g, alpha);
+            g = page_pic(rdram, g, o, branding_index("mk_coin"), 135.5f, 180.5f, 143.5f, 188.5f);
+            g = ctl_state(rdram, ctx, g);
+        }
     } else if (price > 0) {
         g = ctl_text(rdram, ctx, g, "Worth " + std::to_string(price) + " g", X(28.0f), Y(181.0f), 0.5f, brown, alpha);
     }
@@ -10101,9 +10119,6 @@ gpr draw_text_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& 
     g = ctl_state(rdram, ctx, g);
     g = ctl_text(rdram, ctx, g, title, X(28.0f), Y(90.0f), 0.85f, ink, alpha);
     g = ctl_text(rdram, ctx, g, kind, X(28.0f), Y(105.0f), 0.5f, brown, alpha);
-    g = rect_state(rdram, g);
-    g = rect(rdram, g, X(28.0f), Y(117.0f), X(144.0f), Y(117.0f) + 1.0f, 0x8A607000u | (uint32_t)(alpha * 3 / 4), hs, vs);
-    g = ctl_state(rdram, ctx, g);
     float y = 122.0f;
     for (const std::string& l : wrap_lines(rdram, ctx, text, X(144.0f) - X(28.0f), 0.6f)) {
         if (y > 172.0f) break;
@@ -10114,8 +10129,14 @@ gpr draw_text_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& 
     all_facts.insert(all_facts.end(), trainer_card_facts.begin(), trainer_card_facts.end());
     float fy = 204.0f - 9.0f * (float)all_facts.size();
     for (const auto& [label, value] : all_facts) {
+        const char* mark = label == "XP cost" || label == "XP to spend" ? "mk_xp" : label == "Gold cost" ? "mk_coin" : nullptr;
         g = ctl_text(rdram, ctx, g, label, X(28.0f), Y(fy), 0.55f, brown, alpha);
-        g = ctl_text(rdram, ctx, g, value, X(144.0f), Y(fy), 0.55f, ink, alpha, true);
+        g = ctl_text(rdram, ctx, g, value, X(mark != nullptr && value != "Maxed" ? 135.0f : 144.0f), Y(fy), 0.55f, ink, alpha, true);
+        if (mark != nullptr && value != "Maxed") {
+            g = prompt_state(rdram, g, alpha);
+            g = page_pic(rdram, g, o, branding_index(mark), 135.5f, fy - 0.5f, 143.5f, fy + 7.5f);
+            g = ctl_state(rdram, ctx, g);
+        }
         fy += 9.0f;
     }
     return g;
@@ -10456,13 +10477,12 @@ gpr character_strip(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen&
     static const char* const names[] = { "Int", "Wil", "Dex", "End", "Str", "Sta" };
     const uint32_t ink = 0x825050, brown = 0x7B5560, hot = 0x4B3174;
     const float x0 = 161.0f, w = (296.0f - 161.0f) / 6.0f;
-    if (chr_ui.strip && chr_ui.stat >= 0 && chr_ui.stat < 6) {  // the chosen attribute: the list's wash behind it
-        const int hl = branding_index("mc_hl");
-        const float cx0 = x0 + w * chr_ui.stat + 0.4f;
-        if (hl >= 0) {
-            const auto& img = aidyn::branding::kImages[hl];
-            const float px0 = std::round(o.x + cx0 * o.sx), py0 = std::round(o.y + 98.6f * o.sy), px1 = std::round(o.x + (cx0 + w - 0.8f) * o.sx), py1 = std::round(o.y + 118.6f * o.sy);
-            g = draw_rgba16(rdram, g, (size_t)hl, px0, py0, (px1 - px0) / (float)img.w, (py1 - py0) / (float)img.h);
+    {  // Codex's plates behind the six columns (v2): quiet ones, and the chosen attribute's violet one
+        g = prompt_state(rdram, g, alpha);
+        for (int i = 0; i < 6; i++) {
+            const bool chosen = chr_ui.strip && chr_ui.stat == i;
+            const float cx = x0 + w * ((float)i + 0.5f);
+            g = page_pic(rdram, g, o, branding_index(chosen ? "mc_stat_on" : "mc_stat"), cx - 11.0f, 98.6f, cx + 11.0f, 119.6f);
         }
     }
     g = ctl_state(rdram, ctx, g);
@@ -10782,7 +10802,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             seen_clicks[kind] = clicks;
             float tx, ty;
             to_page(mx, my, &tx, &ty);
-            const float tab_w_c = 14.8f, tab_gap_c = 0.8f, tabs_x_c = 172.0f + (7 - tab_count) * 7.8f;
+            const bool wide_c = shop || tr;  // a shop's and a trainer's two tabs are Codex's wide ones (v2)
+            const float tab_w_c = wide_c ? 28.0f : 14.8f, tab_gap_c = wide_c ? 1.0f : 0.8f, tabs_x_c = wide_c ? 228.0f - 28.5f : 172.0f + (7 - tab_count) * 7.8f;
             if (!chr && ty >= kTabsY && ty < kTabsY + 14.0f) {
                 const int t = (int)((tx - tabs_x_c) / (tab_w_c + tab_gap_c));
                 if (tx >= tabs_x_c && t >= 0 && t < tab_count && (t == 0 || counts[t] > 0) && t != ui.tab) {
@@ -10851,10 +10872,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     // ---- pictures ----
     g = prompt_state(rdram, g, alpha);
     const int tab_off = branding_index("mt_off"), tab_on = branding_index("mt_on"), rule = branding_index("mt_rule");
-    const float tab_w = 14.8f, tab_gap = 0.8f, tabs_w = tab_count * tab_w + (tab_count - 1) * tab_gap, tabs_x = 172.0f + (7 - tab_count) * 7.8f;
+    const bool wide = shop || tr;
+    const float tab_w = wide ? 28.0f : 14.8f, tab_gap = wide ? 1.0f : 0.8f, tabs_w = tab_count * tab_w + (tab_count - 1) * tab_gap, tabs_x = wide ? 228.0f - 28.5f : 172.0f + (7 - tab_count) * 7.8f;
     for (int t = 0; t < tab_count && !chr; t++) {
         const float x = tabs_x + t * (tab_w + tab_gap);
-        g = pic(g, t == ui.tab ? tab_on : tab_off, x, kTabsY, x + tab_w, kTabsY + (t == ui.tab ? 14.0f : 13.0f));
+        g = pic(g, wide ? branding_index(t == ui.tab ? "mc_tabw_on" : "mc_tabw_off") : (t == ui.tab ? tab_on : tab_off), x, kTabsY, x + tab_w, kTabsY + (t == ui.tab ? 14.0f : 13.0f));
     }
     g = pic(g, rule, kListX0 + 2.0f, chr ? kCharRowsY - 3.2f : kTabsY + 13.0f, kListX1, (chr ? kCharRowsY - 3.2f : kTabsY + 13.0f) + 1.6f);
     if (!chr) {
@@ -10910,7 +10932,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         const bool on = t == ui.tab;
         const int a = counts[t] == 0 ? alpha / 2 : alpha;
         if (t == 0 || kind == 2 || shop || tr) {
-            g = ctl_text(rdram, ctx, g, shop ? (t == 0 ? "Buy" : "Sell") : tr ? (t == 0 ? "Spells" : "Skills") : skill_tab_names[kind == 2 ? t : 0], X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), tr || (kind == 2 && t > 0) ? 0.4f : 0.5f, on ? hot : ink, a, false, true);
+            g = ctl_text(rdram, ctx, g, shop ? (t == 0 ? "Buy" : "Sell") : tr ? (t == 0 ? "Spells" : "Skills") : skill_tab_names[kind == 2 ? t : 0], X(x + tab_w / 2.0f), Y(kTabsY + 3.2f), !wide && kind == 2 && t > 0 ? 0.4f : 0.5f, on ? hot : ink, a, false, true);
         } else if (tab_icon_row[t] != 0) {
             const gpr thing = MEM_W(0x7C, tab_icon_row[t]);
             const gpr ic = kind == 0 ? card_icon(rdram, ctx, MEM_HU(0, thing)) : [&] {
@@ -10952,7 +10974,10 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     if (chip_up) g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + (8.0f + det_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, settings.details ? hot : ink, alpha, false, true);
     if (view.empty() && tr) g = draw_text_card(rdram, ctx, g, o, ui.tab == 0 ? "No spells" : "No skills", "", "This trainer has nothing to teach in this list.", {});
     if (view.empty()) {
-        g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(rows_y + 20.0f), 0.6f, dim, alpha, false, true);
+        g = prompt_state(rdram, g, alpha);
+        g = pic(g, branding_index("mc_empty"), (kListX0 + kListX1) / 2.0f - 24.0f, rows_y + 10.0f, (kListX0 + kListX1) / 2.0f + 24.0f, rows_y + 24.0f);
+        g = ctl_state(rdram, ctx, g);
+        g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(rows_y + 27.0f), 0.6f, dim, alpha, false, true);
     }
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
         const ListEntry& e = view[i];
@@ -10985,11 +11010,16 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (kind == 2) {  // the level, what changes it, and a bar for how far up the scale it is (the game's top is 10)
             g = ctl_text(rdram, ctx, g, std::to_string(e.level), X(kListX1 - 42.0f), Y(y + kRowDy), kRowScale, sel ? hot : ink, alpha, true);
             if (e.mod != 0 && !tr) g = ctl_text(rdram, ctx, g, "(" + std::string(e.mod > 0 ? "+" : "") + std::to_string(e.mod) + ")", X(kListX1 - 26.0f), Y(y + kRowDy), 0.5f, e.mod > 0 ? 0x2F6B3A : 0x8E2323, alpha, true);
-            if (!tr) {
-                const float bx0 = X(kListX1 - 23.0f), bx1 = X(kListX1 - 2.0f), by0 = Y(y + 3.2f), by1 = Y(y + 5.0f);
-                g = rect_state(rdram, g);
-                g = rect(rdram, g, bx0, by0, bx1, by1, 0x7B556000u | (uint32_t)(alpha / 4), hs, vs);
-                g = rect(rdram, g, bx0, by0, bx0 + (bx1 - bx0) * (float)std::clamp(e.level, 0, 10) / 10.0f, by1, 0x6B4A9A00u | (uint32_t)alpha, hs, vs);
+            if (!tr) {  // Codex's level bar (v2): the groove, the violet fill (a cap at each end, the middle stretched), and a tick at every tenth
+                const float bx0 = kListX1 - 23.0f, by0 = y + 2.7f, len = 21.0f * (float)std::clamp(e.level, 0, 10) / 10.0f;
+                g = prompt_state(rdram, g, alpha);
+                g = pic(g, branding_index("mc_bar_track"), bx0, by0, bx0 + 21.0f, by0 + 3.0f);
+                if (len >= 2.0f) {
+                    g = pic(g, branding_index("bf_l"), bx0, by0, bx0 + 1.0f, by0 + 3.0f);
+                    g = pic(g, branding_index("bf_m"), bx0 + 1.0f, by0, bx0 + len - 1.0f, by0 + 3.0f);
+                    g = pic(g, branding_index("bf_l"), bx0 + len - 1.0f, by0, bx0 + len, by0 + 3.0f);
+                }
+                g = pic(g, branding_index("mc_bar_ticks"), bx0, by0, bx0 + 21.0f, by0 + 3.0f);
                 g = ctl_state(rdram, ctx, g);
             }
         }
@@ -11003,15 +11033,27 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
                 w = ctl_width(rdram, ctx, font, e.text, kRowScale);
                 font_restore(rdram, font, st);
             }
-            g = ctl_text(rdram, ctx, g, "(Use)", X(kListX0 + 32.0f) + w + 3.0f, Y(y + kRowDy + 0.6f), 0.42f, sel ? hot : 0x2F6B3A, alpha);
+            g = prompt_state(rdram, g, alpha);  // (Codex's mark: a cog)
+            g = pic(g, branding_index("mk_use"), kListX0 + 32.0f + w * hs / o.sx + 2.0f, y + 0.4f, kListX0 + 32.0f + w * hs / o.sx + 10.0f, y + 8.4f);
+            g = ctl_state(rdram, ctx, g);
         }
         if (shop) {  // the price, in gold (a keeper takes nothing worth a gold or less)
             const int price = price_of(e);
-            const std::string text = price > 1 || (ui.tab == 0 && price > 0) ? std::to_string(price) + " g" : "-";
-            g = ctl_text(rdram, ctx, g, text, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+            const bool can = price > 1 || (ui.tab == 0 && price > 0);
+            g = ctl_text(rdram, ctx, g, can ? std::to_string(price) : "-", X(kListX1 - (can ? 10.5f : 2.0f)), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+            if (can) {
+                g = prompt_state(rdram, g, alpha);
+                g = pic(g, branding_index("mk_coin"), kListX1 - 9.5f, y + 0.3f, kListX1 - 1.5f, y + 8.3f);
+                g = ctl_state(rdram, ctx, g);
+            }
         } else if (tr) {  // what training it costs
             const int xp = train_price(e, 0xF4);
-            g = ctl_text(rdram, ctx, g, xp < 0 ? "Max" : std::to_string(xp) + " XP", X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+            g = ctl_text(rdram, ctx, g, xp < 0 ? "Max" : std::to_string(xp), X(kListX1 - (xp < 0 ? 2.0f : 10.5f)), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+            if (xp >= 0) {
+                g = prompt_state(rdram, g, alpha);
+                g = pic(g, branding_index("mk_xp"), kListX1 - 9.5f, y + 0.3f, kListX1 - 1.5f, y + 8.3f);
+                g = ctl_state(rdram, ctx, g);
+            }
         } else if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
     }
     return g;
@@ -13201,11 +13243,16 @@ namespace {
 
         // ---- the page: a sheet over the map ----
         const uint32_t ink = 0x40386A, brown = 0x7B5560, dim = 0x9A7A80, hot = 0x4B3174;
-        g = rect_state(rdram, g);
         const float px0 = 22.0f, py0 = 20.0f, px1 = 286.0f, py1 = 208.0f;
-        g = rect(rdram, g, X(px0), Y(py0), X(px1), Y(py1), 0x8A607000u | (uint32_t)alpha, hs, vs);                             // the border
-        g = rect(rdram, g, X(px0 + 1.2f), Y(py0 + 1.2f), X(px1 - 1.2f), Y(py1 - 1.2f), 0xEDCFA800u | (uint32_t)alpha, hs, vs);  // the sheet
-        g = rect(rdram, g, X(px0 + 3.0f), Y(py0 + 3.0f), X(px1 - 3.0f), Y(py1 - 3.0f), 0xF3DDB900u | (uint32_t)alpha, hs, vs);  // a lighter field
+        {  // the sheet: Codex's popup frame (v2) as a nine-patch, its 16 texel corners unstretched
+            g = prompt_state(rdram, g, alpha);
+            const float xs[4] = { px0, px0 + 16.0f, px1 - 16.0f, px1 }, ys[4] = { py0, py0 + 16.0f, py1 - 16.0f, py1 };
+            static const char* const kNine[3][3] = { { "mp_nw", "mp_n", "mp_ne" }, { "mp_w", "mp_c", "mp_e" }, { "mp_sw", "mp_s", "mp_se" } };
+            for (int j = 0; j < 3; j++) {
+                for (int i = 0; i < 3; i++) g = pic(g, branding_index(kNine[j][i]), xs[i], ys[j], xs[i + 1], ys[j + 1]);
+            }
+        }
+        g = rect_state(rdram, g);
         g = rect(rdram, g, X(147.0f), Y(54.0f), X(147.8f), Y(204.0f), 0x8A607000u | (uint32_t)(alpha * 3 / 4), hs, vs);          // the rule between
         g = ctl_state(rdram, ctx, g);
         {  // the title, and the list's heading
