@@ -1136,3 +1136,10 @@ text = "extern int aidyn_cal_a(uint8_t* rdram, recomp_context* ctx); if (aidyn_c
 func = "senseAura"
 before_vram = 0x80070070
 text = "extern void aidyn_sense_aura(uint8_t* rdram, recomp_context* ctx); aidyn_sense_aura(rdram, ctx);"
+
+# Pop-ups over the pause menu (src/game/patches.cpp, aidyn_handler_widget): WidgetHandler::Render's loop, before each widget is drawn (the branch
+# target 0x800AD4A4, s0 the widget, a1 the display list): the port's pages are drawn before the first pop-up, so the dark box lies over them.
+[[patches.hook]]
+func = "WidgetHandler__Render"
+before_vram = 0x800AD4A4
+text = "extern void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx); aidyn_handler_widget(rdram, ctx);"

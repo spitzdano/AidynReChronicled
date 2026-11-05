@@ -77,6 +77,8 @@ extern "C" void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx) {
 void update_glyph_widths(uint8_t* rdram, recomp_context* ctx);  // "Keys in the game's text", below
 recomp_context* frame_ctx = nullptr;  // this frame's context, for the key caps drawn inside picture draws
 
+bool handler_big_seen = false, prompts_early = false;  // WidgetHandler::Render: the pause menu's widget has been drawn / the overlays were drawn before a popup
+
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     frame_ctx = ctx;
     update_glyph_widths(rdram, ctx);
@@ -88,7 +90,8 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     heap_trace_frame(rdram);
     free_spill_frame(rdram, ctx);
     g = treasure_sparkle(rdram, ctx, g);
-    g = aidyn_prompts(rdram, g);
+    if (!prompts_early) g = aidyn_prompts(rdram, g);  // (in a pause menu with a pop-up over it they were drawn under the pop-up: aidyn_handler_widget)
+    handler_big_seen = prompts_early = false;
     g = draw_dialogue_hint(rdram, ctx, g);
     if (combat_log_frame) {
         combat_move_log(rdram);
@@ -10851,7 +10854,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     hover_moved_over_rows[kind] = false;
     if (chr && chr_ui.strip && settings.details) {
         g = draw_attribute_card(rdram, ctx, g, o, chr_ui.stat);
-    } else if ((settings.details || hover_frames[kind] > 0 || shop || tr) && !list_frozen) {  // (not under a popup: its words ran under the card)
+    } else if (settings.details || hover_frames[kind] > 0 || shop || tr) {
         shop_card_price = shop && pos >= 0 ? price_of(view[pos]) : -2;
         shop_card_buying = ui.tab == 0;
         if (tr && pos >= 0) {  // what training it costs, in the game's terms (the Oriana's trainers ask no gold: its own gold line is blank)
@@ -12976,6 +12979,7 @@ namespace {
     std::map<std::string, BestiaryEntry> bestiary_book;          // by the name the game gives it
     std::map<uint64_t, std::string> bestiary_records;            // a save's hash -> its record
     bool bestiary_records_loaded = false;
+    bool bestiary_loaded_at_title = false;  // a save was loaded while the title screen was still up (Continue): its book is kept
 
     struct BestiaryUi {
         bool sel = false;          // the map page's cursor is on Bestiary
@@ -12986,6 +12990,7 @@ namespace {
         int repeat = 0, unseen = 0;
         gpr journal_label = 0;
         uint32_t seen_moves = 0, seen_clicks = 0;
+        int closing_frames = 0;
     } bst;
 
     std::filesystem::path bestiary_path() { return save_dir / "save-bestiary.txt"; }
@@ -13066,6 +13071,8 @@ namespace {
             if (name.empty()) continue;
             BestiaryEntry& e = bestiary_book[name];
             e.fights++;
+            static const bool log = std::getenv("AIDYN_BESTIARY_LOG") != nullptr;
+            if (log) { fprintf(stdout, "Bestiary: %s fought %d (id %04x)\n", name.c_str(), e.fights, (unsigned)MEM_HU(0, sheet)); fflush(stdout); }
             e.ids.insert(MEM_HU(0, sheet));
             e.hp = std::max<int>(e.hp, (int)(call_game(rdram, ctx, Entity__getHPMax, (uint32_t)sheet) & 0xFF));
         }
@@ -13172,6 +13179,12 @@ namespace {
         };
         const int alpha = o.alpha;
         if (!bst.open) {
+            if (bst.closing) {  // just closed: the game has its input back once every button is up
+                uint32_t b = 0;
+                float sx = 0.0f, sy = 0.0f;
+                aidyn::input::captured(&b, &sx, &sy);
+                if (b == 0 || ++bst.closing_frames > 90) { bst.closing = false; bst.closing_frames = 0; aidyn::input::set_capture(false); }
+            }
             // the label, right-aligned with CAMP and JOURNAL, its baseline 19 texels under the Journal's (page texels: Camp's is y 167.6)
             const int label = branding_index(bst.sel ? "bst_label_on" : "bst_label");
             if (label >= 0) {
@@ -13377,19 +13390,21 @@ void bestiary_loaded_save(uint64_t hash) {
     if (it == bestiary_records.end()) bestiary_book.clear();
     else bestiary_parse(it->second);
     bst = BestiaryUi{};
+    bestiary_loaded_at_title = true;
 }
 
 // Once a frame: a fight's start enters its enemies.
 void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
     static bool in_fight = false, recorded = false;
-    if (heap_pointer(MEM_W(0, kTitleScreen))) {  // the title: the next game starts a book of its own
-        if (!bestiary_book.empty()) bestiary_book.clear();
+    if (!heap_pointer(MEM_W(0, kTitleScreen))) bestiary_loaded_at_title = false;
+    if (heap_pointer(MEM_W(0, kTitleScreen))) {  // the title: the next game starts a book of its own (unless a save was just loaded from it)
+        if (!bestiary_book.empty() && !bestiary_loaded_at_title) bestiary_book.clear();
         in_fight = false;
         if (bst.open || bst.closing) aidyn::input::set_capture(false);
         bst = BestiaryUi{};
         return;
     }
-    if (++bst.unseen > 30 && (bst.open || bst.sel)) {  // the map page is gone (the pause menu closed or turned): so is the page
+    if (++bst.unseen > 30 && (bst.open || bst.sel || bst.closing)) {  // the map page is gone (the pause menu closed or turned): so is the page
         if (bst.open || bst.closing) aidyn::input::set_capture(false);
         bst = BestiaryUi{};
     }
@@ -13469,6 +13484,20 @@ extern "C" int aidyn_cal_a(uint8_t* rdram, recomp_context* ctx) {
     }
     ctx->r2 = 0;
     return 1;
+}
+
+// WidgetHandler::Render (0x800AD450), before each of its widgets is drawn (s0 the widget, a1 the display list so far): the pause menu is the
+// first; a widget after it is a pop-up (the game's dark box: how many to sell, are you sure, cannot equip), which belongs over the port's
+// lists and cards, drawn at the end of the frame until now, over the box. The overlays (aidyn_prompts) are drawn here, once, instead.
+extern "C" void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx) {
+    const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);
+    if (!heap_pointer(big)) return;
+    const gpr w = (gpr)(int32_t)ctx->r16;
+    if (w == big) { handler_big_seen = true; return; }
+    if (!handler_big_seen || prompts_early || w == 0) return;
+    frame_ctx = ctx;
+    ctx->r5 = aidyn_prompts(rdram, (gpr)(int32_t)ctx->r5);
+    prompts_early = true;
 }
 
 // ---- Treasure sparkle ----
