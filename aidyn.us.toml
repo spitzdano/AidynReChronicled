@@ -1143,3 +1143,15 @@ text = "extern void aidyn_sense_aura(uint8_t* rdram, recomp_context* ctx); aidyn
 func = "WidgetHandler__Render"
 before_vram = 0x800AD4A4
 text = "extern void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx); aidyn_handler_widget(rdram, ctx);"
+
+# Pop-ups over the pause pages (aidyn_popup_text): WidgetText::Render (a message) and WidgetClipText::Render (a choice): the words are written by the
+# port, in the parchment style; 1 (v0 the display list) skips the game's own.
+[[patches.hook]]
+func = "WidgetText__Render"
+before_vram = 0x800AF108
+text = "extern int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice); if (aidyn_popup_text(rdram, ctx, 0)) return;"
+
+[[patches.hook]]
+func = "WidgetClipText__Render"
+before_vram = 0x800AE1E0
+text = "extern int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice); if (aidyn_popup_text(rdram, ctx, 1)) return;"

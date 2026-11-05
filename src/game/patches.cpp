@@ -77,7 +77,8 @@ extern "C" void aidyn_display_list_limit(uint8_t* rdram, recomp_context* ctx) {
 void update_glyph_widths(uint8_t* rdram, recomp_context* ctx);  // "Keys in the game's text", below
 recomp_context* frame_ctx = nullptr;  // this frame's context, for the key caps drawn inside picture draws
 
-bool handler_big_seen = false, prompts_early = false;  // WidgetHandler::Render: the pause menu's widget has been drawn / the overlays were drawn before a popup
+bool handler_big_seen = false, prompts_early = false, popup_rendering = false;
+int popup_frame = 0;  // frames drawn (the pop-ups' chosen row is the one whose colour moves)  // WidgetHandler::Render: the pause menu's widget has been drawn / the overlays were drawn before a popup
 
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     frame_ctx = ctx;
@@ -91,7 +92,8 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     free_spill_frame(rdram, ctx);
     g = treasure_sparkle(rdram, ctx, g);
     if (!prompts_early) g = aidyn_prompts(rdram, g);  // (in a pause menu with a pop-up over it they were drawn under the pop-up: aidyn_handler_widget)
-    handler_big_seen = prompts_early = false;
+    handler_big_seen = prompts_early = popup_rendering = false;
+    popup_frame++;
     g = draw_dialogue_hint(rdram, ctx, g);
     if (combat_log_frame) {
         combat_move_log(rdram);
@@ -8246,8 +8248,10 @@ extern "C" void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx) {
     if (heap_pointer(title)) MEM_H(kWidgetPosX + 2, title) = (int16_t)(MEM_H(kWidgetPosX + 2, title) + 1);
 }
 
+bool popup_borg8(uint8_t* rdram, recomp_context* ctx, gpr w);  // "Pop-ups in the parchment style", below
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
+    if (heap_pointer(w) && popup_borg8(rdram, ctx, w)) return 1;  // a pop-up over a pause page: parchment, not black glass
     if (heap_pointer(w) && bestiary_wants_journal_unchosen(w)) {  // the cursor is on Bestiary: Journal's label isn't pulsing
         MEM_B(0x58, w) = (int8_t)130; MEM_B(0x59, w) = (int8_t)80; MEM_B(0x5A, w) = (int8_t)80; MEM_B(0x5B, w) = (int8_t)0xFF;
     }
@@ -13494,10 +13498,118 @@ extern "C" void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx) {
     if (!heap_pointer(big)) return;
     const gpr w = (gpr)(int32_t)ctx->r16;
     if (w == big) { handler_big_seen = true; return; }
+    if (handler_big_seen && w != 0) popup_rendering = true;
     if (!handler_big_seen || prompts_early || w == 0) return;
     frame_ctx = ctx;
     ctx->r5 = aidyn_prompts(rdram, (gpr)(int32_t)ctx->r5);
     prompts_early = true;
+}
+
+// ---- Pop-ups in the parchment style ----
+// The game's pop-ups (a message: TextPopup_New; a choice: WidgetChoiceDia, DollBarterConfirm) are a black 1 x 1 picture stretched over their box with
+// sixteen-unit gradient pieces round it, and white words. Over a pause page (the handler's widgets after the pause menu's: popup_rendering) the
+// box is drawn as Codex's popup frame (art/menu MenuPopup, a nine-patch: 16 texel corners, none shorter than 34 units), the gradient pieces are
+// not drawn, and the words are written here, in the page's ink: a message in dark ink, the choices in brown, the chosen one (the colour that moves)
+// in violet on the row wash. The widgets still do everything else: the keys, the fades (the box's alpha is the fade), the choices.
+namespace {
+    float popup_alpha = 0.0f;        // the box's fade (0..255), as the game fades it
+    int popup_box_frame = -1;        // the frame a box was drawn in (a pop-up without a box, a game panel's menu, keeps the game's own words)
+    float popup_x0 = 0.0f, popup_x1 = 320.0f, popup_y0 = 0.0f;  // the box last drawn: what the words fit
+    struct PopupWord { uint32_t colour = 0; int changed = 0; };
+    std::map<gpr, PopupWord> popup_words;   // by text widget: when its colour last changed (the chosen choice's does every frame)
+
+    bool popup_pixel(uint8_t* rdram, gpr w) {  // a 1 x 1 picture widget
+        const gpr b = heap_pointer(w) ? MEM_W(0x6C, w) : 0;
+        return heap_pointer(b) && MEM_HU(0xA, b) == 1 && MEM_HU(0xC, b) == 1;
+    }
+
+    // The frame round a box (units), at the fade alpha.
+    gpr popup_frame_draw(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, float w, float h, int alpha) {
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        float x0 = x - 7.0f, y0 = y - 7.0f, x1 = x + w + 7.0f, y1 = y + h + 7.0f;
+        if (y1 - y0 < 34.0f) { const float c = (y0 + y1) / 2.0f; y0 = c - 17.0f; y1 = c + 17.0f; }
+        if (x1 - x0 < 34.0f) { const float c = (x0 + x1) / 2.0f; x0 = c - 17.0f; x1 = c + 17.0f; }
+        static const char* const kNine[3][3] = { { "mp_nw", "mp_n", "mp_ne" }, { "mp_w", "mp_c", "mp_e" }, { "mp_sw", "mp_s", "mp_se" } };
+        const float xs[4] = { x0, x0 + 16.0f, x1 - 16.0f, x1 }, ys[4] = { y0, y0 + 16.0f, y1 - 16.0f, y1 };
+        g = prompt_state(rdram, g, alpha);
+        for (int j = 0; j < 3; j++) {
+            for (int i = 0; i < 3; i++) {
+                const int image = branding_index(kNine[j][i]);
+                if (image < 0) continue;
+                const auto& img = aidyn::branding::kImages[image];
+                const float px0 = std::round(xs[i] * hs), py0 = std::round(ys[j] * vs), px1 = std::round(xs[i + 1] * hs), py1 = std::round(ys[j + 1] * vs);
+                g = draw_rgba16(rdram, g, (size_t)image, px0, py0, (px1 - px0) / (float)img.w, (py1 - py0) / (float)img.h);
+            }
+        }
+        popup_x0 = x0 + 6.0f;
+        popup_x1 = x1 - 6.0f;
+        popup_y0 = y0;
+        return ctl_state(rdram, ctx, g);
+    }
+}
+
+// WidgetBorg8::Render (aidyn_title_box): in a pop-up, the box becomes the frame and its gradient pieces are not drawn. 1: done (g in v0).
+bool popup_borg8(uint8_t* rdram, recomp_context* ctx, gpr w) {
+    if (!popup_rendering || !aidyn::settings::graphics().tabbed_lists) return false;
+    if (popup_pixel(rdram, w)) {
+        const int alpha = MEM_BU(0x5B, w);
+        popup_alpha = (float)alpha;
+        popup_box_frame = popup_frame;
+        gpr g = (gpr)(int32_t)ctx->r5;
+        if (alpha != 0) g = popup_frame_draw(rdram, ctx, g, (int16_t)MEM_HU(kWidgetPosX, w), (int16_t)MEM_HU(kWidgetPosX + 2, w), MEM_HU(0x74, w), MEM_HU(0x72, w), alpha);
+        ctx->r2 = g;
+        return true;
+    }
+    const gpr parent = MEM_W(0x44, w);
+    const uint32_t vt = heap_pointer(parent) ? (uint32_t)MEM_W(0x78, parent) : 0;
+    if (heap_pointer(parent) && (popup_pixel(rdram, parent) || (vt >= 0x800D1050u && vt <= 0x800D1058u))) {  // one of its gradient pieces (a choice dialog's are its own children)
+        ctx->r2 = ctx->r5;
+        return true;
+    }
+    return false;
+}
+
+// WidgetText::Render (a message) and WidgetClipText::Render (a choice), before they draw (a0 the widget, a1 the display list): in a pop-up the words
+// are written here instead. 1: done.
+extern "C" int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice) {
+    if (!popup_rendering || popup_box_frame != popup_frame || !aidyn::settings::graphics().tabbed_lists) return 0;
+    const gpr w = (gpr)(int32_t)ctx->r4;
+    if (!heap_pointer(w)) return 0;
+    const gpr sub = MEM_W(0x40, w), str = heap_pointer(sub) ? MEM_W(0, sub) : 0;
+    const std::string text = heap_pointer(str) ? game_string(rdram, str, 240) : std::string();
+    if (text.empty() || popup_alpha <= 0.0f) return text.empty() ? 0 : (ctx->r2 = ctx->r5, 1);
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    const float x = (int16_t)MEM_HU(kWidgetPosX, w), y = (int16_t)MEM_HU(kWidgetPosX + 2, w);
+    const int alpha = (int)std::clamp(popup_alpha, 0.0f, 255.0f);
+    gpr g = (gpr)(int32_t)ctx->r5;
+    bool chosen = false;
+    if (choice) {  // the chosen row's colour changes every frame
+        PopupWord& pw = popup_words[w];
+        const uint32_t colour = (uint32_t)MEM_W(0x58, w);
+        if (colour != pw.colour) { pw.colour = colour; pw.changed = popup_frame; }
+        chosen = popup_frame - pw.changed <= 2;
+        if (popup_words.size() > 64) popup_words.clear();
+    }
+    g = ctl_state(rdram, ctx, g);
+    if (chosen) {  // the row wash behind it
+        const int hl = branding_index("mc_hl");
+        if (hl >= 0) {
+            g = prompt_state(rdram, g, alpha);
+            const auto& img = aidyn::branding::kImages[hl];
+            const float px0 = std::round((popup_x0 - 2.0f) * hs), py0 = std::round((y - 1.0f) * vs), px1 = std::round(popup_x1 * hs), py1 = std::round((y + 11.0f) * vs);
+            g = draw_rgba16(rdram, g, (size_t)hl, px0, py0, (px1 - px0) / (float)img.w, (py1 - py0) / (float)img.h);
+            g = ctl_state(rdram, ctx, g);
+        }
+    }
+    const uint32_t colour = choice ? (chosen ? 0x4B3174 : 0x7B5560) : 0x40386A;
+    const float width = std::max(40.0f, popup_x1 - x);
+    float ly = y;
+    for (const std::string& line : wrap_lines(rdram, ctx, text, width, 0.9f)) {
+        g = ctl_text(rdram, ctx, g, line, x, ly, 0.9f, colour, alpha);
+        ly += 11.0f;
+    }
+    ctx->r2 = g;
+    return 1;
 }
 
 // ---- Treasure sparkle ----
