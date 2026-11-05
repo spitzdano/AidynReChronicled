@@ -14,6 +14,7 @@ Scrolls and wands (IconItemScroll, IconItemWand: every one the same, a purple ri
 school colour the same way on their blue instead of their red ("blue" mode: the grey is min of red and green, the
 amount blue minus that): Chaos red, Elemental amber, Naming green, Necromancy violet, Star blue.
 """
+import os
 from pathlib import Path
 
 import numpy as np
@@ -105,6 +106,9 @@ MDOULOS_POTIONS = ["fire", "inferno", "sleep-gas", "acid", "healing", "stamina",
 # ...and a scroll for each school (MagicSchoolEnum order, as SCHOOL_COLOURS): Chaos, which is every school, has his neutral one.
 MDOULOS_SCROLLS = ["neutral", "elemental", "naming", "necromancy", None, "star"]
 MDOULOS = Path(__file__).resolve().parents[2] / "art/items/mdoulos"
+# Held back until 1.0.5: False builds the recoloured bottles and scrolls as before. Set True for 1.0.5 (AIDYN_MDOULOS_ICONS=1 tries it
+# without editing), and add "; the painted potion and scroll icons are his" to the credits in tools/release/README.md (ships with releases).
+USE_MDOULOS = os.environ.get("AIDYN_MDOULOS_ICONS", "") == "1" or False
 
 
 def write_art(art, folder):
@@ -152,4 +156,4 @@ def _write_recoloured(art, folder, read_png, write_png):
             path = folder / f"{school_name(base, k)}.png"
             write_png(path, w, h, recolour_rgba8(rgba, colour, blue=True))
             art[school_name(base, k)] = path
-    return _mdoulos(art)
+    return _mdoulos(art) if USE_MDOULOS else art
