@@ -9,6 +9,7 @@ texture-packs/ and sample-packs/), checks each against its BLAKE2b-256 hash, and
 """
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -21,7 +22,11 @@ REPO = "spitzdano/AidynReChronicled"
 def get(url, tries=4):
     for n in range(tries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "aidyn-macos-package"})
+            headers = {"User-Agent": "aidyn-macos-package"}
+            token = os.environ.get("GITHUB_TOKEN")
+            if token and url.startswith("https://api.github.com/"):  # the API's rate limit is per address: CI's is shared; never sent to asset hosts
+                headers["Authorization"] = f"Bearer {token}"
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=120) as r:
                 return r.read()
         except Exception as e:  # noqa: BLE001

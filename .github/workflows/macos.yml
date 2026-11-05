@@ -159,6 +159,8 @@ jobs:
 
       - name: Packs (from our newest release)
         if: steps.have.outputs.ok == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 -I tools/macos/fetch_packs.py "$RUNNER_TEMP/packs"
 
       - name: Package (.app, ROM guard, signature, .dmg)
