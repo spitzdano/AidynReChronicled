@@ -74,7 +74,8 @@ jobs:
           tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/binutils.tar.xz"
           mkdir "$RUNNER_TEMP/binutils-build" && cd "$RUNNER_TEMP/binutils-build"
           "$RUNNER_TEMP/binutils-$BINUTILS_VERSION/configure" --target=mips-linux-gnu --prefix="$HOME/mips" \
-              --disable-nls --disable-gdb --disable-gprof --disable-gprofng --disable-sim --disable-werror --disable-gold
+              --disable-nls --disable-gdb --disable-gprof --disable-gprofng --disable-sim --disable-werror --disable-gold \
+              --with-system-zlib  # the bundled zlib doesn't compile with Apple's clang
           make -j3
           make install
 
