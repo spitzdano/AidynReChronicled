@@ -12,6 +12,8 @@ namespace aidyn::input {
     bool fast_forward();                    // fast-forward on: toggled by L3, or Tab held (src/game/patches.cpp)
     bool c_down_held();                     // N64 C-down held (X, keyboard K), as last polled (title screen: switch version)
     bool c_up_held();                       // N64 C-up held (Y, keyboard I), as last polled (title screen: switch version)
+    void set_stick_keys(bool on);           // the right stick's flicks are the port's (kept for take_menu_keys: left 0x20000, right 0x40000) instead of turning the pages; refresh every frame
+    void press(uint32_t bits);              // the game is given these N64 button bits for about 90 ms, as if pressed (D-left 0x200, D-right 0x100)
     void set_menu_mode(bool on);            // the pause menu, a trainer or a shop: LT is C-left there, View nothing
     void set_card_mode(int mode);           // 1 field, 2 combat, 0 elsewhere: there View shows / hides the controls card
     bool quicksave_asked();                 // LB pressed in the field since last asked (src/game/patches.cpp)

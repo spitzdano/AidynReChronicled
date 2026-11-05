@@ -55,7 +55,10 @@ namespace {
     std::atomic_bool start{ false };
     std::atomic<uint32_t> keys_mask{ 0 };       // aidyn::input::set_menu_keys: which buttons
     std::atomic<long long> keys_until_ms{ 0 };   // aidyn::input::set_menu_keys: the buttons below are the port's own list keys
-    std::atomic<uint32_t> key_edges{ 0 };        // presses (and a held D-pad's repeats) since take_menu_keys
+    std::atomic<uint32_t> key_edges{ 0 };
+    std::atomic<uint32_t> injected_bits{ 0 };       // aidyn::input::press: a button the game is given for a moment, as if pressed
+    std::atomic<long long> injected_until_ms{ 0 };
+    std::atomic<long long> stick_keys_until_ms{ 0 };  // aidyn::input::set_stick_keys: the right stick is the port's for now        // presses (and a held D-pad's repeats) since take_menu_keys
     std::atomic_int last_device{ -1 };  // 0 the pad, 1 the keyboard or mouse, -1 neither yet (the keyboard if there is no pad)
     std::atomic_bool pad_b{ false };  // the pad's B (not the keyboard's or the mouse's)
     std::atomic_bool quicksave_pressed{ false };  // LB pressed in the field: aidyn::input::quicksave_asked
@@ -329,12 +332,20 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
         const bool right = rx > 0.7f, left = rx < -0.7f;
         if ((right || left) && !flicked) {
             flicked = true;
-            pulse_bit = right ? R : L;
-            pulse_until = now_ms + 100;
+            if (now_ms < stick_keys_until_ms.load(std::memory_order_relaxed)) {  // the port's own list has it (a shop: Buy and Sell): an edge, no page turned
+                key_edges.fetch_or(right ? 0x00040000u : 0x00020000u, std::memory_order_relaxed);
+            } else {
+                pulse_bit = right ? R : L;
+                pulse_until = now_ms + 100;
+            }
         } else if (!right && !left) {
             flicked = false;
         }
         if (now_ms < pulse_until) b |= pulse_bit;
+    }
+    {  // a button the port presses for the game (aidyn::input::press): D-left or D-right, to turn a trainer's lists as the game's own keys do
+        const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (now_ms < injected_until_ms.load(std::memory_order_relaxed)) b |= (uint16_t)injected_bits.load(std::memory_order_relaxed);
     }
     // In a conversation Start skips it (spitzdano: as Start skips the cinematics): A is pressed for the player, about
     // eight times a second, so every line goes by and everything the conversation does still happens (a flag, an item,
@@ -398,6 +409,17 @@ void aidyn::input::set_menu_keys(uint32_t mask) {
 
 uint32_t aidyn::input::take_menu_keys() {
     return key_edges.exchange(0, std::memory_order_relaxed);
+}
+
+void aidyn::input::set_stick_keys(bool on) {
+    const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    stick_keys_until_ms.store(on ? now_ms + 250 : 0, std::memory_order_relaxed);
+}
+
+void aidyn::input::press(uint32_t bits) {
+    const long long now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    injected_bits.store(bits, std::memory_order_relaxed);
+    injected_until_ms.store(now_ms + 90, std::memory_order_relaxed);
 }
 
 void aidyn::input::set_menu_mode(bool on) {
