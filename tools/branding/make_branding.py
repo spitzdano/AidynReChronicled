@@ -508,6 +508,20 @@ def pause_title(text, size, above=5):
     return draw
 
 
+def colour_word(text, size, colour, above=2.5):
+    """A word in one flat colour (the map page's CAMP and JOURNAL labels, and the Bestiary beside them). Centred; drawn untinted."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        baseline = int(H - above * SS)
+        width = ink_width(text, MARCELLUS, size)
+        if width + 4 * SS > W:
+            sys.exit(f"make_branding.py: the label {text!r} is wider than {w} texels")
+        over(img, rgb(colour), text_mask(text, MARCELLUS, size, W, H, (W - width) // 2, baseline))
+        return img
+    return draw
+
+
 def art_off(w, h):
     """Top right while F2 has the redrawn art pack off: what is showing, and the key."""
     img = np.zeros((h * SS, w * SS, 4), np.float32)
@@ -592,10 +606,14 @@ IMAGES += [("chr_title_l", CHR_TITLE_W // 2, 25, half(pause_title("Character", P
            ("chr_title_r", CHR_TITLE_W // 2, 25, half(pause_title("Character", PAUSE_TITLE_SIZE), CHR_TITLE_W, 25, True))]
 # Inventory and Spells too: the game's own titles slide in on their own clock when the pages turn, out of step with the port's lists
 # (the list changed first, so a title said "Spells" over the inventory); all three are drawn by the port now and change with the list.
-for _key, _word in (("inv", "Inventory"), ("spl", "Spells"), ("buy", "Buy"), ("sel", "Sell"), ("trn", "Train")):
+for _key, _word in (("inv", "Inventory"), ("spl", "Spells"), ("buy", "Buy"), ("sel", "Sell"), ("trn", "Train"), ("bst", "Bestiary")):
     _w = (int(ink_width(_word, MARCELLUS, PAUSE_TITLE_SIZE) / SS) + 11) // 2 * 2
     IMAGES += [(_key + "_title_l", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, False)),
                (_key + "_title_r", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, True))]
+# The map page's third choice beside Camp and Journal: the same purple, and the lighter one the chosen label pulses to.
+BST_LABEL_W = int(ink_width("Bestiary", MARCELLUS, 100) / SS) + 6
+IMAGES += [("bst_label", BST_LABEL_W, 14, colour_word("Bestiary", 100, "#7B5A8C")),
+           ("bst_label_on", BST_LABEL_W, 14, colour_word("Bestiary", 100, "#9A8BDB"))]
 ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
            ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]

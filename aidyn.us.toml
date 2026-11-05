@@ -1114,3 +1114,25 @@ text = "extern int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx); if (aid
 func = "WidgetScrollMenu__Render"
 before_vram = 0x800AFDA8
 text = "extern int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx); if (aidyn_hide_list(rdram, ctx)) { ctx->r2 = ctx->r5; return; }"
+
+# The map page's third choice, Bestiary (src/game/patches.cpp, "Bestiary"): WidgetCalendar's Down (func_80040FB4), Up (func_80040F50) and A
+# (campMenuController) functions are skipped when the port's cursor is on, or moves to or from, Bestiary; senseAura notes what it told.
+[[patches.hook]]
+func = "func_80040FB4"
+before_vram = 0x80040FB4
+text = "extern int aidyn_cal_down(uint8_t* rdram, recomp_context* ctx); if (aidyn_cal_down(rdram, ctx)) return;"
+
+[[patches.hook]]
+func = "func_80040F50"
+before_vram = 0x80040F50
+text = "extern int aidyn_cal_up(uint8_t* rdram, recomp_context* ctx); if (aidyn_cal_up(rdram, ctx)) return;"
+
+[[patches.hook]]
+func = "campMenuController"
+before_vram = 0x80041020
+text = "extern int aidyn_cal_a(uint8_t* rdram, recomp_context* ctx); if (aidyn_cal_a(rdram, ctx)) return;"
+
+[[patches.hook]]
+func = "senseAura"
+before_vram = 0x80070070
+text = "extern void aidyn_sense_aura(uint8_t* rdram, recomp_context* ctx); aidyn_sense_aura(rdram, ctx);"

@@ -3274,6 +3274,9 @@ namespace {
     gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on, int sort_mode);
     gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys, gpr shop = 0, gpr trainer = 0);  // "Inventory page lists", below
+    gpr bestiary_ui(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o);  // "Bestiary", below
+    bool bestiary_wants_journal_unchosen(gpr widget);
+    bool bestiary_page_open();
     // The Character page's attributes row: Up from the list's first row moves onto it, left / right choose an attribute, A trains it (the
     // experience the game keeps for training, CharExp +8, the cost the game's own: get_stat_train_price) after a confirm, Down goes back.
     struct CharUi {
@@ -4037,8 +4040,9 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     // arrow (x 142..177). The journal: up / down scroll it, B closes it; at the foot of the book's page (its text
     // ends at y 210, the page spans x 62..245).
     if (map_page.seen && map_page.alpha != 0 && !journal) {
+        if (frame_ctx != nullptr) g = bestiary_ui(rdram, frame_ctx, g, map_page);  // Bestiary under Journal, and its page
         const int row[] = { branding_index("hint_open") };
-        g = draw_hint_row(rdram, g, map_page, row, 1, 224.0f, 193.0f, true);
+        if (!bestiary_page_open()) g = draw_hint_row(rdram, g, map_page, row, 1, 174.0f, 207.0f, true);  // (beside the page arrow, under the three choices)
     }
     if (journal && journal_page.seen && journal_page.alpha != 0) {
         // The map page's Journal and the pause menu's Help close with B. A book in the world (Becan's Journal: a
@@ -7424,6 +7428,9 @@ extern "C" void WidgetText__WidgetText(uint8_t* rdram, recomp_context* ctx);
 extern "C" void func_800CBC94(uint8_t* rdram, recomp_context* ctx);  // CRC table: made (if not there)
 extern "C" void func_800CBD28(uint8_t* rdram, recomp_context* ctx);  // CRC table: freed
 
+void bestiary_note_save(uint64_t hash);    // "Bestiary", below: the creatures met go with each save too
+void bestiary_loaded_save(uint64_t hash);
+void bestiary_tick(uint8_t* rdram, recomp_context* ctx);
 void fair_note_save(uint64_t hash);  // "Fair play", below: the playthrough's rules go with each save the port writes
 void fair_loaded_save(uint64_t hash);  // ... and come back with it
 
@@ -7611,6 +7618,7 @@ namespace {
         load_save_versions();
         note_version(save_hash(reinterpret_cast<const uint8_t*>(bytes.data())), version_name(aidyn::settings::game().rom_patch), false);
         fair_note_save(save_hash(reinterpret_cast<const uint8_t*>(bytes.data())));
+        bestiary_note_save(save_hash(reinterpret_cast<const uint8_t*>(bytes.data())));
         return true;
     }
 
@@ -7828,6 +7836,7 @@ extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
     quit_pending = false;
     ach_loaded_save();
     fair_loaded_save(read_hash);  // the hash of the bytes read (a file's, the pak's): its record in save-rules.txt
+    bestiary_loaded_save(read_hash);  // ... and the book of creatures in save-bestiary.txt
     read_hash = 0;
     saves.save_loaded = true;
     saves.explored = 0.0;
@@ -8221,6 +8230,9 @@ extern "C" void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
+    if (heap_pointer(w) && bestiary_wants_journal_unchosen(w)) {  // the cursor is on Bestiary: Journal's label isn't pulsing
+        MEM_B(0x58, w) = (int8_t)130; MEM_B(0x59, w) = (int8_t)80; MEM_B(0x5A, w) = (int8_t)80; MEM_B(0x5B, w) = (int8_t)0xFF;
+    }
     if (heap_pointer(w) && trainer_menu(rdram) != 0) {  // a trainer: the same pieces (the Train, Skills and Spells titles are 47, 51 and 42 wide)
         const gpr b = MEM_W(0x6C, w);
         const uint32_t bw = heap_pointer(b) ? MEM_HU(0xA, b) : 0, bh = heap_pointer(b) ? MEM_HU(0xC, b) : 0;
@@ -8922,6 +8934,7 @@ gpr draw_save_notice(uint8_t* rdram, recomp_context* ctx, gpr g) {
     quit_tick(rdram);
     watch_tick(rdram);
     achievements_tick(rdram, ctx);
+    bestiary_tick(rdram, ctx);
     fair_fix_stats(rdram, ctx);
     better_shops_tick(rdram);
     g = ach_toast(rdram, ctx, g);
@@ -12896,6 +12909,519 @@ extern "C" void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx) {
     }
     if (!seen.insert(text).second) return;
     std::ofstream(path, std::ios::app) << text << "\n";
+}
+
+// ---- Bestiary ----
+// The map page's third choice, beside Camp and Journal (spitzdano, 2026-11-05; issue #79): a page of the creatures the party has met,
+// in Alaron's field notes. A creature is entered the first time it stands in one of the party's fights (a person too, a boss too); the
+// count of those fought, and what Sense Aura told of them, decide how much the page says (below). The record goes with each save the
+// port writes (save-bestiary.txt beside the saves, by the save's hash, as the Fair play records do).
+//   Always        the name, its family, Alaron's note, how many have been fought
+//   3 fought, or Sense Aura at level 3+     level and hit points (the game's Sense Aura: 3+ hit points, 5+ level)
+//   6 fought, or Sense Aura at level 7+     resistances, and the weapons it fights with
+//   10 fought, or Sense Aura at level 9+    the six attributes
+//   A boss (one fought only once: the story's) shows everything after the first fight.
+// What it shows is read from the game's own creature table (EntityRAM, 0x80 each: name +2, Category +0x17, Level +0x1C, weapon skills
+// +0x2E, stats +0x39, resist elements +0x63, resist multipliers (floats) +0x68), so nothing here is copied from the game.
+#include "bestiary_text.h"
+namespace {
+    struct BestiaryEntry {
+        int fights = 0;            // creatures of this name fought (each one in each fight)
+        int aura = 0;              // the highest Sense Aura level cast on one
+        int hp = 0;                // the most hit points one had
+        std::set<uint16_t> ids;    // the table entries fought (a Goblin is six of them, level 1 to 6)
+    };
+    std::map<std::string, BestiaryEntry> bestiary_book;          // by the name the game gives it
+    std::map<uint64_t, std::string> bestiary_records;            // a save's hash -> its record
+    bool bestiary_records_loaded = false;
+
+    struct BestiaryUi {
+        bool sel = false;          // the map page's cursor is on Bestiary
+        bool open = false;
+        bool closing = false;      // closed: the game gets its input back once every button is up
+        int cursor = 0, top = 0;
+        uint32_t held = 0xFFFFFFFF;
+        int repeat = 0, unseen = 0;
+        gpr journal_label = 0;
+        uint32_t seen_moves = 0, seen_clicks = 0;
+    } bst;
+
+    std::filesystem::path bestiary_path() { return save_dir / "save-bestiary.txt"; }
+
+    std::string bestiary_serialize() {
+        std::string out;
+        for (const auto& [name, e] : bestiary_book) {
+            std::string n = name;
+            std::replace(n.begin(), n.end(), ' ', '_');
+            out += (out.empty() ? "" : ";") + n + "|" + std::to_string(e.fights) + "|" + std::to_string(e.aura) + "|" + std::to_string(e.hp) + "|";
+            std::string ids;
+            for (uint16_t id : e.ids) ids += (ids.empty() ? "" : ",") + std::to_string(id);
+            out += ids.empty() ? "-" : ids;
+        }
+        return out.empty() ? "-" : out;
+    }
+
+    void bestiary_parse(const std::string& s) {
+        bestiary_book.clear();
+        if (s == "-") return;
+        std::istringstream all(s);
+        for (std::string item; std::getline(all, item, ';');) {
+            std::istringstream f(item);
+            std::string name, fights, aura, hp, ids;
+            if (!std::getline(f, name, '|') || !std::getline(f, fights, '|') || !std::getline(f, aura, '|') || !std::getline(f, hp, '|') || !std::getline(f, ids)) continue;
+            std::replace(name.begin(), name.end(), '_', ' ');
+            BestiaryEntry e;
+            e.fights = std::atoi(fights.c_str());
+            e.aura = std::atoi(aura.c_str());
+            e.hp = std::atoi(hp.c_str());
+            if (ids != "-") {
+                std::istringstream idl(ids);
+                for (std::string id; std::getline(idl, id, ',');) e.ids.insert((uint16_t)std::atoi(id.c_str()));
+            }
+            bestiary_book[name] = e;
+        }
+    }
+
+    void bestiary_load_records() {
+        if (bestiary_records_loaded || save_dir.empty()) return;
+        bestiary_records_loaded = true;
+        std::ifstream in(bestiary_path());
+        std::string hex, rec;
+        while (in >> hex >> rec) bestiary_records[std::stoull(hex, nullptr, 16)] = rec;  // later lines win
+    }
+
+    // The table entry of an entity ID, or 0.
+    gpr bestiary_entity(uint8_t* rdram, recomp_context* ctx, uint16_t id) {
+        const gpr edb = MEM_W(0, (gpr)(int32_t)0x800E2830);
+        if (!heap_pointer(edb) || !heap_pointer(MEM_W(0x10, edb)) || (id >> 8) != 2) return 0;
+        const uint32_t idx = call_game(rdram, ctx, GetIDIndex, id, 0, 0) & 0xFF;
+        if (idx >= MEM_BU(0, edb)) return 0;
+        return (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)idx);
+    }
+
+    std::string bestiary_sheet_name(uint8_t* rdram, gpr sheet) {
+        const gpr name = heap_pointer(sheet) ? MEM_W(4, sheet) : 0;
+        if (!heap_pointer(name & ~(gpr)3)) return "";
+        std::string s;
+        for (int k = 0; k < 40; k++) {
+            const char c = (char)MEM_B(k, name);
+            if (c == 0) break;
+            s += c;
+        }
+        return s;
+    }
+
+    // The fight has begun: everyone on the other side is entered (or counted once more). False until there is one.
+    bool bestiary_record_fight(uint8_t* rdram, recomp_context* ctx) {
+        const gpr combat = MEM_W(0, kCombatP);
+        if (!heap_pointer(combat)) return false;
+        const int ents = std::min<int>(MEM_BU(kEntCount, combat), kMaxEnts), party = MEM_BU(kPartyCount, combat);
+        if (ents <= party) return false;
+        for (int i = party; i < ents; i++) {
+            const gpr ent = MEM_W(kCombatEnts + 4 * i, combat);
+            const gpr sheet = heap_pointer(ent) ? MEM_W(kCharSheet, ent) : 0;
+            const std::string name = bestiary_sheet_name(rdram, sheet);
+            if (name.empty()) continue;
+            BestiaryEntry& e = bestiary_book[name];
+            e.fights++;
+            e.ids.insert(MEM_HU(0, sheet));
+            e.hp = std::max<int>(e.hp, (int)(call_game(rdram, ctx, Entity__getHPMax, (uint32_t)sheet) & 0xFF));
+        }
+        return true;
+    }
+
+    const aidyn::bestiary_text::Entry* bestiary_text_for(const std::string& game) {
+        static std::map<std::string, const aidyn::bestiary_text::Entry*> index = [] {
+            std::map<std::string, const aidyn::bestiary_text::Entry*> m;
+            for (const auto& e : aidyn::bestiary_text::kEntries) m[e.game] = &e;
+            return m;
+        }();
+        const auto it = index.find(game);
+        return it == index.end() ? nullptr : it->second;
+    }
+
+    // How much of an entry the page may say: 0 the note only, 1 + level and hit points, 2 + resistances and attacks, 3 + attributes.
+    int bestiary_tier(const BestiaryEntry& e, bool boss) {
+        if (boss && e.fights >= 1) return 3;
+        int t = 0;
+        if (e.fights >= 3 || e.aura > 2) t = 1;
+        if (e.fights >= 6 || e.aura > 6) t = 2;
+        if (e.fights >= 10 || e.aura > 8) t = 3;
+        return t;
+    }
+
+    struct BestiaryRow {
+        std::string name;                       // the game's
+        const aidyn::bestiary_text::Entry* text;
+        const BestiaryEntry* e;
+        bool boss;
+    };
+
+    std::vector<BestiaryRow> bestiary_rows(uint8_t* rdram, recomp_context* ctx) {
+        std::vector<BestiaryRow> rows;
+        for (const auto& [name, e] : bestiary_book) {
+            const auto* text = bestiary_text_for(name);
+            bool boss = text != nullptr && text->boss;
+            if (text == nullptr && !e.ids.empty()) {  // a named person the notes don't cover: met once, as a rule
+                const gpr ent = bestiary_entity(rdram, ctx, *e.ids.begin());
+                boss = ent != 0 && MEM_BU(0x17, ent) == 2;
+            }
+            rows.push_back({ name, text, &e, boss });
+        }
+        std::sort(rows.begin(), rows.end(), [](const BestiaryRow& a, const BestiaryRow& b) {
+            return std::string(a.text ? a.text->shown : a.name.c_str()) < std::string(b.text ? b.text->shown : b.name.c_str());
+        });
+        return rows;
+    }
+
+    // What one is made of, from its highest-level table entry fought.
+    struct BestiaryFacts {
+        bool ok = false;
+        int level_lo = 0, level_hi = 0, stats[6] = {};
+        std::vector<std::string> attacks;
+        std::vector<std::pair<std::string, std::string>> resists;  // (what it is: Resists, Weak to, Immune to; the element and by how much)
+    };
+    BestiaryFacts bestiary_facts(uint8_t* rdram, recomp_context* ctx, const BestiaryEntry& e) {
+        static const char* const kElements[] = { "", "Earth", "Solar", "Physical", "Necromancy", "Fire", "Lunar", "Naming", "Water", "Magic", "Air", "Star", "Elemental", "Chaos", "Cutting", "Smashing", "Holy" };
+        static const char* const kAttacks[] = { "Bite", "Breath", "Claw", "Hafted", "Missile", "Pole", "Spit", "Sting", "Sword", "Thrown", "Tusk" };
+        BestiaryFacts f;
+        gpr best = 0;
+        int best_level = -1;
+        f.level_lo = 1000;
+        for (uint16_t id : e.ids) {
+            const gpr ent = bestiary_entity(rdram, ctx, id);
+            if (ent == 0) continue;
+            const int level = MEM_BU(0x1C, ent);
+            f.level_lo = std::min(f.level_lo, level);
+            f.level_hi = std::max(f.level_hi, level);
+            if (level > best_level) { best_level = level; best = ent; }
+        }
+        if (best == 0) return f;
+        f.ok = true;
+        for (int i = 0; i < 6; i++) f.stats[i] = MEM_BU(0x39 + i, best);
+        for (int i = 0; i < 11; i++) {
+            const int skill = MEM_BU(0x2E + i, best);
+            if (skill != 0 && skill != 255) f.attacks.push_back(kAttacks[i]);
+        }
+        for (int i = 0; i < 2; i++) {
+            const int element = MEM_BU(0x63 + i, best);
+            if (element == 0 || element >= (int)std::size(kElements)) continue;
+            const float multiplier = read_f32(rdram, best + 0x68 + 4 * i);
+            const int percent = (int)std::lround(multiplier * 100.0f);
+            // (the game's own Sense Aura says "Resistant" for anything under double damage: a number of 150 is a weakness)
+            f.resists.push_back({ percent <= 0 ? "Immune to" : percent < 100 ? "Resists" : "Weak to",
+                                  std::string(kElements[element]) + (percent > 0 ? " (takes " + std::to_string(percent) + "%)" : "") });
+        }
+        return f;
+    }
+
+    // The words under the map page's Journal: Bestiary, and its page.
+    gpr bestiary_ui(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o) {
+        bst.unseen = 0;
+        const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+        auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
+        auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
+        auto PX = [&](float tx) { return std::round(o.x + tx * o.sx); };
+        auto PY = [&](float ty) { return std::round(o.y + ty * o.sy); };
+        auto pic = [&](gpr gg, int image, float x0, float y0, float x1, float y1) {
+            if (image < 0) return gg;
+            const auto& img = aidyn::branding::kImages[image];
+            return draw_rgba16(rdram, gg, (size_t)image, PX(x0), PY(y0), (PX(x1) - PX(x0)) / (float)img.w, (PY(y1) - PY(y0)) / (float)img.h);
+        };
+        const int alpha = o.alpha;
+        if (!bst.open) {
+            // the label, right-aligned with CAMP and JOURNAL, its baseline 19 texels under the Journal's (page texels: Camp's is y 167.6)
+            const int label = branding_index(bst.sel ? "bst_label_on" : "bst_label");
+            if (label >= 0) {
+                const auto& img = aidyn::branding::kImages[label];
+                g = prompt_state(rdram, g, alpha);
+                g = pic(g, label, 260.0f - (float)img.w, 193.8f, 260.0f, 193.8f + (float)img.h);
+            }
+            return g;
+        }
+
+        // ---- input ----
+        uint32_t b = 0;
+        float sx = 0.0f, sy = 0.0f;
+        aidyn::input::captured(&b, &sx, &sy);
+        if (sy > 0.5f) b |= 0x0800;
+        if (sy < -0.5f) b |= 0x0400;
+        const std::vector<BestiaryRow> rows = bestiary_rows(rdram, ctx);
+        const int n = (int)rows.size();
+        constexpr float kListX0 = 30.0f, kListX1 = 142.0f, kRowsY = 62.0f, kStep = 9.4f;
+        const int visible = (int)((204.0f - kRowsY) / kStep);
+        const uint32_t pressed = bst.held == 0xFFFFFFFF ? 0 : (b & ~bst.held);
+        bst.held = (bst.held == 0xFFFFFFFF && b != 0) ? 0xFFFFFFFF : b;
+        if (bst.held == 0xFFFFFFFF) {  // the press that opened it: wait for it to be let go
+            if (b == 0) bst.held = 0;
+        }
+        const uint32_t dirs = b & 0x0C00;
+        bst.repeat = dirs != 0 ? bst.repeat + 1 : 0;
+        const uint32_t act = pressed | ((bst.repeat > 24 && bst.repeat % 5 == 0) ? dirs : 0);
+        if (!bst.closing) {
+            if ((pressed & (0x4000 | 0x1000)) != 0) {
+                bst.closing = true;
+                bst.open = false;
+                rc_sound(rdram, ctx, 0x741, 60);
+            } else {
+                int cur = bst.cursor;
+                if (act & 0x0800) cur--;
+                if (act & 0x0400) cur++;
+                if (pressed & 0x0200) cur -= visible;
+                if (pressed & 0x0100) cur += visible;
+                cur = n > 0 ? std::clamp(cur, 0, n - 1) : 0;
+                if (cur != bst.cursor) { bst.cursor = cur; rc_sound(rdram, ctx, 0x73B, 30); }
+                float mx = 0.0f, my = 0.0f;
+                uint32_t moves = 0, clicks = 0;
+                if (aidyn::controls::pointer(&mx, &my, &moves) && moves != bst.seen_moves) {
+                    bst.seen_moves = moves;
+                    const float tx = (mx * hs - o.x) / o.sx, ty = (my * vs - o.y) / o.sy;
+                    if (tx >= kListX0 && tx <= kListX1 && ty >= kRowsY - 1.0f && ty < kRowsY + visible * kStep) {
+                        const int i = bst.top + (int)((ty - kRowsY + 1.0f) / kStep);
+                        if (i >= 0 && i < n && i != bst.cursor) { bst.cursor = i; rc_sound(rdram, ctx, 0x73B, 30); }
+                    }
+                }
+                if (aidyn::controls::click(&mx, &my, &clicks) && clicks != bst.seen_clicks) {
+                    bst.seen_clicks = clicks;
+                    const float tx = (mx * hs - o.x) / o.sx, ty = (my * vs - o.y) / o.sy;
+                    if (tx >= kListX0 && tx <= kListX1 && ty >= kRowsY - 1.0f && ty < kRowsY + visible * kStep) {
+                        const int i = bst.top + (int)((ty - kRowsY + 1.0f) / kStep);
+                        if (i >= 0 && i < n) bst.cursor = i;
+                    }
+                }
+            }
+        }
+        if (bst.cursor < bst.top) bst.top = bst.cursor;
+        if (bst.cursor >= bst.top + visible) bst.top = bst.cursor - visible + 1;
+        bst.top = std::clamp(bst.top, 0, std::max(0, n - visible));
+        if (bst.closing) {
+            if (b == 0) { bst.closing = false; aidyn::input::set_capture(false); }
+            return g;  // (closing: nothing drawn, the map page is back)
+        }
+
+        // ---- the page: a sheet over the map ----
+        const uint32_t ink = 0x40386A, brown = 0x7B5560, dim = 0x9A7A80, hot = 0x4B3174;
+        g = rect_state(rdram, g);
+        const float px0 = 22.0f, py0 = 20.0f, px1 = 286.0f, py1 = 208.0f;
+        g = rect(rdram, g, X(px0), Y(py0), X(px1), Y(py1), 0x8A607000u | (uint32_t)alpha, hs, vs);                             // the border
+        g = rect(rdram, g, X(px0 + 1.2f), Y(py0 + 1.2f), X(px1 - 1.2f), Y(py1 - 1.2f), 0xEDCFA800u | (uint32_t)alpha, hs, vs);  // the sheet
+        g = rect(rdram, g, X(px0 + 3.0f), Y(py0 + 3.0f), X(px1 - 3.0f), Y(py1 - 3.0f), 0xF3DDB900u | (uint32_t)alpha, hs, vs);  // a lighter field
+        g = rect(rdram, g, X(147.0f), Y(54.0f), X(147.8f), Y(204.0f), 0x8A607000u | (uint32_t)(alpha * 3 / 4), hs, vs);          // the rule between
+        g = ctl_state(rdram, ctx, g);
+        {  // the title, and the list's heading
+            const int tl = branding_index("bst_title_l"), tr = branding_index("bst_title_r");
+            g = prompt_state(rdram, g, alpha);
+            if (tl >= 0 && tr >= 0) {
+                const auto& il = aidyn::branding::kImages[tl];
+                const float w = (float)il.w * 2.0f, x0 = 154.0f - w / 2.0f;
+                g = pic(g, tl, x0, 22.0f, x0 + il.w, 22.0f + (float)il.h);
+                g = pic(g, tr, x0 + il.w, 22.0f, x0 + w, 22.0f + (float)il.h);
+            }
+            g = ctl_state(rdram, ctx, g);
+        }
+        g = ctl_text(rdram, ctx, g, n == 0 ? "None met yet" : std::to_string(n) + (n == 1 ? " creature met" : " creatures met"), X(kListX0), Y(51.0f), 0.5f, brown, alpha);
+        const int hl = branding_index("mc_hl");
+        for (int i = bst.top; i < n && i < bst.top + visible; i++) {
+            const float y = kRowsY + (i - bst.top) * kStep;
+            if (i == bst.cursor) g = pic(g, hl, kListX0 - 2.0f, y - 0.6f, kListX1, y + 8.4f);
+        }
+        for (int i = bst.top; i < n && i < bst.top + visible; i++) {
+            const float y = kRowsY + (i - bst.top) * kStep;
+            const BestiaryRow& r = rows[i];
+            g = ctl_text(rdram, ctx, g, r.text ? r.text->shown : r.name, X(kListX0 + 1.0f), Y(y + 1.0f), 0.55f, i == bst.cursor ? hot : ink, alpha);
+        }
+        if (n > visible) {  // the scroll bar
+            const float bx = 143.0f, bh = 204.0f - kRowsY;
+            g = pic(g, branding_index("mc_track"), bx, kRowsY, bx + 3.0f, kRowsY + bh);
+            const float th = std::max(8.0f, bh * visible / (float)n);
+            const float ty = kRowsY + (bh - th) * (float)bst.top / (float)std::max(1, n - visible);
+            g = pic(g, branding_index("mc_thumb_t"), bx, ty, bx + 3.0f, ty + 1.0f);
+            g = pic(g, branding_index("mc_thumb_m"), bx, ty + 1.0f, bx + 3.0f, ty + th - 1.0f);
+            g = pic(g, branding_index("mc_thumb_b"), bx, ty + th - 1.0f, bx + 3.0f, ty + th);
+        }
+        if (n == 0) {
+            g = ctl_text(rdram, ctx, g, "Nothing yet. A creature is written", X(kListX0), Y(70.0f), 0.5f, dim, alpha);
+            g = ctl_text(rdram, ctx, g, "down the first time it stands in", X(kListX0), Y(79.0f), 0.5f, dim, alpha);
+            g = ctl_text(rdram, ctx, g, "one of your fights.", X(kListX0), Y(88.0f), 0.5f, dim, alpha);
+            return g;
+        }
+
+        // ---- the creature ----
+        const BestiaryRow& r = rows[std::clamp(bst.cursor, 0, n - 1)];
+        const float rx0 = 154.0f, rx1 = 280.0f;
+        g = rect_state(rdram, g);
+        g = rect(rdram, g, X(rx0), Y(52.0f), X(rx1), Y(92.0f), 0x8A607000u | (uint32_t)alpha, hs, vs);                        // the sketch's frame
+        g = rect(rdram, g, X(rx0 + 0.9f), Y(52.9f), X(rx1 - 0.9f), Y(91.1f), 0xF8E8C800u | (uint32_t)alpha, hs, vs);
+        g = ctl_state(rdram, ctx, g);
+        g = ctl_text(rdram, ctx, g, "Alaron's sketch to come", X((rx0 + rx1) / 2.0f), Y(69.0f), 0.45f, dim, alpha, false, true);
+        g = ctl_text(rdram, ctx, g, r.text ? r.text->shown : r.name, X(rx0), Y(94.0f), 0.8f, ink, alpha);
+        const bool people = r.text == nullptr;
+        g = ctl_text(rdram, ctx, g, people ? std::string("People") : std::string(r.text->family), X(rx0), Y(105.5f), 0.5f, brown, alpha);
+        g = ctl_text(rdram, ctx, g, "Fought: " + std::to_string(r.e->fights), X(rx1), Y(105.5f), 0.5f, brown, alpha, true);
+        const std::string note = r.text ? r.text->text : "A person of the story, met in a fight. Alaron has not written about them yet.";
+        float y = 115.0f;
+        for (const std::string& l : wrap_lines(rdram, ctx, note, X(rx1) - X(rx0), 0.55f)) {
+            if (y > 144.0f) break;
+            g = ctl_text(rdram, ctx, g, l, X(rx0), Y(y), 0.55f, ink, alpha);
+            y += 8.0f;
+        }
+        const int tier = bestiary_tier(*r.e, r.boss);
+        const BestiaryFacts f = bestiary_facts(rdram, ctx, *r.e);
+        float fy = 150.0f;
+        auto line = [&](const std::string& label, const std::string& value, uint32_t colour) {
+            if (fy > 200.0f) return;
+            g = ctl_text(rdram, ctx, g, label, X(rx0), Y(fy), 0.5f, brown, alpha);
+            g = ctl_text(rdram, ctx, g, value, X(rx1), Y(fy), 0.5f, colour, alpha, true);
+            fy += 7.6f;
+        };
+        auto join = [](const std::vector<std::string>& v) {
+            std::string s;
+            for (const auto& x : v) s += (s.empty() ? "" : ", ") + x;
+            return s.empty() ? std::string("none") : s;
+        };
+        if (tier >= 1 && f.ok) {
+            line("Level", f.level_lo == f.level_hi ? std::to_string(f.level_hi) : std::to_string(f.level_lo) + " to " + std::to_string(f.level_hi), ink);
+            line("Hit points", std::to_string(r.e->hp), ink);
+        } else {
+            line("Level, hit points", "?", dim);
+        }
+        if (tier >= 2 && f.ok) {
+            line("Fights with", join(f.attacks), ink);
+            if (f.resists.empty()) line("Resists", "nothing in particular", ink);
+            for (const auto& [what, value] : f.resists) line(what, value, what == "Weak to" ? 0x8E2323u : ink);
+        } else {
+            line("Resistances, weapons", "?", dim);
+        }
+        if (tier >= 3 && f.ok) {
+            static const char* const kStat[] = { "Int", "Wil", "Dex", "End", "Str", "Sta" };
+            std::string a, c;
+            for (int i = 0; i < 3; i++) a += std::string(i ? "   " : "") + kStat[i] + " " + std::to_string(f.stats[i]);
+            for (int i = 3; i < 6; i++) c += std::string(i > 3 ? "   " : "") + kStat[i] + " " + std::to_string(f.stats[i]);
+            line("Attributes", a, ink);
+            line("", c, ink);
+        } else {
+            line("Attributes", "?", dim);
+        }
+        if (tier < 3) {
+            g = ctl_text(rdram, ctx, g, "Fight more of them, or cast Sense Aura.", X((rx0 + rx1) / 2.0f), Y(200.0f), 0.42f, dim, alpha, false, true);
+        }
+        return g;
+    }
+}
+
+namespace {
+    bool bestiary_page_open() { return bst.open || bst.closing; }
+    bool bestiary_wants_journal_unchosen(gpr widget) { return bst.sel && widget == bst.journal_label; }
+}
+
+void bestiary_note_save(uint64_t hash) {
+    bestiary_load_records();
+    if (bestiary_book.empty() && bestiary_records.find(hash) == bestiary_records.end()) return;
+    const std::string rec = bestiary_serialize();
+    bestiary_records[hash] = rec;
+    char head[32];
+    snprintf(head, sizeof head, "%016llx ", (unsigned long long)hash);
+    std::ofstream(bestiary_path(), std::ios::app) << head << rec << "\n";
+}
+
+void bestiary_loaded_save(uint64_t hash) {
+    bestiary_load_records();
+    const auto it = bestiary_records.find(hash);
+    if (it == bestiary_records.end()) bestiary_book.clear();
+    else bestiary_parse(it->second);
+    bst = BestiaryUi{};
+}
+
+// Once a frame: a fight's start enters its enemies.
+void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
+    static bool in_fight = false, recorded = false;
+    if (heap_pointer(MEM_W(0, kTitleScreen))) {  // the title: the next game starts a book of its own
+        if (!bestiary_book.empty()) bestiary_book.clear();
+        in_fight = false;
+        if (bst.open || bst.closing) aidyn::input::set_capture(false);
+        bst = BestiaryUi{};
+        return;
+    }
+    if (++bst.unseen > 30 && (bst.open || bst.sel)) {  // the map page is gone (the pause menu closed or turned): so is the page
+        if (bst.open || bst.closing) aidyn::input::set_capture(false);
+        bst = BestiaryUi{};
+    }
+    // developers: AIDYN_BESTIARY_TEST=1 fills an empty book with a few creatures (to see the page without the fights)
+    static const bool test = std::getenv("AIDYN_BESTIARY_TEST") != nullptr;
+    if (test && bestiary_book.empty() && MEM_BU(0, kTrekState) == 1) {
+        const gpr edb = MEM_W(0, (gpr)(int32_t)0x800E2830);
+        static const struct { const char* name; int fights; int aura; } kSample[] = {
+            { "Goblin", 12, 0 }, { "Goblin Scout", 4, 0 }, { "Wolf", 7, 0 }, { "Troll", 1, 0 }, { "Wyvern", 3, 9 }, { "Chaos Slayer", 1, 0 },
+            { "Shamsuk", 1, 0 }, { "Skeleton", 6, 0 }, { "Hellhound", 2, 0 }, { "Giant Rat", 15, 0 }, { "Ogre", 5, 0 }, { "Harpy", 1, 0 } };
+        for (const auto& smp : kSample) {
+            BestiaryEntry e;
+            e.fights = smp.fights;
+            e.aura = smp.aura;
+            for (uint32_t i = 0; heap_pointer(edb) && i < MEM_BU(0, edb); i++) {
+                const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)i);
+                std::string nm;
+                for (int k = 0; k < 21 && MEM_B(2 + k, ent) != 0; k++) nm += (char)MEM_B(2 + k, ent);
+                if (nm == smp.name) {
+                    e.ids.insert(MEM_HU(0, ent));
+                    e.hp = std::max<int>(e.hp, 8 * (int)MEM_BU(0x1C, ent) + 20);
+                }
+            }
+            if (!e.ids.empty()) bestiary_book[smp.name] = e;
+        }
+    }
+    const uint32_t a = MEM_BU(0, kTrekState);
+    if (a == 2) {
+        if (!in_fight) { in_fight = true; recorded = false; }
+        if (!recorded) recorded = bestiary_record_fight(rdram, ctx);
+    } else if (a != 3) {
+        in_fight = false;
+    }
+}
+
+// senseAura (func 0x80070070: a0 the target, a1 the spell's level): what it told is learned.
+extern "C" void aidyn_sense_aura(uint8_t* rdram, recomp_context* ctx) {
+    const gpr target = ctx->r4;
+    const gpr sheet = heap_pointer(target) ? MEM_W(kCharSheet, target) : 0;
+    const std::string name = bestiary_sheet_name(rdram, sheet);
+    if (name.empty()) return;
+    const auto it = bestiary_book.find(name);
+    if (it != bestiary_book.end()) it->second.aura = std::max<int>(it->second.aura, (int)(ctx->r5 & 0xFF));
+}
+
+// The map page's choices (WidgetCalendar: its substruct at +0x40 holds the chosen label, Journal's, Camp's): Down from Journal goes on
+// to Bestiary (the game's own cursor stays on Journal; Journal's label is painted as unchosen meanwhile, aidyn_title_box), Up goes back,
+// A opens the page. 1: the game's own function is skipped.
+extern "C" int aidyn_cal_down(uint8_t* rdram, recomp_context* ctx) {
+    const gpr sub = heap_pointer(ctx->r5) ? MEM_W(0x40, ctx->r5) : 0;
+    if (!heap_pointer(sub) || MEM_W(0, sub) != MEM_W(4, sub) || bst.open) return 0;
+    if (!bst.sel) {
+        bst.sel = true;
+        bst.journal_label = MEM_W(4, sub);
+        rc_sound(rdram, ctx, 0x73B, 30);
+    }
+    ctx->r2 = 0;
+    return 1;
+}
+extern "C" int aidyn_cal_up(uint8_t* rdram, recomp_context* ctx) {
+    if (bst.open) return 1;
+    if (!bst.sel) return 0;
+    bst.sel = false;
+    rc_sound(rdram, ctx, 0x73B, 30);
+    ctx->r2 = 0;
+    return 1;
+}
+extern "C" int aidyn_cal_a(uint8_t* rdram, recomp_context* ctx) {
+    if (!bst.sel) return 0;
+    if (!bst.open) {
+        bst.open = true;
+        bst.closing = false;
+        bst.held = 0xFFFFFFFF;
+        bst.cursor = bst.top = 0;
+        aidyn::input::set_capture(true);
+        rc_sound(rdram, ctx, 0x740, 60);
+    }
+    ctx->r2 = 0;
+    return 1;
 }
 
 // ---- Treasure sparkle ----
