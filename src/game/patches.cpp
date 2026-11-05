@@ -10149,6 +10149,7 @@ namespace {
         gpr portrait_widget = 0;  // the game's own widget for it (SMIItem userPortrait)
         std::string qty, right;
         bool worn = false;
+        bool usable = false;  // a skill row the game lets A open outside a fight (Alchemist, Healer, Mechanic)
     };
     struct ListUi {
         int tab = 0, top = 0;
@@ -10268,6 +10269,7 @@ namespace {
                 e.mod = heap_pointer(modifier) ? (int)(int16_t)MEM_HU(0x5E, modifier) : 0;
                 const gpr borg = heap_pointer(widget) ? MEM_W(0x6C, widget) : 0;
                 e.icon = heap_pointer(borg) ? borg : 0;
+                e.usable = heap_pointer(value) && MEM_W(0x18, value) != 0 && MEM_BU(0, (gpr)(int32_t)0x800D9550) == 7;  // (the value widget's A function: get_crafting_menu)
             } else {
                 const uint32_t school = MEM_BU(0x15, thing);
                 e.key = MEM_HU(0, thing);
@@ -10635,6 +10637,23 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (pos >= ui.top + visible) ui.top = pos - visible + 1;
     }
     ui.top = std::clamp(ui.top, 0, std::max(0, (int)view.size() - visible));
+    {  // A click is A only on a row (or, on the Character page, an attribute): anywhere else (a portrait, the scroll bar, a gap) it does nothing
+        float zones[(24 + 1) * 4];
+        int n = 0;
+        auto zone = [&](float x0, float y0, float x1, float y1) {
+            if (n >= 25) return;
+            zones[n * 4] = (x0 * o.sx + o.x) / hs, zones[n * 4 + 1] = (y0 * o.sy + o.y) / vs;
+            zones[n * 4 + 2] = (x1 * o.sx + o.x) / hs, zones[n * 4 + 3] = (y1 * o.sy + o.y) / vs;
+            n++;
+        };
+        for (int i = ui.top; i < (int)view.size() && i < ui.top + visible && n < 24; i++) {
+            if (view[i].heading) continue;
+            const float y = rows_y + (i - ui.top) * kListRowStep;
+            zone(kListX0, y, kListX1, y + kListRowStep);
+        }
+        if (chr) zone(kListX0 + 1.0f, 98.6f, kListX1, 119.0f);
+        aidyn::controls::set_click_zones(zones, n);
+    }
 
     // ---- the card or the doll ----
     static int hover_frames[3] = {};
@@ -10680,8 +10699,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     }
     // The rows' washes and heading rules.
     const int hl_pic = branding_index("mc_hl"), heading_pic = branding_index("mc_heading");
+    // The words are drawn at whole units (print_text), so a row's top is snapped to one: the band, the icons and the words then keep the same
+    // places in every row (at 8.8 texels a row the words sat up to half a unit off the band, and "Wizard" a whole one higher than "Hafted").
+    auto snap_row = [&](float y) { return (std::round(Y(y)) * vs - o.y) / o.sy; };
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
-        const float y = rows_y + (i - ui.top) * kListRowStep;
+        const float y = snap_row(rows_y + (i - ui.top) * kListRowStep);
         if (view[i].heading) g = pic(g, heading_pic, kListX0, y + 2.4f, kListX1, y + 7.4f);
         else if (i == pos) g = pic(g, hl_pic, kListX0, y - 0.5f, kListX1, y + 8.5f);
     }
@@ -10746,7 +10768,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     }
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
         const ListEntry& e = view[i];
-        const float y = rows_y + (i - ui.top) * kListRowStep;
+        const float y = snap_row(rows_y + (i - ui.top) * kListRowStep);
         if (e.heading) {
             g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 15.0f), Y(y + 0.2f), 0.45f, brown, alpha);
             continue;
@@ -10782,6 +10804,17 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             g = ctl_state(rdram, ctx, g);
         }
         g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 32.0f), Y(y + kRowDy), kRowScale, sel ? hot : ink, alpha);
+        if (e.usable) {  // "Use": A does something with it outside a fight; the word follows the name
+            const gpr font = MEM_W(0, kFontPtr);
+            float w = 0.0f;
+            if (heap_pointer(font)) {
+                const FontState st = font_save(rdram, font);
+                call_game(rdram, ctx, Font__SetFace, (uint32_t)font, kMainFont);
+                w = ctl_width(rdram, ctx, font, e.text, kRowScale);
+                font_restore(rdram, font, st);
+            }
+            g = ctl_text(rdram, ctx, g, "(Use)", X(kListX0 + 32.0f) + w + 3.0f, Y(y + kRowDy + 0.6f), 0.42f, sel ? hot : 0x2F6B3A, alpha);
+        }
         if (!e.right.empty()) g = ctl_text(rdram, ctx, g, e.right, X(kListX1 - 2.0f), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
     }
     return g;

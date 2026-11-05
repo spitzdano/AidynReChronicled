@@ -230,7 +230,44 @@ namespace {
         return t;
     }
 
+    // The click gate (set_click_zones): while a list is up, a left click counts as a button only where it lands on one of its zones.
+    struct Zone { float x0, y0, x1, y1; };
+    std::vector<Zone> g_zones;
+    int64_t g_zones_until = 0;
+    bool g_left_prev = false, g_left_blocked = false;
+
+    // Whether the left button counts as held now (it is down, and the press began on a zone, or no gate is up).
+    bool left_passes(bool down, const TestInput& test) {
+        std::lock_guard g(g_event_lock);
+        if (!down) { g_left_prev = false; g_left_blocked = false; return false; }
+        if (!g_left_prev) {
+            g_left_prev = true;
+            g_left_blocked = false;
+            if (now_ms() < g_zones_until) {
+                float ux = -1.0f, uy = -1.0f;
+                if (test.point_x >= 0.0f) { ux = test.point_x; uy = test.point_y; }
+                else if (g_window_h > 0) {
+                    int mx = 0, my = 0;
+                    SDL_GetMouseState(&mx, &my);
+                    const float unit = std::min((float)g_window_h / 240.0f, (float)g_window_w / 320.0f);
+                    ux = (mx - (g_window_w - 320.0f * unit) / 2.0f) / unit;
+                    uy = (my - (g_window_h - 240.0f * unit) / 2.0f) / unit;
+                }
+                if (ux >= 0.0f) {
+                    bool inside = false;
+                    for (const Zone& z : g_zones) inside = inside || (ux >= z.x0 && ux < z.x1 && uy >= z.y0 && uy < z.y1);
+                    g_left_blocked = !inside;
+                }
+            }
+        }
+        return !g_left_blocked;
+    }
+
     bool held(Input in, const TestInput& test) {
+        if (in.kind == kMouse && in.code == SDL_BUTTON_LEFT) {
+            const bool test_down = std::find(test.held.begin(), test.held.end(), in) != test.held.end();
+            return left_passes(test_down || (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) != 0, test);
+        }
         if (std::find(test.held.begin(), test.held.end(), in) != test.held.end()) return true;
         switch (in.kind) {
         case kKey: {
@@ -497,6 +534,13 @@ bool click(float* x, float* y, uint32_t* count) {
     *y = (g_click_y - (g_click_h - 240.0f * unit) / 2.0f) / unit;
     *count = g_clicks;
     return true;
+}
+
+void set_click_zones(const float* rects, int count) {
+    std::lock_guard g(g_event_lock);
+    g_zones.clear();
+    for (int i = 0; i < count; i++) g_zones.push_back(Zone{ rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3] });
+    g_zones_until = now_ms() + 250;
 }
 
 bool pointer(float* x, float* y, uint32_t* moves) {
