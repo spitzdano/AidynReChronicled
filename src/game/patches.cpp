@@ -10591,8 +10591,13 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             to_page(mx, my, &tx, &ty);
             static const bool log = std::getenv("AIDYN_LIST_LOG") != nullptr;
             if (log) fprintf(stderr, "list pointer: units %.1f,%.1f -> page %.1f,%.1f (origin %.1f,%.1f scale %.2f,%.2f hs %.2f vs %.2f)\n", mx, my, tx, ty, o.x, o.y, o.sx, o.sy, hs, vs);
+            if (chr && tx >= kListX0 + 1.0f && tx < kListX1 && ty >= 98.6f && ty < 119.0f) {  // over the attributes: the row, and that attribute (a click is A)
+                const int st = std::clamp((int)((tx - 161.0f) / ((296.0f - 161.0f) / 6.0f)), 0, 5);
+                if (!chr_ui.strip || chr_ui.stat != st) { chr_ui.strip = true; chr_ui.stat = st; chr_ui.confirm = -1; rc_sound(rdram, ctx, 0x73B, 30); }
+            }
             if (tx >= kListX0 && tx <= kListX1 && ty >= rows_y && ty < rows_y + visible * kListRowStep) {
                 const int i = ui.top + (int)((ty - rows_y) / kListRowStep);
+                if (chr && chr_ui.strip) { chr_ui.strip = false; chr_ui.confirm = -1; }
                 if (i >= 0 && i < (int)view.size() && !view[i].heading && i != pos) { move_cursor(i); rc_sound(rdram, ctx, 0x73B, 30); }
                 hover_moved_over_rows[kind] = true;
             }
