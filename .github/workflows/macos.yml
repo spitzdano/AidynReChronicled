@@ -180,3 +180,50 @@ jobs:
       - name: Remove the ROM
         if: always()
         run: rm -f baserom.z64
+
+  # A draft pre-release holding the .dmg: visible only to people with write access, never published from here.
+  # Publishing it (as a pre-release, so it is never "Latest" and the game's own update check ignores it) is spitzdano's call.
+  draft:
+    needs: macos
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version || '1.0.3-beta.0' }}
+    steps:
+      - name: Get the .dmg
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: dmg
+      - name: Check it
+        run: |
+          cd dmg
+          ls -l
+          sha256sum -c ./*.sha256 2>/dev/null || shasum -a 256 -c ./*.sha256
+      - name: Make the draft
+        run: |
+          tag="v$VERSION"
+          # An earlier draft of the same name is replaced; a published release never is.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null | grep -q true; then
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
+          elif gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag is already published: not touching it"; exit 1
+          fi
+          cat > notes.md <<NOTES
+          **Aidyn ReChronicled for macOS ($VERSION), a beta.** Apple Silicon (M1 or later), macOS 15 or later. It has not been played on a Mac yet by its maker: please report what you find.
+
+          1. Open the \`.dmg\` and drag **Aidyn ReChronicled** to Applications.
+          2. Open it. macOS says it can't verify the app: click **Done**.
+          3. System Settings > Privacy & Security, scroll down, click **Open Anyway** next to the Aidyn message, and confirm with your password.
+          4. On the first start choose your own North American 1.0 Aidyn Chronicles ROM (\`.z64\`). The app contains no ROM.
+
+          Terminal alternative: \`xattr -dr com.apple.quarantine "/Applications/Aidyn ReChronicled.app"\`
+
+          Saves and settings live in \`~/Library/Application Support/AidynReChronicled\`. The game's Updates page opens this release page when a newer Mac build is out.
+          NOTES
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
+              --title "Aidyn ReChronicled $VERSION for macOS (beta)" --notes-file notes.md dmg/*.dmg dmg/*.sha256
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,url -q '"draft=\(.isDraft) prerelease=\(.isPrerelease) \(.url)"'
