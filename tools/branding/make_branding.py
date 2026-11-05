@@ -590,6 +590,12 @@ IMAGES += [("rc_title_display", int(ink_width("Display", MARCELLUS, TITLE_SIZE) 
 CHR_TITLE_W = (int(ink_width("Character", MARCELLUS, PAUSE_TITLE_SIZE) / SS) + 11) // 2 * 2  # in halves: 4 KB of TMEM each
 IMAGES += [("chr_title_l", CHR_TITLE_W // 2, 25, half(pause_title("Character", PAUSE_TITLE_SIZE), CHR_TITLE_W, 25, False)),
            ("chr_title_r", CHR_TITLE_W // 2, 25, half(pause_title("Character", PAUSE_TITLE_SIZE), CHR_TITLE_W, 25, True))]
+# Inventory and Spells too: the game's own titles slide in on their own clock when the pages turn, out of step with the port's lists
+# (the list changed first, so a title said "Spells" over the inventory); all three are drawn by the port now and change with the list.
+for _key, _word in (("inv", "Inventory"), ("spl", "Spells")):
+    _w = (int(ink_width(_word, MARCELLUS, PAUSE_TITLE_SIZE) / SS) + 11) // 2 * 2
+    IMAGES += [(_key + "_title_l", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, False)),
+               (_key + "_title_r", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, True))]
 ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
            ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]

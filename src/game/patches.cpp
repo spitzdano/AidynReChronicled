@@ -8158,11 +8158,14 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
     // The pause menu's Skills page is the Character page: its "Skills" title is the port's "Character" (list_overlay).
     if (heap_pointer(w) && heap_pointer(doll_lists) && aidyn::settings::graphics().tabbed_lists) {
-        const gpr skills = MEM_W(0x9C, doll_lists);
         const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
-        if (heap_pointer(skills) && (state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0 && w == MEM_W(0x7C, skills) && heap_pointer(MEM_W(0x9C, doll_lists))) {
-            ctx->r2 = ctx->r5;
-            return 1;
+        // (the Inventory and Spells titles too: they slid on the game's own clock, out of step with the lists: list_overlay draws all three)
+        for (int off : { 0x94, 0x98, 0x9C }) {
+            const gpr page = MEM_W(off, doll_lists);
+            if (heap_pointer(page) && (state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0 && w == MEM_W(0x7C, page)) {
+                ctx->r2 = ctx->r5;
+                return 1;
+            }
         }
     }
     if (!heap_pointer(menu) || !heap_pointer(w) || (w != MEM_W(0x84, menu) && w != MEM_W(0x80, menu))) {
@@ -10741,8 +10744,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 1.0f), Y(kTabsY + 1.3f), 0.36f, 0x5A3A44, a, true);
         }
     }
-    if (chr) {
-        const int title_l = branding_index("chr_title_l"), title_r = branding_index("chr_title_r");  // halves (4 KB of TMEM each)
+    {  // the page's title (halves: 4 KB of TMEM each), changing with the list
+        static const char* const keys[3] = { "inv_title", "spl_title", "chr_title" };
+        const int title_l = branding_index((std::string(keys[kind]) + "_l").c_str()), title_r = branding_index((std::string(keys[kind]) + "_r").c_str());
         g = prompt_state(rdram, g, alpha);
         if (title_l >= 0 && title_r >= 0) {
             const auto& il = aidyn::branding::kImages[title_l];
@@ -10751,8 +10755,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             g = pic(g, title_r, x0 + il.w, 77.0f, x0 + w, 77.0f + (float)il.h);
         }
         g = ctl_state(rdram, ctx, g);
-        g = character_strip(rdram, ctx, g, o, alpha, yk);
     }
+    if (chr) g = character_strip(rdram, ctx, g, o, alpha, yk);
     {  // where the D-pad goes: the page to the left and to the right (the pages turn Inventory, Spells, Character; right is the previous index)
         static const char* const pages[3] = { "Inventory", "Spells", "Character" };
         // (no arrows: the game's font draws < and > as a skull and a heart)
