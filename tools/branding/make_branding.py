@@ -490,6 +490,24 @@ def page_title(text, size, above=4.5):
     return draw
 
 
+PAUSE_TITLE = "#a07058"  # the pause pages' own titles (Inventory, Spells...), as the redrawn art pack draws them: flat, no glow
+PAUSE_TITLE_SIZE = 165   # their capitals are 14.4 texels tall
+
+
+def pause_title(text, size, above=5):
+    """A word like the pause pages' own titles (INVENTORY, SPELLS): Marcellus in their flat brown. Centred; drawn untinted."""
+    def draw(w, h):
+        W, H = w * SS, h * SS
+        img = np.zeros((H, W, 4), np.float32)
+        baseline = int(H - above * SS)
+        width = ink_width(text, MARCELLUS, size)
+        if width + 8 * SS > W:
+            sys.exit(f"make_branding.py: the page title {text!r} is wider than {w} texels")
+        over(img, rgb(PAUSE_TITLE), text_mask(text, MARCELLUS, size, W, H, (W - width) // 2, baseline))
+        return img
+    return draw
+
+
 def art_off(w, h):
     """Top right while F2 has the redrawn art pack off: what is showing, and the key."""
     img = np.zeros((h * SS, w * SS, 4), np.float32)
@@ -567,6 +585,11 @@ def half(draw, w, h, right):
 
 IMAGES += [("rc_title_display", int(ink_width("Display", MARCELLUS, TITLE_SIZE) / SS) + 10, 25,
             page_title("Display", TITLE_SIZE, 5))]
+# The Character page's title (the skills list with the attributes above it: the pause menu's Stats page is left out): drawn by the port
+# where the game's own "Skills" title was, which is hidden there (src/game/patches.cpp, aidyn_title_box).
+CHR_TITLE_W = (int(ink_width("Character", MARCELLUS, PAUSE_TITLE_SIZE) / SS) + 11) // 2 * 2  # in halves: 4 KB of TMEM each
+IMAGES += [("chr_title_l", CHR_TITLE_W // 2, 25, half(pause_title("Character", PAUSE_TITLE_SIZE), CHR_TITLE_W, 25, False)),
+           ("chr_title_r", CHR_TITLE_W // 2, 25, half(pause_title("Character", PAUSE_TITLE_SIZE), CHR_TITLE_W, 25, True))]
 ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
            ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]

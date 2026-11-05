@@ -3249,6 +3249,16 @@ namespace {
     gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on, int sort_mode);
     gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys);  // "Inventory page lists", below
+    // The Character page's attributes row: Up from the list's first row moves onto it, left / right choose an attribute, A trains it (the
+    // experience the game keeps for training, CharExp +8, the cost the game's own: get_stat_train_price) after a confirm, Down goes back.
+    struct CharUi {
+        bool strip = false;
+        int stat = 0;           // 0..5: Int, Wil, Dex, End, Str, Sta
+        int confirm = -1;       // the attribute waiting for its confirming A
+        std::string msg;        // what was refused, for a while
+        int msg_frames = 0;
+        uint32_t keys = 0;      // the buttons the row keeps for itself (swallowed from the game) while it is chosen
+    } chr_ui;
     gpr hide_list_a = 0, hide_list_b = 0, hide_list_c = 0;  // the game's own inventory / spells / skills lists (scroll menu widgets) while the port draws them
     int hide_list_ttl = 0;
     void card_icons_free(uint8_t* rdram, recomp_context* ctx);
@@ -3904,6 +3914,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 menu_keys = 0x0004 | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;
                 edges = aidyn::input::take_menu_keys();
                 g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : on_spells ? 1 : 2, on_inventory ? inventory : on_spells ? spells_list : skills_list, edges);
+                if (on_skills) menu_keys |= chr_ui.keys;  // the attributes row, while it is chosen, keeps left / right and A (and B to refuse)
             } else {
                 menu_keys = 0x0004;
                 edges = aidyn::input::take_menu_keys();
@@ -5821,6 +5832,12 @@ gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, flo
 extern "C" void func_romstrings(uint8_t* rdram, recomp_context* ctx);  // RomString::Load(rom, size)
 extern "C" void Entity__CheckSpellWizard(uint8_t* rdram, recomp_context* ctx);
 extern "C" void CharSkills__getModdedSkill(uint8_t* rdram, recomp_context* ctx);
+extern "C" void get_stat_train_price(uint8_t* rdram, recomp_context* ctx);   // CharStats::GetTraningPrice(stats, stat)
+extern "C" void func_8007B5A4(uint8_t* rdram, recomp_context* ctx);          // CharStats::isStatCapped(stats, stat)
+extern "C" void func_8007B5D0(uint8_t* rdram, recomp_context* ctx);          // CharStats::GetBase2(stats, stat)
+extern "C" void addBaseStat(uint8_t* rdram, recomp_context* ctx);            // CharStats::AddBase(stats, stat, delta)
+extern "C" void WidgetHealthGold__Update(uint8_t* rdram, recomp_context* ctx);
+extern "C" void func_8003159C(uint8_t* rdram, recomp_context* ctx);          // DollMenuLists::UpdateMenus(this, member)
 extern "C" void RomString__Free(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
@@ -8134,6 +8151,15 @@ extern "C" void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
+    // The pause menu's Skills page is the Character page: its "Skills" title is the port's "Character" (list_overlay).
+    if (heap_pointer(w) && heap_pointer(doll_lists) && aidyn::settings::graphics().tabbed_lists) {
+        const gpr skills = MEM_W(0x9C, doll_lists);
+        const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
+        if (heap_pointer(skills) && (state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0 && w == MEM_W(0x7C, skills) && heap_pointer(MEM_W(0x9C, doll_lists))) {
+            ctx->r2 = ctx->r5;
+            return 1;
+        }
+    }
     if (!heap_pointer(menu) || !heap_pointer(w) || (w != MEM_W(0x84, menu) && w != MEM_W(0x80, menu))) {
         return 0;
     }
@@ -10080,6 +10106,26 @@ extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     return 0;
 }
 
+// The pause menu's pages are the Inventory, Spells and Character (the skills list with the attributes above it): the Stats page is
+// the game's last, so its page count is 3 while a page is turned (before DollMenuLists::LRToggle, func_80031620) and 4 again for the
+// rest, the destructor (func_80030B68) above all, which frees the Stats list too. After a battle (the Train state) the Stats page stays.
+extern "C" void aidyn_doll_toggle(uint8_t* rdram, gpr lists) {
+    if (!aidyn::settings::graphics().tabbed_lists || !heap_pointer(lists)) return;
+    const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
+    if (state != 7 && state != 3) return;
+    const gpr stat = MEM_W(0xA0, lists);
+    if (MEM_BU(0x92, lists) == 4 && heap_pointer(stat) && MEM_W(0x7C + 4 * 3, lists) == stat) MEM_BU(0x92, lists) = 3;
+}
+extern "C" void aidyn_doll_dtor(uint8_t* rdram, gpr lists);
+extern "C" void aidyn_doll_update(uint8_t* rdram, gpr lists) {  // before DollMenuLists::UpdateMenus (func_8003159C): all four pages are refreshed
+    aidyn_doll_dtor(rdram, lists);
+}
+extern "C" void aidyn_doll_dtor(uint8_t* rdram, gpr lists) {
+    if (!heap_pointer(lists)) return;
+    const gpr stat = MEM_W(0xA0, lists);
+    if (MEM_BU(0x92, lists) == 3 && heap_pointer(stat) && MEM_W(0x7C + 4 * 3, lists) == stat) MEM_BU(0x92, lists) = 4;
+}
+
 namespace {
     struct ListEntry {
         gpr row = 0;
@@ -10112,6 +10158,7 @@ namespace {
     constexpr int kInventoryTabs = 7, kSpellTabs = 6, kSkillTabs = 3;
     bool hover_moved_over_rows[3] = {};
     constexpr float kListX0 = 160.0f, kListX1 = 296.0f, kTabsY = 99.0f, kChipY = 115.5f, kRowsY = 125.0f, kRowsBottom = 205.5f, kListRowStep = 8.8f;
+    constexpr float kCharRowsY = 133.0f, kCharChipY = 121.0f;  // the Character page: its list, and the Details chip on the experience line
 
     int inventory_tab_of(uint32_t type) {
         switch (type) {
@@ -10251,9 +10298,116 @@ namespace {
 }
 
 namespace {
+// The Character page's top: the six attributes (name, value, what the equipment takes or gives) and the experience to the next level, read
+// from the game's own Stats page (its rows are SMStatItem: the value's text widget +0x84, the change's +0x88, each with the number in varU16 +0x5E;
+// the experience lines are WidgetStatTrain's text widgets: total +0x98, to the next level +0x9C). The game keeps that page up to date as
+// before (the pause menu's pages no longer reach it), so nothing here is worked out.
+std::string text_widget_string(uint8_t* rdram, gpr widget) {
+    const gpr sub = heap_pointer(widget) ? MEM_W(0x40, widget) : 0;
+    const gpr str = heap_pointer(sub) ? MEM_W(0, sub) : 0;
+    return heap_pointer(str) ? game_string(rdram, str) : std::string();
+}
+
+gpr character_strip(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int alpha, float yk) {
+    (void)yk;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
+    auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
+    const gpr stat_menu = heap_pointer(doll_lists) ? MEM_W(0xA0, doll_lists) : 0;
+    const gpr scroll = heap_pointer(stat_menu) ? MEM_W(0x80, stat_menu) : 0;
+    const gpr sub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
+    const gpr rows = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
+    const uint32_t count = heap_pointer(sub) ? MEM_HU(0x20, sub) : 0;
+    if (!heap_pointer(rows) || count == 0 || count > 8) return g;
+    static const char* const names[] = { "Int", "Wil", "Dex", "End", "Str", "Sta" };
+    const uint32_t ink = 0x825050, brown = 0x7B5560, hot = 0x4B3174;
+    const float x0 = 161.0f, w = (296.0f - 161.0f) / 6.0f;
+    if (chr_ui.strip && chr_ui.stat >= 0 && chr_ui.stat < 6) {  // the chosen attribute: the list's wash behind it
+        const int hl = branding_index("mc_hl");
+        const float cx0 = x0 + w * chr_ui.stat + 0.4f;
+        if (hl >= 0) {
+            const auto& img = aidyn::branding::kImages[hl];
+            const float px0 = std::round(o.x + cx0 * o.sx), py0 = std::round(o.y + 98.6f * o.sy), px1 = std::round(o.x + (cx0 + w - 0.8f) * o.sx), py1 = std::round(o.y + 118.6f * o.sy);
+            g = draw_rgba16(rdram, g, (size_t)hl, px0, py0, (px1 - px0) / (float)img.w, (py1 - py0) / (float)img.h);
+        }
+    }
+    g = ctl_state(rdram, ctx, g);
+    for (uint32_t i = 0; i < count && i < 6; i++) {
+        const gpr row = MEM_W(4 * i, rows);
+        if (!heap_pointer(row)) continue;
+        const gpr value = MEM_W(0x84, row), diff = MEM_W(0x88, row);
+        const int v = heap_pointer(value) ? (int)(int16_t)MEM_HU(0x5E, value) : 0;
+        const int d = heap_pointer(diff) ? (int)(int16_t)MEM_HU(0x5E, diff) : 0;
+        const float cx = x0 + w * (i + 0.5f);
+        g = ctl_text(rdram, ctx, g, names[i], X(cx), Y(99.4f), 0.46f, brown, alpha, false, true);
+        g = ctl_text(rdram, ctx, g, std::to_string(v), X(cx), Y(104.0f), 0.86f, chr_ui.strip && (int)i == chr_ui.stat ? hot : ink, alpha, false, true);
+        if (d != 0) g = ctl_text(rdram, ctx, g, "(" + std::string(d > 0 ? "+" : "") + std::to_string(d) + ")", X(cx), Y(112.6f), 0.46f, d > 0 ? 0x2F6B3A : 0x8E2323, alpha, false, true);
+    }
+    // The line under them: the experience, or what the chosen attribute costs, or what was refused.
+    const std::string next = text_widget_string(rdram, MEM_W(0x9C, stat_menu));
+    const std::string total = text_widget_string(rdram, MEM_W(0x98, stat_menu));
+    const bool kb = aidyn::input::keyboard_last();
+    const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
+    std::string line = next.empty() ? std::string() : "Next level " + next + (total.empty() ? "" : "   Total " + total);
+    uint32_t colour = ink;
+    if (chr_ui.msg_frames > 0) {
+        line = chr_ui.msg;
+        colour = 0x8E2323;
+    } else if (chr_ui.strip) {
+        const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+        const uint32_t who = MEM_BU(0x91, doll_lists);
+        const gpr sheet = heap_pointer(party) && who < 4 ? MEM_W(4 * who, party) : 0;
+        const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0, exp = heap_pointer(sheet) ? MEM_W(0x14, sheet) : 0;
+        if (heap_pointer(stats) && heap_pointer(exp)) {
+            const int32_t price = (int32_t)call_game(rdram, ctx, get_stat_train_price, (uint32_t)stats, (uint32_t)chr_ui.stat);
+            static const char* const full[] = { "Intelligence", "Willpower", "Dexterity", "Endurance", "Strength", "Stamina" };
+            if (chr_ui.confirm == chr_ui.stat) {
+                line = std::string("Train ") + full[chr_ui.stat] + " for " + std::to_string(price) + " XP?  " + a_key + ": yes  " + b_key + ": no";
+                colour = hot;
+            } else {
+                line = a_key + ": train for " + std::to_string(price) + " XP   (you have " + std::to_string(MEM_W(8, exp)) + ")";
+            }
+        }
+    }
+    if (!line.empty()) g = ctl_text(rdram, ctx, g, line, X(162.0f), Y(kCharChipY + 1.6f), 0.5f, colour, alpha);
+    return g;
+}
+
+// The card for the chosen attribute (Details on, the attributes row chosen): what it is now and what the next point costs.
+gpr draw_attribute_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int stat) {
+    static const char* const full[] = { "Intelligence", "Willpower", "Dexterity", "Endurance", "Strength", "Stamina" };
+    const gpr stat_menu = heap_pointer(doll_lists) ? MEM_W(0xA0, doll_lists) : 0;
+    const gpr scroll = heap_pointer(stat_menu) ? MEM_W(0x80, stat_menu) : 0;
+    const gpr sub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
+    const gpr rows = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
+    const gpr row = heap_pointer(rows) && stat >= 0 && stat < 6 && (uint32_t)stat < MEM_HU(0x20, sub) ? MEM_W(4 * stat, rows) : 0;
+    const gpr value = heap_pointer(row) ? MEM_W(0x84, row) : 0, diff = heap_pointer(row) ? MEM_W(0x88, row) : 0;
+    const int v = heap_pointer(value) ? (int)(int16_t)MEM_HU(0x5E, value) : 0, d = heap_pointer(diff) ? (int)(int16_t)MEM_HU(0x5E, diff) : 0;
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+    const uint32_t who = heap_pointer(doll_lists) ? MEM_BU(0x91, doll_lists) : 0;
+    const gpr sheet = heap_pointer(party) && who < 4 ? MEM_W(4 * who, party) : 0;
+    const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0, exp = heap_pointer(sheet) ? MEM_W(0x14, sheet) : 0;
+    std::vector<std::pair<std::string, std::string>> facts;
+    facts.push_back({ "Now", std::to_string(v) + (d != 0 ? " (" + std::string(d > 0 ? "+" : "") + std::to_string(d) + ")" : "") });
+    if (heap_pointer(stats) && heap_pointer(exp)) {
+        const bool capped = (call_game(rdram, ctx, func_8007B5A4, (uint32_t)stats, (uint32_t)stat) & 0xFF) != 0;
+        facts.push_back({ "Next point", capped ? "at its limit" : std::to_string((int32_t)call_game(rdram, ctx, get_stat_train_price, (uint32_t)stats, (uint32_t)stat)) + " XP" });
+        facts.push_back({ "Your XP", std::to_string(MEM_W(8, exp)) });
+    }
+    return draw_text_card(rdram, ctx, g, o, stat >= 0 && stat < 6 ? full[stat] : "", "Attribute",
+                          "Raise it with experience, a point at a time, each costing more than the one before. Equipment and spells can lower or raise it "
+                          "for a while: the number in brackets.", facts);
+}
+}  // namespace
+
+namespace {
 gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, int kind, gpr list, uint32_t keys) {
     ListUi& ui = list_ui[kind];
-    const int tab_count = kind == 0 ? kInventoryTabs : kind == 1 ? kSpellTabs : kSkillTabs;
+    // The skills list is the Character page: the six attributes and the experience above it, no tabs, headings or sort (the Stats page is
+    // left out of the pause menu's pages: aidyn_doll_toggle), so its list starts lower and its Details chip sits on the experience line.
+    const bool chr = kind == 2;
+    const float rows_y = chr ? kCharRowsY : kRowsY, chip_y = chr ? kCharChipY : kChipY;
+    const int tab_count = kind == 0 ? kInventoryTabs : kind == 1 ? kSpellTabs : chr ? 1 : kSkillTabs;
     const int alpha = o.alpha;
     const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
     const float yk = (o.sy / vs) / (o.sx / hs);
@@ -10274,7 +10428,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     const gpr menu = MEM_W(0x80, list);
     const gpr sub = heap_pointer(menu) ? MEM_W(0x40, menu) : 0;
     const gpr items = heap_pointer(sub) ? MEM_W(0x18, sub) : 0;
-    if (!heap_pointer(sub) || !heap_pointer(items)) return g;
+    if (!heap_pointer(sub)) return g;  // (a list with nothing in it has no rows array: "Nothing here")
     if (ui.last_list != list) { ui.last_list = list; ui.top = 0; }
     hide_list_ttl = 3;
     (kind == 0 ? hide_list_a : kind == 1 ? hide_list_b : hide_list_c) = menu;
@@ -10288,12 +10442,57 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (tab_icon_row[e.tab] == 0) tab_icon_row[e.tab] = e.row;
     }
     auto& settings = aidyn::settings::graphics_rw();
+    uint32_t list_keys = keys;  // what moves the list's cursor (the attributes row takes Down, and Up onto it)
+    if (chr) {
+        chr_ui.msg_frames = std::max(0, chr_ui.msg_frames - 1);
+        if (chr_ui.strip) {
+            list_keys &= ~(0x0800u | 0x0400u);
+            const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+            const uint32_t who = heap_pointer(doll_lists) ? MEM_BU(0x91, doll_lists) : 0;  // DollMenuLists::partyPicker
+            const gpr sheet = heap_pointer(party) && who < 4 ? MEM_W(4 * who, party) : 0;
+            const gpr stats = heap_pointer(sheet) ? MEM_W(0x18, sheet) : 0, exp = heap_pointer(sheet) ? MEM_W(0x14, sheet) : 0;
+            if (keys & 0x0400) { chr_ui.strip = false; chr_ui.confirm = -1; rc_sound(rdram, ctx, 0x73B, 30); }
+            else if ((keys & 0x0200) && chr_ui.stat > 0) { chr_ui.stat--; chr_ui.confirm = -1; rc_sound(rdram, ctx, 0x73B, 30); }
+            else if ((keys & 0x0100) && chr_ui.stat < 5) { chr_ui.stat++; chr_ui.confirm = -1; rc_sound(rdram, ctx, 0x73B, 30); }
+            else if ((keys & 0x4000) && chr_ui.confirm >= 0) { chr_ui.confirm = -1; rc_sound(rdram, ctx, 0x741, 60); }
+            else if ((keys & 0x8000) && heap_pointer(stats) && heap_pointer(exp)) {
+                const uint32_t stat = (uint32_t)chr_ui.stat;
+                const int32_t price = (int32_t)call_game(rdram, ctx, get_stat_train_price, (uint32_t)stats, stat);
+                const bool capped = (call_game(rdram, ctx, func_8007B5A4, (uint32_t)stats, stat) & 0xFF) != 0;
+                const uint32_t spending = MEM_W(8, exp);
+                auto refuse = [&](const std::string& why) { chr_ui.msg = why; chr_ui.msg_frames = 150; chr_ui.confirm = -1; rc_sound(rdram, ctx, 0x741, 60); };
+                if (capped) refuse("Already as high as it goes");
+                else if (spending < (uint32_t)price) refuse("Needs " + std::to_string(price) + " XP, you have " + std::to_string(spending));
+                else if (chr_ui.confirm != chr_ui.stat) { chr_ui.confirm = chr_ui.stat; rc_sound(rdram, ctx, 0x73D, 30); }
+                else {
+                    const int32_t before = (int32_t)call_game(rdram, ctx, func_8007B5D0, (uint32_t)stats, stat);
+                    call_game(rdram, ctx, addBaseStat, (uint32_t)stats, stat, 1);
+                    const int32_t after = (int32_t)call_game(rdram, ctx, func_8007B5D0, (uint32_t)stats, stat);
+                    chr_ui.confirm = -1;
+                    if (after == before) {
+                        refuse("It won't go any higher");
+                    } else {
+                        MEM_W(8, exp) = spending - (uint32_t)price;
+                        // The game's own follow-up (WidgetStatTrain::Purchase): its lists are rebuilt from the sheet, the HitPoints block is told.
+                        MEM_BU(0x92, doll_lists) = 4;
+                        call_game(rdram, ctx, func_8003159C, (uint32_t)doll_lists, who);
+                        const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);
+                        const gpr psub = heap_pointer(big) ? MEM_W(0x40, big) : 0;
+                        const gpr dollmenu = heap_pointer(psub) ? MEM_W(4, psub) : 0;
+                        const gpr health = heap_pointer(dollmenu) ? MEM_W(0x80, dollmenu) : 0;
+                        if (heap_pointer(health)) call_game(rdram, ctx, WidgetHealthGold__Update, (uint32_t)health, (uint32_t)sheet);
+                        rc_sound(rdram, ctx, 0x740, 60);
+                    }
+                }
+            }
+        }
+    }
     // Keys: X Details, Y the order, LB / RB the tabs.
     if (keys & 0x0004) {
         settings.details = !settings.details;
         aidyn::settings::save_bool("graphics", "details", settings.details);
     }
-    if (keys & 0x0008) {
+    if ((keys & 0x0008) && !chr) {
         settings.inventory_sort = (settings.inventory_sort + 1) % 3;
         aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort);
     }
@@ -10309,7 +10508,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         if (t != ui.tab) { ui.tab = t; ui.top = 0; rc_sound(rdram, ctx, 0x73D, 30); }
     }
     if (ui.tab != 0 && counts[ui.tab] == 0) ui.tab = 0;
-    const int mode = settings.inventory_sort;  // 0 as the game keeps it, 1 by type (or school), 2 by name
+    const int mode = chr ? 0 : settings.inventory_sort;  // 0 as the game keeps it, 1 by type (or school), 2 by name
 
     std::vector<ListEntry> rows;
     for (const ListEntry& e : all) {
@@ -10370,11 +10569,15 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     if (pos < 0 && first_row >= 0) move_cursor(first_row);
     if (pos >= 0) {
         int want = pos;
-        if (keys & 0x0800) { do want--; while (want >= 0 && view[want].heading); }
-        if (keys & 0x0400) { do want++; while (want < (int)view.size() && view[want].heading); }
+        if ((list_keys & 0x0800) && chr && pos == first_row) {  // Up from the first row: onto the attributes
+            chr_ui.strip = true;
+            chr_ui.confirm = -1;
+            rc_sound(rdram, ctx, 0x73B, 30);
+        } else if (list_keys & 0x0800) { do want--; while (want >= 0 && view[want].heading); }
+        if (list_keys & 0x0400) { do want++; while (want < (int)view.size() && view[want].heading); }
         if (want != pos && want >= first_row && want <= last_row) { move_cursor(want); rc_sound(rdram, ctx, 0x73B, 30); }
     }
-    const int visible = std::max(1, (int)((kRowsBottom - kRowsY) / kListRowStep));
+    const int visible = std::max(1, (int)((kRowsBottom - rows_y) / kListRowStep));
     // The mouse: the pointer over a row highlights it (A, or the click that is A, then acts on it), a click on a tab or a chip is that
     // tab's or chip's key. The pointer is in the menus' 320 x 240 units, the page in texels (o.x, o.y and o.sx are screen pixels).
     {
@@ -10388,8 +10591,8 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             to_page(mx, my, &tx, &ty);
             static const bool log = std::getenv("AIDYN_LIST_LOG") != nullptr;
             if (log) fprintf(stderr, "list pointer: units %.1f,%.1f -> page %.1f,%.1f (origin %.1f,%.1f scale %.2f,%.2f hs %.2f vs %.2f)\n", mx, my, tx, ty, o.x, o.y, o.sx, o.sy, hs, vs);
-            if (tx >= kListX0 && tx <= kListX1 && ty >= kRowsY && ty < kRowsY + visible * kListRowStep) {
-                const int i = ui.top + (int)((ty - kRowsY) / kListRowStep);
+            if (tx >= kListX0 && tx <= kListX1 && ty >= rows_y && ty < rows_y + visible * kListRowStep) {
+                const int i = ui.top + (int)((ty - rows_y) / kListRowStep);
                 if (i >= 0 && i < (int)view.size() && !view[i].heading && i != pos) { move_cursor(i); rc_sound(rdram, ctx, 0x73B, 30); }
                 hover_moved_over_rows[kind] = true;
             }
@@ -10399,13 +10602,13 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             float tx, ty;
             to_page(mx, my, &tx, &ty);
             const float tab_w_c = 14.8f, tab_gap_c = 0.8f, tabs_x_c = 172.0f + (7 - tab_count) * 7.8f;
-            if (ty >= kTabsY && ty < kTabsY + 14.0f) {
+            if (!chr && ty >= kTabsY && ty < kTabsY + 14.0f) {
                 const int t = (int)((tx - tabs_x_c) / (tab_w_c + tab_gap_c));
                 if (tx >= tabs_x_c && t >= 0 && t < tab_count && (t == 0 || counts[t] > 0) && t != ui.tab) {
                     ui.tab = t; ui.top = 0; rc_sound(rdram, ctx, 0x73D, 30);
                 }
-            } else if (ty >= kChipY && ty < kChipY + 8.0f) {
-                if (tx >= 161.0f && tx < 197.0f) { settings.inventory_sort = (settings.inventory_sort + 1) % 3; aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort); }
+            } else if (ty >= chip_y && ty < chip_y + 8.0f) {
+                if (!chr && tx >= 161.0f && tx < 197.0f) { settings.inventory_sort = (settings.inventory_sort + 1) % 3; aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort); }
                 else if (tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
             }
         }
@@ -10427,7 +10630,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     hover_frames[kind] = std::max(0, hover_frames[kind] - 1);
     if (hover_moved_over_rows[kind]) hover_frames[kind] = 150;  // a mouse over the rows shows the card for a while even with Details off
     hover_moved_over_rows[kind] = false;
-    if (settings.details || hover_frames[kind] > 0) {
+    if (chr && chr_ui.strip && settings.details) {
+        g = draw_attribute_card(rdram, ctx, g, o, chr_ui.stat);
+    } else if (settings.details || hover_frames[kind] > 0) {
         g = kind == 0 ? draw_details_card(rdram, ctx, g, o, list) : kind == 1 ? draw_spell_card(rdram, ctx, g, o, list) : draw_skill_card(rdram, ctx, g, o, list);
     }
 
@@ -10435,20 +10640,21 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     g = prompt_state(rdram, g, alpha);
     const int tab_off = branding_index("mt_off"), tab_on = branding_index("mt_on"), rule = branding_index("mt_rule");
     const float tab_w = 14.8f, tab_gap = 0.8f, tabs_w = tab_count * tab_w + (tab_count - 1) * tab_gap, tabs_x = 172.0f + (7 - tab_count) * 7.8f;
-    for (int t = 0; t < tab_count; t++) {
+    for (int t = 0; t < tab_count && !chr; t++) {
         const float x = tabs_x + t * (tab_w + tab_gap);
         g = pic(g, t == ui.tab ? tab_on : tab_off, x, kTabsY, x + tab_w, kTabsY + (t == ui.tab ? 14.0f : 13.0f));
     }
-    g = pic(g, rule, kListX0 + 2.0f, kTabsY + 13.0f, kListX1, kTabsY + 14.6f);
-    {
+    g = pic(g, rule, kListX0 + 2.0f, chr ? kCharRowsY - 3.2f : kTabsY + 13.0f, kListX1, (chr ? kCharRowsY - 3.2f : kTabsY + 13.0f) + 1.6f);
+    if (!chr) {
         const int lb = title_image("prompt_lb"), rb = title_image("prompt_rb");
         if (lb >= 0) g = draw_rgba16(rdram, g, (size_t)lb, PX(kListX0 + 0.5f), PY(kTabsY + 3.0f), o.sx * 0.8f, o.sy * 0.8f);
         if (rb >= 0) g = draw_rgba16(rdram, g, (size_t)rb, PX(tabs_x + tabs_w + 1.5f), PY(kTabsY + 3.0f), o.sx * 0.8f, o.sy * 0.8f);
     }
     // The two chips.
     const float sort_x = 161.0f, sort_w = 36.0f, det_x = 244.0f, det_w = 52.0f;
-    g = pic(g, branding_index("mc_chip"), sort_x, kChipY, sort_x + sort_w, kChipY + 8.0f);
-    g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, kChipY, det_x + det_w, kChipY + 8.0f);
+    if (!chr) g = pic(g, branding_index("mc_chip"), sort_x, chip_y, sort_x + sort_w, chip_y + 8.0f);
+    const bool chip_up = !(chr && (chr_ui.strip || chr_ui.msg_frames > 0));  // the attributes' line takes the Details chip's place while it speaks
+    if (chip_up) g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, chip_y, det_x + det_w, chip_y + 8.0f);
     {  // the button icons in the middle of where the slot was (4 texels in, 4 down: the chip is 8 tall), 6.4 texels across
         const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
         auto centred = [&](int image, float chip_x) {
@@ -10456,21 +10662,21 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             const auto& img = aidyn::branding::kImages[image];
             const float f = 6.4f / 10.0f, w = img.w * f, h = img.h * f;
             g = draw_rgba16(rdram, g, (size_t)image, std::round(o.x + (chip_x + 4.0f) * o.sx - w * o.sx / 2.0f),
-                            std::round(o.y + (kChipY + 4.0f) * o.sy - h * o.sy / 2.0f), o.sx * f, o.sy * f);
+                            std::round(o.y + (chip_y + 4.0f) * o.sy - h * o.sy / 2.0f), o.sx * f, o.sy * f);
         };
-        centred(y_icon, sort_x);
-        centred(x_icon, det_x);
+        if (!chr) centred(y_icon, sort_x);
+        if (chip_up) centred(x_icon, det_x);
     }
     // The rows' washes and heading rules.
     const int hl_pic = branding_index("mc_hl"), heading_pic = branding_index("mc_heading");
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
-        const float y = kRowsY + (i - ui.top) * kListRowStep;
+        const float y = rows_y + (i - ui.top) * kListRowStep;
         if (view[i].heading) g = pic(g, heading_pic, kListX0, y + 2.4f, kListX1, y + 7.4f);
         else if (i == pos) g = pic(g, hl_pic, kListX0, y - 0.5f, kListX1, y + 8.5f);
     }
     // The scroll bar, when there is more than fits.
     if ((int)view.size() > visible) {
-        const float bar_x = 297.0f, bar_y = kRowsY, bar_h = kRowsBottom - kRowsY;
+        const float bar_x = 297.0f, bar_y = rows_y, bar_h = kRowsBottom - rows_y;
         g = pic(g, branding_index("mc_track"), bar_x, bar_y, bar_x + 3.0f, bar_y + bar_h);
         const float thumb_h = std::max(8.0f, bar_h * visible / (float)view.size());
         const float thumb_y = bar_y + (bar_h - thumb_h) * (float)ui.top / (float)std::max(1, (int)view.size() - visible);
@@ -10479,10 +10685,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         g = pic(g, branding_index("mc_thumb_b"), bar_x, thumb_y + thumb_h - 1.0f, bar_x + 3.0f, thumb_y + thumb_h);
     }
 
+    chr_ui.keys = chr && chr_ui.strip ? (0x0200u | 0x0100u | 0x8000u | (chr_ui.confirm >= 0 ? 0x4000u : 0u)) : 0u;
     // ---- words and icons ----
     g = ctl_state(rdram, ctx, g);
     const uint32_t ink = 0x825050, dim = 0x9A7A80, hot = 0x4B3174, brown = 0x7B5560;
-    for (int t = 0; t < tab_count; t++) {
+    for (int t = 0; t < tab_count && !chr; t++) {
         const float x = tabs_x + t * (tab_w + tab_gap);
         const bool on = t == ui.tab;
         const int a = counts[t] == 0 ? alpha / 2 : alpha;
@@ -10501,16 +10708,28 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             g = ctl_text(rdram, ctx, g, std::to_string(counts[t]), X(x + tab_w - 1.0f), Y(kTabsY + 1.3f), 0.36f, 0x5A3A44, a, true);
         }
     }
+    if (chr) {
+        const int title_l = branding_index("chr_title_l"), title_r = branding_index("chr_title_r");  // halves (4 KB of TMEM each)
+        g = prompt_state(rdram, g, alpha);
+        if (title_l >= 0 && title_r >= 0) {
+            const auto& il = aidyn::branding::kImages[title_l];
+            const float w = (float)il.w * 2.0f, x0 = 228.5f - w / 2.0f;
+            g = pic(g, title_l, x0, 77.0f, x0 + il.w, 77.0f + (float)il.h);
+            g = pic(g, title_r, x0 + il.w, 77.0f, x0 + w, 77.0f + (float)il.h);
+        }
+        g = ctl_state(rdram, ctx, g);
+        g = character_strip(rdram, ctx, g, o, alpha, yk);
+    }
     static const char* const sort_names[] = { "Order", "Type", "Name" };
     // The words are centred in the chip's room right of the button (its 8 texels).
-    g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(kChipY + 1.6f), 0.5f, ink, alpha, false, true);
-    g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + (8.0f + det_w) / 2.0f), Y(kChipY + 1.6f), 0.5f, settings.details ? hot : ink, alpha, false, true);
+    if (!chr) g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, ink, alpha, false, true);
+    if (chip_up) g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + (8.0f + det_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, settings.details ? hot : ink, alpha, false, true);
     if (view.empty()) {
-        g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(kRowsY + 20.0f), 0.6f, dim, alpha, false, true);
+        g = ctl_text(rdram, ctx, g, "Nothing here", X((kListX0 + kListX1) / 2.0f), Y(rows_y + 20.0f), 0.6f, dim, alpha, false, true);
     }
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
         const ListEntry& e = view[i];
-        const float y = kRowsY + (i - ui.top) * kListRowStep;
+        const float y = rows_y + (i - ui.top) * kListRowStep;
         if (e.heading) {
             g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 15.0f), Y(y + 0.2f), 0.45f, brown, alpha);
             continue;

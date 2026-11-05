@@ -405,7 +405,7 @@ these defaults on the first run:
 | `walk_speed` | 1 (original) to 2: in the field Alaron's walk and run cycles play this many times faster, and as the game moves him by them, his pace with them; nothing else is sped up (`1.5`) |
 | `controls_card` | the card of button prompts at the left edge while walking (top) and in combat (bottom); View shows and hides it and this remembers which (`true`) |
 | `button_prompts` | the port's other button prompts: the menus' hints (Equip, Use, Lists, Take, Put back, Buy, Train, the combat menus' Choose / Release to use), LB and RB at the pause pages' arrows and the party switch beside the portraits (`false`: none; the controls card has its own switch) |
-| `tabbed_lists` | the pause menu's Inventory, Spells and Skills lists drawn by the port: tabs, sorting, headings, the Details switch (`false`: the game's own lists, X still switches Details) |
+| `tabbed_lists` | the pause menu's Inventory, Spells and Character pages drawn by the port: tabs, sorting, headings, the Details switch, and the Character page (the attributes and the skills together; Up from the first skill moves onto the attributes, A trains one with the experience you have) (`false`: the game's own lists and Stats page, X still switches Details) |
 | `inventory_sort` | the order of those lists (Y): 0 the game's, 1 by type or school (default), 2 by name |
 | `details` | Details on (X): a card for the highlighted entry beside the list; off in a new game, remembered |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
@@ -838,7 +838,7 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
   barter widget, kept from its constructor (`func_8003CB68`).
   A shop (its Buy title) gets "Buy" or "Sell" on A, "Appraise" on Y on its own list, and "Switch". The inventory page
   gets what A does to the highlighted item at its bottom left (Equip, Unequip or Use, read from the inventory list: the
-  lists widget is kept from its setup, `func_80030C50`), "Lists" (the D-pad: Inventory, Spells, Skills, Stats)
+  lists widget is kept from its setup, `func_80030C50`), "Lists" (the D-pad: Inventory, Spells, Character)
   between the RB prompt and DETAILS, and LT / RT beside the portraits when there is more than one in the party.
   After a battle the page trains with experience: "Train" and "Lists" inside the Train panel.
   In combat, the menus held open with Y (potions and item spells) and X (spells and skills) get "Choose" (the D-pad)
