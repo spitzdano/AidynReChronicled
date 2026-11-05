@@ -10731,6 +10731,12 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         g = ctl_state(rdram, ctx, g);
         g = character_strip(rdram, ctx, g, o, alpha, yk);
     }
+    {  // where the D-pad goes: the page to the left and to the right (the pages turn Inventory, Spells, Character; right is the previous index)
+        static const char* const pages[3] = { "Inventory", "Spells", "Character" };
+        // (no arrows: the game's font draws < and > as a skull and a heart)
+        g = ctl_text(rdram, ctx, g, pages[(kind + 1) % 3], X(228.0f), Y(208.4f), 0.45f, brown, alpha);
+        g = ctl_text(rdram, ctx, g, pages[(kind + 2) % 3], X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
+    }
     static const char* const sort_names[] = { "Order", "Type", "Name" };
     // The words are centred in the chip's room right of the button (its 8 texels).
     if (!chr) g = ctl_text(rdram, ctx, g, sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, ink, alpha, false, true);
