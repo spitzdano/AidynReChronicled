@@ -21,6 +21,11 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#include <mach-o/dyld.h>
+#include <sys/sysctl.h>
+#endif
 #endif
 
 namespace fs = std::filesystem;
@@ -184,12 +189,29 @@ std::vector<std::string> aidyn::platform::describe_stack(void* const* frames, in
 #else
 
 fs::path aidyn::platform::exe_path() {
+#ifdef __APPLE__
+    std::string buf(1024, '\0');
+    uint32_t size = (uint32_t)buf.size();
+    if (_NSGetExecutablePath(buf.data(), &size) != 0) {  // too small: size now holds the length needed
+        buf.assign(size, '\0');
+        if (_NSGetExecutablePath(buf.data(), &size) != 0) return {};
+    }
+    buf.resize(std::strlen(buf.c_str()));
+    std::error_code ec;
+    const fs::path real = fs::canonical(buf, ec);  // the path may spell "..": the app bundle's Contents/MacOS/<program>
+    return ec ? fs::path(buf) : real;
+#else
     std::error_code ec;
     const fs::path p = fs::read_symlink("/proc/self/exe", ec);
     return ec ? fs::path("/proc/self/exe") : p;
+#endif
 }
 
 fs::path aidyn::platform::data_home() {
+#ifdef __APPLE__
+    const char* mac_home = std::getenv("HOME");
+    return fs::path(mac_home != nullptr ? mac_home : ".") / "Library" / "Application Support";
+#endif
     const char* xdg = std::getenv("XDG_DATA_HOME");
     if (xdg != nullptr && *xdg != '\0') {
         return fs::path(xdg);
@@ -209,6 +231,14 @@ std::vector<std::string> aidyn::platform::home_dirs() {
 }
 
 std::string aidyn::platform::os_description() {
+#ifdef __APPLE__
+    char version[64] = "?";
+    size_t len = sizeof version;
+    sysctlbyname("kern.osproductversion", version, &len, nullptr, 0);
+    utsname mac_uts{};
+    uname(&mac_uts);
+    return std::string("macOS ") + version + " (" + mac_uts.machine + ")";
+#endif
     std::string name = "Linux";
     std::ifstream in("/etc/os-release");
     std::string line;
@@ -251,8 +281,12 @@ fs::path aidyn::platform::find_curl() {
 int aidyn::platform::run_process(const std::vector<std::string>& args, const fs::path& err_file,
                                  const std::function<bool()>& keep_going) {
     std::vector<std::string> env;
+#ifdef __APPLE__
+    char** const environ = *_NSGetEnviron();
+#endif
     for (char** e = environ; *e != nullptr; e++) {
-        if (std::strncmp(*e, "LD_PRELOAD=", 11) != 0 && std::strncmp(*e, "LD_LIBRARY_PATH=", 16) != 0) env.emplace_back(*e);
+        if (std::strncmp(*e, "LD_PRELOAD=", 11) != 0 && std::strncmp(*e, "LD_LIBRARY_PATH=", 16) != 0 &&
+            std::strncmp(*e, "DYLD_", 5) != 0) env.emplace_back(*e);
     }
     std::vector<char*> envp, argv;
     for (std::string& e : env) envp.push_back(e.data());
@@ -306,6 +340,18 @@ void aidyn::platform::startup_mark(const char* what) {
     GetSystemTimePreciseAsFileTime(&now);
     const auto ticks = [](FILETIME t) { return (static_cast<uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
     const long long ms = static_cast<long long>((ticks(now) - ticks(created)) / 10000);  // 100 ns ticks
+#elif defined(__APPLE__)
+    // The process's start time (sysctl kern.proc.pid) against now.
+    long long ms = -1;
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };
+    kinfo_proc info{};
+    size_t info_size = sizeof info;
+    if (sysctl(mib, 4, &info, &info_size, nullptr, 0) == 0) {
+        const timeval started = info.kp_proc.p_un.__p_starttime;
+        timeval now{};
+        gettimeofday(&now, nullptr);
+        ms = (long long)(now.tv_sec - started.tv_sec) * 1000 + (now.tv_usec - started.tv_usec) / 1000;
+    }
 #else
     // The process's start in clock ticks since boot (/proc/self/stat, field 22), against the time since boot.
     long long ms = -1;

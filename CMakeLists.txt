@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
+# macOS (Apple Silicon only; CI builds it on GitHub's runners, see .github/workflows): before project(), as CMake reads them there.
+if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "")
+endif()
 project(AidynReChronicled LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 17)
@@ -9,8 +14,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-if (NOT CMAKE_SYSTEM_NAME MATCHES "Linux|Windows" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-    message(FATAL_ERROR "Linux x86_64 only (C7), or Windows x86_64 cross-built from Linux (tools/windows).")
+if (APPLE)
+    if (NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        message(FATAL_ERROR "macOS: Apple Silicon (arm64) only.")
+    endif()
+    enable_language(OBJC OBJCXX)
+elseif (NOT CMAKE_SYSTEM_NAME MATCHES "Linux|Windows" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    message(FATAL_ERROR "Linux x86_64 only (C7), Windows x86_64 cross-built from Linux (tools/windows), or macOS arm64 (CI).")
 endif()
 
 # RT64 and the runtime, as submodules pinned by new-game.sh (same arrangement as Zelda64Recomp).
@@ -50,7 +60,7 @@ if (WIN32)
     # (it clashes with clang-cl's builtin); no warnings for the C library's portable functions.
     add_compile_definitions(NOMINMAX __PRFCHWINTRIN_H _CRT_SECURE_NO_WARNINGS)
 endif()
-if (NOT WIN32)  # on Windows RT64 takes the window's HWND, as in Zelda64Recomp
+if (NOT WIN32 AND NOT APPLE)  # on Windows RT64 takes the window's HWND, as in Zelda64Recomp; on macOS the window and its Metal view
     set(RT64_SDL_WINDOW_VULKAN TRUE)
     add_compile_definitions(PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
 endif()
@@ -99,7 +109,10 @@ add_executable(AidynReChronicled
     src/game/stubs.cpp
     rsp/aspMain.cpp
 )
-target_compile_options(AidynReChronicled PRIVATE -march=nehalem -fno-strict-aliasing -fms-extensions)
+target_compile_options(AidynReChronicled PRIVATE -fno-strict-aliasing -fms-extensions)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    target_compile_options(AidynReChronicled PRIVATE -march=nehalem)
+endif()
 # The version the title screen shows (generated/aidyn_version.h, tools/version.cmake): AIDYN_VERSION when given
 # (make_release.sh: the release's), else from git on every build ("v0.4.0" on a release tag, "v0.4.0 dev" after it).
 set(AIDYN_VERSION "" CACHE STRING "The release version shown on the title screen; empty: from git")
@@ -161,13 +174,15 @@ find_package(Threads REQUIRED)
 target_link_libraries(AidynReChronicled PRIVATE
     RecompiledFuncs librecomp ultramodern rt64 nfd SDL2::SDL2 ${CMAKE_DL_LIBS} Threads::Threads
 )
-if (NOT WIN32)
+if (APPLE)
+    target_link_libraries(AidynReChronicled PRIVATE "-framework Cocoa -framework Metal -framework QuartzCore -framework IOKit")
+elseif (NOT WIN32)
     target_link_libraries(AidynReChronicled PRIVATE "-latomic -static-libstdc++")
 endif()
 
 # tools/hdui: RT64's texture hash for textures the game hasn't drawn yet (portraits read from the ROM). A tool for the
 # build machine: not made in the Windows cross-build (tools/windows).
-if (NOT WIN32)
+if (NOT WIN32 AND NOT APPLE)
 add_executable(tmemhash tools/hdui/tmemhash.cpp lib/rt64/src/common/rt64_load_types.cpp)
 target_include_directories(tmemhash PRIVATE ${CMAKE_SOURCE_DIR}/lib/rt64/src ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib)
 endif()

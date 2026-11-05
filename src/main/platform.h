@@ -1,4 +1,4 @@
-// What differs between Linux and Windows (src/main/platform.cpp): the rest of the program asks here.
+// What differs between Linux, Windows and macOS (src/main/platform.cpp): the rest of the program asks here.
 #pragma once
 #include <filesystem>
 #include <functional>
@@ -7,7 +7,7 @@
 
 namespace aidyn::platform {
     std::filesystem::path exe_path();   // this program's file
-    std::filesystem::path data_home();  // where per-user data goes: $XDG_DATA_HOME or ~/.local/share; %APPDATA% on Windows
+    std::filesystem::path data_home();  // where per-user data goes: $XDG_DATA_HOME or ~/.local/share; %APPDATA% on Windows; ~/Library/Application Support on macOS
     // The user's home folder, as each path may spell it (problem reports write it as ~): on Windows %USERPROFILE%, and
     // under Wine also the Linux home, as Z:\home\<name> and /home/<name>.
     std::vector<std::string> home_dirs();

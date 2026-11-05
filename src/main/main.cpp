@@ -37,6 +37,7 @@
 #ifndef _WIN32  // on Windows SDL2main's WinMain starts the program and calls main() (as SDL_main)
 #define SDL_MAIN_HANDLED
 #endif
+#include "aidyn_version.h"
 #include "SDL2/SDL.h"
 #ifdef _WIN32
 #include "SDL2/SDL_syswm.h"
@@ -101,6 +102,8 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
     // The game renders 4:3 at 320x240 (high-res 640x480 with the Expansion Pak).
 #ifdef _WIN32
     constexpr Uint32 kWindowFlags = SDL_WINDOW_RESIZABLE;  // RT64 makes its own surface from the HWND
+#elif defined(__APPLE__)
+    constexpr Uint32 kWindowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_METAL;  // RT64 draws with Metal into the window's view
 #else
     constexpr Uint32 kWindowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN;
 #endif
@@ -130,6 +133,14 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
         fatal("Failed to get the window's handle: %s", SDL_GetError());
     }
     return ultramodern::renderer::WindowHandle{ info.info.win.window, GetCurrentThreadId() };
+#elif defined(__APPLE__)
+    // On macOS RT64 takes the Cocoa window and a Metal view made for it (as in Zelda64Recomp).
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (!SDL_GetWindowWMInfo(window, &info)) {
+        fatal("Failed to get the window's handle: %s", SDL_GetError());
+    }
+    return ultramodern::renderer::WindowHandle{ (void*)info.info.cocoa.window, (void*)SDL_Metal_CreateView(window) };
 #else
     return ultramodern::renderer::WindowHandle{ window };
 #endif
@@ -625,6 +636,11 @@ static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
 }
 
 int main(int argc, char** argv) {
+    // --version: the version, then stop, before anything is opened (CI's smoke test: a program that starts at all).
+    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
+        printf("Aidyn ReChronicled %s\n", AIDYN_VERSION_TEXT);
+        return 0;
+    }
     g_args.assign(argv, argv + argc);
     // A downloaded update goes in before any of the game's files is opened, and the new program starts in this one's
     // place (src/main/updater.cpp). Not for the launcher's problem-report run.
@@ -654,7 +670,7 @@ int main(int argc, char** argv) {
             version_flag = 0;
         }
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("usage: %s [--rom <ROM>] [--original | --patch | --plus | --action] [--report <why>]\n"
+            printf("usage: %s [--rom <ROM>] [--original | --patch | --plus | --action] [--report <why>] [--version]\n"
                    "  --rom       your NTSC-U 1.0 Aidyn Chronicles ROM, or that ROM with Aidyn Patch or Aidyn Plus applied,\n"
                    "              or the Action Edition ROM (by you): checked by its hash and remembered; give each one once\n"
                    "  --original, --patch, --plus, --action   play that version this time (otherwise settings.json\n"
