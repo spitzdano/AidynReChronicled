@@ -4063,7 +4063,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     if (map_page.seen && map_page.alpha != 0 && !journal) {
         if (frame_ctx != nullptr) g = bestiary_ui(rdram, frame_ctx, g, map_page);  // Bestiary under Journal, and its page
         const int row[] = { branding_index("hint_open") };
-        if (!bestiary_page_open()) g = draw_hint_row(rdram, g, map_page, row, 1, 174.0f, 207.0f, true);  // (beside the page arrow, under the three choices)
+        if (!bestiary_page_open()) g = draw_hint_row(rdram, g, map_page, row, 1, 190.0f, 154.5f, true);  // (left of Camp, under the calendar)
     }
     if (journal && journal_page.seen && journal_page.alpha != 0) {
         // The map page's Journal and the pause menu's Help close with B. A book in the world (Becan's Journal: a
