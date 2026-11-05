@@ -399,12 +399,14 @@ ReChronicled page, changes any key or mouse button.</p>
 
 <h3>Pause Menu</h3>
 <table class="controls"><thead><tr><th>Controller</th><th>Keyboard</th><th>Action</th></tr></thead><tbody>
-<tr><td><kbd class="pad">RB</kbd></td><td><kbd>E</kbd></td><td>Next page (the scroll moves right)</td></tr>
-<tr><td><kbd class="pad">LB</kbd></td><td><kbd>Q</kbd></td><td>Previous page (the scroll moves left)</td></tr>
-<tr><td>Left stick</td><td>W A S D, arrows</td><td>Highlight; move between inventory, stats, spells and skills</td></tr>
+<tr><td>Right stick left / right</td><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous / next page (the scroll moves)</td></tr>
+<tr><td>Left stick, D-pad up / down</td><td>W S, arrows</td><td>Highlight</td></tr>
+<tr><td>D-pad left / right</td><td>A D, arrows</td><td>Move between the Inventory, Spells and Character lists</td></tr>
+<tr><td><kbd class="pad">LB</kbd> / <kbd class="pad">RB</kbd></td><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Previous / next tab (the kinds of item, the schools of magic)</td></tr>
 <tr><td><kbd class="pad">LT</kbd> / <kbd class="pad">RT</kbd></td><td><kbd>C</kbd> / <kbd>L</kbd></td><td>Previous / next party member (also in shops and with trainers)</td></tr>
-<tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Details of a skill, spell, item or stat</td></tr>
-<tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Equip or take off; use potions, items and spells</td></tr>
+<tr><td><kbd class="pad y">Y</kbd></td><td><kbd>I</kbd></td><td>The inventory's order: as the game keeps it, by type, by name</td></tr>
+<tr><td><kbd class="pad x">X</kbd></td><td><kbd>K</kbd></td><td>Details on or off: what the highlighted item, spell, skill or attribute is, on the left in place of the paper doll</td></tr>
+<tr><td><kbd class="pad a">A</kbd></td><td><kbd>Z</kbd></td><td>Equip or take off; use potions, items and spells; on an attribute, ask what the next point costs, then raise it</td></tr>
 <tr><td><kbd class="pad b">B</kbd></td><td><kbd>X</kbd></td><td>Leave the pause menu</td></tr>
 <tr><td><kbd class="pad">≡</kbd> Menu</td><td><kbd>Enter</kbd></td><td>Back to the game</td></tr>
 </tbody></table>
@@ -606,8 +608,8 @@ in the <a href="#spells">Spell List</a>.</p>
 <section class="chapter" id="pausing">
 <h2>Pausing the Game</h2>
 <p>Press <kbd class="pad">≡</kbd> at any time to pause. <kbd class="pad b">B</kbd> or <kbd class="pad">≡</kbd> returns
-to the game. <kbd class="pad">RB</kbd> turns the scroll to the next page: the inventory, then the calendar.
-<kbd class="pad">LB</kbd> turns it back.</p>
+to the game. Flick the right stick right to turn the scroll to the next page: the inventory, then the calendar; left
+turns it back.</p>
 
 <h3>Pause Menu</h3>
 <figure data-shot="pause"><img alt="The pause menu"></figure>
@@ -650,8 +652,12 @@ ReChronicled and Quit to Title.</p>
   character's level), each as what is left of it and its full amount.</dd>
   <dt>Level</dt><dd>Experience raises a character's level; the higher it is, the stronger they are.</dd>
   <dt>Gold</dt><dd>The gold the whole party carries.</dd>
-  <dt>Inventory, Stats, Skills, Spells</dt><dd>The party's items, with an icon beside anything a character is using. Move
-  the stick left and right to see each character's stats, skills and spells. <kbd class="pad x">X</kbd> shows details.</dd>
+  <dt>Inventory, Spells, Character</dt><dd>The party's items, with an icon beside anything a character is using, and
+  a portrait beside what each wears. <kbd class="pad">LB</kbd> and <kbd class="pad">RB</kbd> change the tab (the kinds of
+  item, the schools of magic); the D-pad left and right moves between the three lists, and the right stick turns the
+  scroll's pages. <kbd class="pad y">Y</kbd> changes the inventory's order and <kbd class="pad x">X</kbd> switches
+  Details on, which shows what the highlighted item is, with what the character wears now beside its numbers. The
+  Character page holds the six stats and the skills together (see <a href="#stats">Player Stats</a>).</dd>
   <dt>Equipment</dt><dd>The figure at the bottom left shows what the character wears and carries, one slot for each
   place: head, neck, body, back, waist, fingers, hands and feet.</dd>
 </dl>
@@ -680,6 +686,12 @@ makes an ambush much less likely.</p>
 <p>Characters learn from every battle. Each defeated enemy brings experience, which buys higher stats and skills (on
 the Level Up page after a fight). There are six stats. Skills are learned and trained with masters and teachers in
 towns and villages.</p>
+<div class="port">
+  <p>The pause menu's <strong>Character</strong> page shows the six stats above the skills, with what equipment adds or
+  takes away in brackets, red when it costs you. Press the D-pad up from the first skill to move onto the stats, choose
+  one with left and right, and press <kbd class="pad a">A</kbd> to see what the next point costs and again to raise it:
+  with the experience a character has unspent, a stat can be raised at any time, not only after a fight.</p>
+</div>
 <dl>
   <dt>Intelligence</dt><dd>Strengthens a mage's spells and a warrior's ranged attacks.</dd>
   <dt>Willpower</dt><dd>Resistance to enemy magic.</dd>

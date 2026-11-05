@@ -5259,10 +5259,15 @@ namespace {
         { "Menus", {
             "In the pause menu, flick the right stick left or right to turn the scroll to the previous or next page. "
             "On the equipment page, in shops and with trainers, \\x87 and \\x81 choose the previous or next member of your party.",
+            "The pause menu's lists are the Inventory, Spells and Character. \\x86 left and right moves between them.",
             "The Inventory and Spells lists have tabs: \\x88 and \\x89 change them. \\x83 changes the order (the game's own, by type "
             "or by name) and \\x84 switches Details on or off: with it on, what the highlighted item, spell or skill is and does "
             "shows on the left, in place of the paper doll, and what your party member wears is compared with it. "
             "With a mouse, point at a row to highlight it and click a tab.",
+            "The Character page has the six attributes above the skills, with what equipment adds or takes away. "
+            "Press \\x86 up from the first skill to move onto the attributes and choose one with left and right: \\x7F "
+            "shows what the next point costs, and \\x7F again raises it, using the experience you have unspent. "
+            "\\x86 down goes back to the skills.",
             "The Menu page's Display and ReChronicled entries hold this edition's options: widescreen, the new "
             "textures, the draw distance, the turn order and more. Each change takes effect at once." } },
         { "Saving", {
@@ -10349,6 +10354,7 @@ gpr character_strip(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen&
     const bool kb = aidyn::input::keyboard_last();
     const std::string a_key = kb ? keys_of(aidyn::controls::kA, false) : "A", b_key = kb ? keys_of(aidyn::controls::kB, false) : "B";
     std::string line = next.empty() ? std::string() : "Next level " + next + (total.empty() ? "" : "   Total " + total);
+    if (line.size() > 27 && !next.empty()) line = "Next level " + next;  // (the Details chip is right of it: a long total doesn't fit beside it)
     uint32_t colour = ink;
     if (chr_ui.msg_frames > 0) {
         line = chr_ui.msg;
