@@ -592,7 +592,7 @@ IMAGES += [("chr_title_l", CHR_TITLE_W // 2, 25, half(pause_title("Character", P
            ("chr_title_r", CHR_TITLE_W // 2, 25, half(pause_title("Character", PAUSE_TITLE_SIZE), CHR_TITLE_W, 25, True))]
 # Inventory and Spells too: the game's own titles slide in on their own clock when the pages turn, out of step with the port's lists
 # (the list changed first, so a title said "Spells" over the inventory); all three are drawn by the port now and change with the list.
-for _key, _word in (("inv", "Inventory"), ("spl", "Spells"), ("buy", "Buy"), ("sel", "Sell")):
+for _key, _word in (("inv", "Inventory"), ("spl", "Spells"), ("buy", "Buy"), ("sel", "Sell"), ("trn", "Train")):
     _w = (int(ink_width(_word, MARCELLUS, PAUSE_TITLE_SIZE) / SS) + 11) // 2 * 2
     IMAGES += [(_key + "_title_l", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, False)),
                (_key + "_title_r", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, True))]
