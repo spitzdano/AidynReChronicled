@@ -333,6 +333,16 @@ std::vector<std::string> aidyn::platform::describe_stack(void* const* frames, in
 
 #endif
 
+fs::path aidyn::platform::resources_dir() {
+    const fs::path here = exe_path().parent_path();
+#ifdef __APPLE__
+    std::error_code ec;
+    const fs::path res = here.parent_path() / "Resources";  // Contents/MacOS/<program> -> Contents/Resources
+    if (here.filename() == "MacOS" && fs::is_directory(res, ec)) return res;
+#endif
+    return here;
+}
+
 void aidyn::platform::startup_mark(const char* what) {
 #ifdef _WIN32
     FILETIME created, exited, kernel, user, now;

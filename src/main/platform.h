@@ -7,6 +7,9 @@
 
 namespace aidyn::platform {
     std::filesystem::path exe_path();   // this program's file
+    // The folder the program's own data files (texture-packs, sample-packs) ship in: the program's folder; inside a macOS
+    // app bundle, its Contents/Resources.
+    std::filesystem::path resources_dir();
     std::filesystem::path data_home();  // where per-user data goes: $XDG_DATA_HOME or ~/.local/share; %APPDATA% on Windows; ~/Library/Application Support on macOS
     // The user's home folder, as each path may spell it (problem reports write it as ~): on Windows %USERPROFILE%, and
     // under Wine also the Linux home, as Z:\home\<name> and /home/<name>.

@@ -226,7 +226,7 @@ static std::vector<RT64::ReplacementDirectory> texture_packs(bool art, bool repo
     if (!aidyn::settings::graphics().textures) {
         return packs;  // textures off (the pause menu's ReChronicled page): the game's own, as on the N64
     }
-    const std::filesystem::path beside = aidyn::platform::exe_path().parent_path() / "texture-packs";
+    const std::filesystem::path beside = aidyn::platform::resources_dir() / "texture-packs";
     bool art_found = false;
     for (const std::string& name : aidyn::settings::graphics().texture_packs) {
         if (name == "rechronicled-art") {

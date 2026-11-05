@@ -6642,7 +6642,7 @@ namespace {
         const std::filesystem::path data = aidyn::settings::folder() / "sample-packs" / "rechronicled-samples";
         std::error_code ec;
         if (std::filesystem::is_directory(data, ec)) return data;
-        return aidyn::platform::exe_path().parent_path() / "sample-packs" / "rechronicled-samples";
+        return aidyn::platform::resources_dir() / "sample-packs" / "rechronicled-samples";
     }
 
     // A pack WAV: 16-bit mono PCM, the "data" chunk.

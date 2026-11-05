@@ -1,0 +1,133 @@
+# The macOS (Apple Silicon) build, on GitHub's own Mac runners: see tools/macos/README.md.
+#
+# The ROM comes from a private repository (secrets ROM_REPO, ROM_REPO_TOKEN) and stays on the runner: the recompiled game code
+# is made, compiled and used inside this one job, and nothing derived from the ROM is uploaded, cached or published. Only the
+# MIPS binutils and the recompilers (tools, not game code) are cached. Without the secrets (a fork) the job is skipped.
+#
+# Manual runs for now; once it passes, pushes that touch the build will start it too.
+name: macos
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GIT_TERMINAL_PROMPT: '0'
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  BINUTILS_VERSION: '2.45.1'
+  BINUTILS_SHA256: '5fe101e6fe9d18fdec95962d81ed670fdee5f37e3f48f0bef87bddf862513aa5'
+
+jobs:
+  macos:
+    runs-on: macos-15            # pinned: it sets the lowest macOS the game runs on (15)
+    timeout-minutes: 150
+    steps:
+      - name: Check the secrets
+        id: have
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: |
+          if [ -n "$ROM_REPO" ] && [ -n "$ROM_REPO_TOKEN" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "ROM_REPO / ROM_REPO_TOKEN not set: nothing to build"; echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Checkout (public submodules only)
+        if: steps.have.outputs.ok == 'true'
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+          git submodule update -q --init --recursive decomp lib/N64ModernRuntime lib/rt64
+
+      - name: Install tools
+        if: steps.have.outputs.ok == 'true'
+        run: |
+          brew install cmake ninja pkg-config sdl2 xxhash bash coreutils gnu-sed grep findutils
+          # The project's scripts are bash 4 + GNU coreutils (mapfile, sha1sum, stat -c, readlink -f).
+          P=$(brew --prefix)
+          for d in "$P/bin" "$P/opt/coreutils/libexec/gnubin" "$P/opt/gnu-sed/libexec/gnubin" "$P/opt/grep/libexec/gnubin" "$P/opt/findutils/libexec/gnubin"; do
+            echo "$d" >> "$GITHUB_PATH"
+          done
+          # RT64 turns its shaders into Metal libraries with Xcode's Metal compiler (Xcode 26 and later fetch it separately).
+          xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
+          xcrun -sdk macosx metal --version
+
+      - name: MIPS binutils (cached)
+        if: steps.have.outputs.ok == 'true'
+        id: mips_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/mips
+          key: mips-binutils-${{ runner.os }}-${{ runner.arch }}-2.45.1-v1
+
+      - name: Build MIPS binutils
+        if: steps.have.outputs.ok == 'true' && steps.mips_cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/binutils.tar.xz" "https://ftpmirror.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.xz"
+          echo "$BINUTILS_SHA256  $RUNNER_TEMP/binutils.tar.xz" | shasum -a 256 -c -
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/binutils.tar.xz"
+          mkdir "$RUNNER_TEMP/binutils-build" && cd "$RUNNER_TEMP/binutils-build"
+          "$RUNNER_TEMP/binutils-$BINUTILS_VERSION/configure" --target=mips-linux-gnu --prefix="$HOME/mips" \
+              --disable-nls --disable-gdb --disable-gprof --disable-gprofng --disable-sim --disable-werror --disable-gold
+          make -j3
+          make install
+
+      - name: N64 recomp toolkit (cached)
+        if: steps.have.outputs.ok == 'true'
+        id: toolkit_sha
+        run: |
+          echo "sha=$(git ls-remote https://github.com/spitzdano/n64-recomp-toolkit HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: steps.have.outputs.ok == 'true'
+        id: toolkit_cache
+        with:
+          path: ~/toolkit
+          key: toolkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolkit_sha.outputs.sha }}
+      - name: Build the toolkit (N64Recomp, RSPRecomp, splat)
+        if: steps.have.outputs.ok == 'true' && steps.toolkit_cache.outputs.cache-hit != 'true'
+        run: |
+          git clone -q --depth 1 https://github.com/spitzdano/n64-recomp-toolkit ~/toolkit
+          cd ~/toolkit && ./build.sh
+
+      - name: Get the ROM
+        if: steps.have.outputs.ok == 'true'
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: |
+          git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" "$RUNNER_TEMP/rom"
+          cp "$RUNNER_TEMP/rom/baserom.us.z64" baserom.z64
+          rm -rf "$RUNNER_TEMP/rom"
+          tools/check_rom.sh && echo "ROM matches rom.sha1"
+
+      - name: Recompile the game (split, link, N64Recomp, RSPRecomp)
+        if: steps.have.outputs.ok == 'true'
+        run: |
+          export N64RECOMP_TOOLKIT="$HOME/toolkit"
+          export PATH="$HOME/mips/bin:$PATH"
+          tools/split.sh
+          tools/build_elf.sh
+          tools/recomp.sh
+
+      - name: Build
+        if: steps.have.outputs.ok == 'true'
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+          cmake --build build --target AidynReChronicled -j3
+
+      - name: Smoke test
+        if: steps.have.outputs.ok == 'true'
+        run: |
+          ./build/AidynReChronicled --version
+          file build/AidynReChronicled
+          otool -L build/AidynReChronicled
+
+      - name: Remove the ROM
+        if: always()
+        run: rm -f baserom.z64

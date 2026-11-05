@@ -65,6 +65,8 @@ namespace {
     constexpr const char* kPublicKey = "c6d11093e377b7f69b2433d7a3ac43617d7517633fd0dc6fe68b252b264430ae";
 #ifdef _WIN32
     constexpr const char* kPlatform = "windows-x86_64";
+#elif defined(__APPLE__)
+    constexpr const char* kPlatform = "macos-arm64";
 #else
     constexpr const char* kPlatform = "linux-x86_64";
 #endif
@@ -99,7 +101,14 @@ namespace {
         note_install();
         return g_root;
     }
-    fs::path update_dir() { return install_dir() / ".update"; }
+    fs::path update_dir() {
+#ifdef __APPLE__
+        // Never inside the signed app bundle (a file written there breaks its signature): the check's notes go in the data folder.
+        return aidyn::platform::data_home() / "AidynReChronicled" / ".update";
+#else
+        return install_dir() / ".update";
+#endif
+    }
 
     void log(const std::string& line) {
         std::fprintf(stdout, "Updates: %s\n", line.c_str());
@@ -368,6 +377,18 @@ namespace {
         for (const json& r : releases) {
             if (!r.is_object() || r.value("draft", false)) continue;
             if (r.value("prerelease", false) && !tests) continue;
+            // A release carries a macOS download (the .dmg) or not; a macOS-only beta has the .dmg and no update.json.
+            bool has_dmg = false, has_manifest = false;
+            for (const json& a : r.value("assets", json::array())) {
+                const std::string asset = a.value("name", "");
+                has_dmg = has_dmg || asset.find("-macos-arm64.dmg") != std::string::npos;
+                has_manifest = has_manifest || asset == "update.json";
+            }
+#ifdef __APPLE__
+            if (!has_dmg) continue;  // only a release with a Mac build is news here
+#else
+            if (has_dmg && !has_manifest) continue;
+#endif
             const Version v = parse_version(r.value("tag_name", ""));
             if (!v.ok || !newer(v, have)) continue;
             if (best == nullptr || newer(v, best_v)) {
@@ -398,7 +419,13 @@ namespace {
         g_status.latest_test = r.value("prerelease", false);
         g_status.notes = plain_notes(r.value("body", ""));
         g_status.page = r.value("html_url", "");
+#ifdef __APPLE__
+        // On macOS the program lives in a signed app bundle that an update would break: the panel offers the release page
+        // (the new .dmg) instead of downloading in place.
+        g_status.can_download = false;
+#else
         g_status.can_download = !manifest.empty() && !sig.empty() && !aidyn::platform::find_curl().empty();
+#endif
         g_status.phase = Phase::Available;
         g_status.error.clear();
     }

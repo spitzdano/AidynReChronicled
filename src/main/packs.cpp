@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 fs::path aidyn::packs::find(const std::string& name) {
     std::error_code ec;
-    const fs::path beside = aidyn::platform::exe_path().parent_path() / "texture-packs";
+    const fs::path beside = aidyn::platform::resources_dir() / "texture-packs";
     for (const fs::path& dir : { aidyn::settings::folder() / "texture-packs", beside }) {
         const fs::path folder = dir / name, zipped = dir / (name + ".rtz");
         const bool has_folder = fs::is_directory(folder, ec), has_zip = fs::is_regular_file(zipped, ec);
