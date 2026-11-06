@@ -13513,9 +13513,11 @@ extern "C" int aidyn_cal_a(uint8_t* rdram, recomp_context* ctx) {
 extern "C" void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx) {
     const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);
     const gpr w = (gpr)(int32_t)ctx->r16;
-    if (!heap_pointer(big)) {  // no pause menu: the field's and the fight's own widgets (messages, conversations, choices, menus) are the pop-ups
+    if (!heap_pointer(big)) {  // no pause menu: a fight's messages are pop-ups
         // (not at the title screen: its panels are the title panel's, drawn in aidyn_title_box)
-        if (w != 0 && !heap_pointer(MEM_W(0, kTitleScreen)) && !std::getenv("AIDYN_NO_FIELD_POPUPS")) popup_rendering = true;
+        // and only in a fight (gameStateA 2, 3 paused): the field's widgets (conversation boxes, the HUD, chests) are the game's own, drawn as before
+        const uint32_t state_a = MEM_BU(0, (gpr)(int32_t)0x800D80C8);
+        if (w != 0 && (state_a == 2 || state_a == 3) && !heap_pointer(MEM_W(0, kTitleScreen)) && !std::getenv("AIDYN_NO_FIELD_POPUPS")) popup_rendering = true;
         return;
     }
     if (w == big) { handler_big_seen = true; return; }
