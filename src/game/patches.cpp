@@ -8264,8 +8264,8 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     if (heap_pointer(w) && trainer_menu(rdram) != 0) {  // a trainer: the same pieces (the Train, Skills and Spells titles are 47, 51 and 42 wide)
         {  // the lists' own title widgets (TitleWidget +0x7C: the trainer's two, the party's four): the Spells one slid in over "Train" whatever its size
             const gpr tw = trainer_menu(rdram);
-            gpr owners[8] = { MEM_W(0x7C, tw), MEM_W(0x80, tw), 0, 0, 0, 0, 0, 0 };
-            if (heap_pointer(doll_lists)) for (int i = 0; i < 4; i++) owners[2 + i] = MEM_W(0x94 + 4 * i, doll_lists);
+            gpr owners[8] = { (gpr)(int32_t)MEM_W(0x7C, tw), (gpr)(int32_t)MEM_W(0x80, tw), 0, 0, 0, 0, 0, 0 };
+            if (heap_pointer(doll_lists)) for (int i = 0; i < 4; i++) owners[2 + i] = (gpr)(int32_t)MEM_W(0x94 + 4 * i, doll_lists);
             for (gpr owner : owners) {
                 if (heap_pointer(owner) && w == MEM_W(0x7C, owner)) { ctx->r2 = ctx->r5; return 1; }
             }
