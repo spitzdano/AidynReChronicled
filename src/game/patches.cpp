@@ -13514,7 +13514,8 @@ extern "C" void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx) {
     const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);
     const gpr w = (gpr)(int32_t)ctx->r16;
     if (!heap_pointer(big)) {  // no pause menu: the field's and the fight's own widgets (messages, conversations, choices, menus) are the pop-ups
-        if (w != 0 && !std::getenv("AIDYN_NO_FIELD_POPUPS")) popup_rendering = true;
+        // (not at the title screen: its panels are the title panel's, drawn in aidyn_title_box)
+        if (w != 0 && !heap_pointer(MEM_W(0, kTitleScreen)) && !std::getenv("AIDYN_NO_FIELD_POPUPS")) popup_rendering = true;
         return;
     }
     if (w == big) { handler_big_seen = true; return; }
