@@ -3296,6 +3296,7 @@ namespace {
     int hide_list_ttl = 0;
     void card_icons_free(uint8_t* rdram, recomp_context* ctx);
     bool card_icons_empty();
+    int card_icon_idle = 0;  // frames since an icon was last asked for
 
     // Combat menu hints. In combat the items (Y) and spells and skills (X) are menus held open: the game keeps one
     // while its button is held (combat_control_case_0x16 / 0x17) and, when it is let go, uses the highlighted entry
@@ -4079,7 +4080,11 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         }
     }
     aidyn::input::set_menu_keys(menu_keys);
-    if (menu_keys == 0 && frame_ctx != nullptr && !card_icons_empty()) card_icons_free(rdram, frame_ctx);
+    // The icons are freed once they have not been wanted for a few frames, not on the first one without keys: a pop-up over a list takes the keys
+    // (menu_keys 0) while the list's rows are still drawn, and an icon freed under a frame still on its way to the screen shows another picture
+    // (the item icons flickering as the appraise pop-up fades in and out).
+    card_icon_idle++;
+    if (menu_keys == 0 && card_icon_idle > 6 && frame_ctx != nullptr && !card_icons_empty()) card_icons_free(rdram, frame_ctx);
     if (!inventory_page.seen) hide_list_ttl = 0;
     treasure_title.seen = false;
     inventory_page.seen = false;
@@ -9721,6 +9726,7 @@ namespace {
     std::map<uint16_t, gpr> card_icons;
 
     gpr card_icon(uint8_t* rdram, recomp_context* ctx, uint16_t item) {
+        card_icon_idle = 0;
         auto it = card_icons.find(item);
         if (it != card_icons.end()) return it->second;
         MEM_W(0, kIconIndexSlot) = 0;
