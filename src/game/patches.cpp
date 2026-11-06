@@ -8262,6 +8262,14 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
         MEM_B(0x58, w) = (int8_t)130; MEM_B(0x59, w) = (int8_t)80; MEM_B(0x5A, w) = (int8_t)80; MEM_B(0x5B, w) = (int8_t)0xFF;
     }
     if (heap_pointer(w) && trainer_menu(rdram) != 0) {  // a trainer: the same pieces (the Train, Skills and Spells titles are 47, 51 and 42 wide)
+        {  // the lists' own title widgets (TitleWidget +0x7C: the trainer's two, the party's four): the Spells one slid in over "Train" whatever its size
+            const gpr tw = trainer_menu(rdram);
+            gpr owners[8] = { MEM_W(0x7C, tw), MEM_W(0x80, tw), 0, 0, 0, 0, 0, 0 };
+            if (heap_pointer(doll_lists)) for (int i = 0; i < 4; i++) owners[2 + i] = MEM_W(0x94 + 4 * i, doll_lists);
+            for (gpr owner : owners) {
+                if (heap_pointer(owner) && w == MEM_W(0x7C, owner)) { ctx->r2 = ctx->r5; return 1; }
+            }
+        }
         const gpr b = MEM_W(0x6C, w);
         const uint32_t bw = heap_pointer(b) ? MEM_HU(0xA, b) : 0, bh = heap_pointer(b) ? MEM_HU(0xC, b) : 0;
         if ((bw == 162 && bh == 162) || (bw == 160 && bh == 160) || (bh == 17 && (bw == 47 || bw == 51 || bw == 42 || bw == 33 || bw == 39)) || (bw == 5 && bh == 8)) {
