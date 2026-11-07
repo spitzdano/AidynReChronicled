@@ -140,7 +140,17 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
     if (!SDL_GetWindowWMInfo(window, &info)) {
         fatal("Failed to get the window's handle: %s", SDL_GetError());
     }
-    return ultramodern::renderer::WindowHandle{ (void*)info.info.cocoa.window, (void*)SDL_Metal_CreateView(window) };
+    // The view stays alive for the whole run (it owns the layer). RT64's Metal swap chain takes the view's CAMetalLayer, not the view:
+    // handed the view it called setDevice: on it and the app aborted ("-[SDL_cocoametalview setDevice:]: unrecognized selector").
+    static SDL_MetalView metal_view = SDL_Metal_CreateView(window);
+    if (metal_view == nullptr) {
+        fatal("Failed to create the Metal view: %s", SDL_GetError());
+    }
+    void* layer = SDL_Metal_GetLayer(metal_view);
+    if (layer == nullptr) {
+        fatal("Failed to get the Metal layer: %s", SDL_GetError());
+    }
+    return ultramodern::renderer::WindowHandle{ (void*)info.info.cocoa.window, layer };
 #else
     return ultramodern::renderer::WindowHandle{ window };
 #endif
