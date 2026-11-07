@@ -40,11 +40,11 @@ test_window() {
 for c in json.load(sys.stdin):
     if c["pid"] == int(sys.argv[1]): print(c["workspace"]["name"] if sys.argv[2] == "ws" else c.get("stableId", ""))' "$1" "$2"
 }
-# Tests run out of sight on the named workspace G1 (spitzdano, 2026-10-30; the bar shows it after 1-5), off fullscreen;
+# Tests run out of sight on workspace 6 (G1 on the bar) (spitzdano, 2026-10-30; the bar shows it after 1-5), off fullscreen;
 # checked until it's there (a move sent as the window maps can be lost). AIDYN_TEST_WS=<n> or name:<name> picks another
-# workspace, AIDYN_TEST_WS=dell the one the Dell shows (to watch a test). Hyprland takes "name:G1" and reports "G1".
+# workspace, AIDYN_TEST_WS=dell the one the Dell shows (to watch a test). Workspace 6 is G1 on the bar.
 dell_ws() {
-  local w=${AIDYN_TEST_WS:-name:G1}
+  local w=${AIDYN_TEST_WS:-6}
   if [[ $w != dell ]]; then echo "$w"; return; fi
   hyprctl monitors -j | python3 -c 'import json,sys
 for m in json.load(sys.stdin):
