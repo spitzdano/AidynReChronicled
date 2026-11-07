@@ -53,7 +53,11 @@ namespace aidyn::settings {
         bool widescreen = true;          // false: 4:3, the N64's picture, whatever "aspect" says (the Display page)
         std::string aspect_text = "16:9"; // as written in settings.json
         double aspect_ratio = 16.0 / 9.0; // width / height, for Aspect::Ratio
+#ifdef __APPLE__
+        int msaa = 0;                // 0, 2, 4 or 8 (capped to what the GPU supports); off on a Mac: RT64's Metal MSAA ran badly on an M2 (spitzdano, 2026-11-07)
+#else
         int msaa = 4;                // 0, 2, 4 or 8 (capped to what the GPU supports)
+#endif
         float draw_distance = 3.0f; // field view: multiplies the far clip (and the fog with it); 1 = original, up to 3
         float walk_speed = 1.5f;    // field: Alaron's walk and run cycles (and so his pace) this many times faster; 1 = original, up to 2
         int supersampling = 1;       // 1 (off), 2, 3 or 4: render that many times render_height and scale down (smoother edges);

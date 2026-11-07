@@ -272,6 +272,21 @@ void aidyn::settings::load(const std::filesystem::path& folder) {
     if (!(g_graphics.draw_distance >= 1.0f && g_graphics.draw_distance <= 3.0f)) {
         bad(path, "graphics.draw_distance must be 1 (original) to 3");
     }
+#ifdef __APPLE__
+    // A Mac's anti-aliasing is off by default (RT64's Metal MSAA ran badly on an M2), and once, on the first start of a version that
+    // says so, a settings.json from before (which kept the old default of 4) is turned down too; the Display page turns it back on.
+    {
+        const std::filesystem::path marker = g_folder / "mac-msaa-default.txt";
+        std::error_code ec;
+        if (!std::filesystem::exists(marker, ec)) {
+            if (g_graphics.msaa != 0) {
+                g_graphics.msaa = 0;
+                save_number("graphics", "msaa", 0);
+            }
+            std::ofstream(marker) << "anti-aliasing was set to off once for this Mac; the Display page changes it\n";
+        }
+    }
+#endif
     // Test runs (tools/dev/pad.sh sets it): no anti-aliasing and no supersampling for this run, so a test costs little;
     // only in memory: nothing is written back to settings.json unless the Display page changes them.
     if (const char* light = std::getenv("AIDYN_TEST_LIGHT"); light != nullptr && *light != '\0' && *light != '0') {
