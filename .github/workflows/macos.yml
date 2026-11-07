@@ -215,7 +215,7 @@ jobs:
             echo "$tag is already published: not touching it"; exit 1
           fi
           cat > notes.md <<NOTES
-          **Aidyn ReChronicled for macOS ($VERSION), a beta.** Apple Silicon (M1 or later), macOS 15 or later. It has not been played on a Mac yet by its maker: please report what you find.
+          **Aidyn ReChronicled for macOS ($VERSION), a beta.** Apple Silicon (M1 or later), macOS 15 or later. It was tried on one Mac (an M2 MacBook Pro, 8 GB) and plays; other Macs may differ, so please report what you find. Anti-aliasing starts off on a Mac (Metal's was slow); it can be turned on in the Display page.
 
           1. Open the \`.dmg\` and drag **Aidyn ReChronicled** to Applications.
           2. Open it. macOS says it can't verify the app: click **Done**.
@@ -224,7 +224,7 @@ jobs:
 
           Terminal alternative: \`xattr -dr com.apple.quarantine "/Applications/Aidyn ReChronicled.app"\`
 
-          Saves and settings live in \`~/Library/Application Support/AidynReChronicled\`. The game's Updates page opens this release page when a newer Mac build is out.
+          Saves and settings live in \`~/Library/Application Support/AidynReChronicled\`. The game's Updates page opens this release page when a newer Mac build is out. If something goes wrong, the pause menu's ReChronicled page can write a problem report (reports/ in that folder), or open an issue on this repository.
           NOTES
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
               --title "Aidyn ReChronicled $VERSION for macOS (beta)" --notes-file notes.md dmg/*.dmg dmg/*.sha256

@@ -11,4 +11,7 @@ by hand as before (`tools/release/make_release.sh`).
   The app bundle is never written to (it is ad-hoc signed); updates are the release page for now.
 - `--version` prints the version and exits: the workflow's smoke test.
 
-Status: building; the `.app`/`.dmg` packaging (`tools/macos/package_macos.sh`) is next. See the project plan.
+Status (2026-11-07): builds, packages (`tools/macos/package_macos.sh`) and runs on an M2 MacBook Pro (macOS 26.5.1). Fixed after the first
+real run: RT64's Metal swap chain takes the view's `CAMetalLayer` (`SDL_Metal_GetLayer`), not the view; anti-aliasing is off by default
+on a Mac (`settings.h`, and once in an existing settings.json). Logs from a Mac: `aidyn-mac-logs.sh` pushes them to a branch of the
+private ROM repo. See the project plan.

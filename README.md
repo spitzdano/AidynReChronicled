@@ -104,6 +104,13 @@ checks it against this SHA-1:
 - **Windows** (`AidynReChronicled-<version>-windows-x86_64.zip`: Windows 10 or 11, 64-bit, a Vulkan driver; the
   Visual C++ runtime is included, nothing to install). Unpack it anywhere and run `AidynReChronicled.exe`;
   `Add to Steam.bat` adds it to Steam with its library art.
+- **macOS, a beta** (`AidynReChronicled-<version>-macos-arm64.dmg`, on the releases marked pre-release: Apple Silicon,
+  M1 or later, macOS 15 or later). Open the `.dmg`, drag the app to Applications, and allow it once in System Settings >
+  Privacy & Security > Open Anyway (it is signed ad hoc, not notarized: there is no Apple developer account behind it).
+  The first start asks for your own NTSC-U 1.0 ROM. It is built by GitHub's Mac runners from the same code, was tried on
+  one Mac (an M2 MacBook Pro, 8 GB), and anti-aliasing starts off there (Metal's was slow); its data lives in
+  `~/Library/Application Support/AidynReChronicled`. It doesn't update itself yet: the game's Updates page opens the
+  release page. Problems, with the problem report (see below) or the issue "macOS version", are very welcome.
 
 **Your ROMs:** put them in the download's `ROMs` folder: the NTSC-U 1.0 ROM, and the same ROM with Aidyn Patch or Aidyn
 Plus applied if you have them, under any names (`.z64`, `.n64` or `.v64`). At each start the game looks there for any
