@@ -13007,6 +13007,7 @@ extern "C" void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx) {
 namespace {
     struct BestiaryEntry {
         int fights = 0;            // creatures of this name fought (each one in each fight)
+        int meetings = 0;          // fights it was in (once each, however many of them): the drawing's stages follow this
         int aura = 0;              // the highest Sense Aura level cast on one
         int hp = 0;                // the most hit points one had
         std::set<uint16_t> ids;    // the table entries fought (a Goblin is six of them, level 1 to 6)
@@ -13038,7 +13039,7 @@ namespace {
             out += (out.empty() ? "" : ";") + n + "|" + std::to_string(e.fights) + "|" + std::to_string(e.aura) + "|" + std::to_string(e.hp) + "|";
             std::string ids;
             for (uint16_t id : e.ids) ids += (ids.empty() ? "" : ",") + std::to_string(id);
-            out += ids.empty() ? "-" : ids;
+            out += (ids.empty() ? "-" : ids) + "|" + std::to_string(e.meetings);
         }
         return out.empty() ? "-" : out;
     }
@@ -13049,13 +13050,15 @@ namespace {
         std::istringstream all(s);
         for (std::string item; std::getline(all, item, ';');) {
             std::istringstream f(item);
-            std::string name, fights, aura, hp, ids;
-            if (!std::getline(f, name, '|') || !std::getline(f, fights, '|') || !std::getline(f, aura, '|') || !std::getline(f, hp, '|') || !std::getline(f, ids)) continue;
+            std::string name, fights, aura, hp, ids, meetings;
+            if (!std::getline(f, name, '|') || !std::getline(f, fights, '|') || !std::getline(f, aura, '|') || !std::getline(f, hp, '|') || !std::getline(f, ids, '|')) continue;
+            std::getline(f, meetings);  // (a record from before the drawings has none)
             std::replace(name.begin(), name.end(), '_', ' ');
             BestiaryEntry e;
             e.fights = std::atoi(fights.c_str());
             e.aura = std::atoi(aura.c_str());
             e.hp = std::atoi(hp.c_str());
+            e.meetings = meetings.empty() ? std::min(e.fights, 1) : std::atoi(meetings.c_str());
             if (ids != "-") {
                 std::istringstream idl(ids);
                 for (std::string id; std::getline(idl, id, ',');) e.ids.insert((uint16_t)std::atoi(id.c_str()));
@@ -13099,6 +13102,7 @@ namespace {
         if (!heap_pointer(combat)) return false;
         const int ents = std::min<int>(MEM_BU(kEntCount, combat), kMaxEnts), party = MEM_BU(kPartyCount, combat);
         if (ents <= party) return false;
+        std::set<std::string> in_this_fight;
         for (int i = party; i < ents; i++) {
             const gpr ent = MEM_W(kCombatEnts + 4 * i, combat);
             const gpr sheet = heap_pointer(ent) ? MEM_W(kCharSheet, ent) : 0;
@@ -13106,6 +13110,7 @@ namespace {
             if (name.empty()) continue;
             BestiaryEntry& e = bestiary_book[name];
             e.fights++;
+            if (in_this_fight.insert(name).second) e.meetings++;
             static const bool log = std::getenv("AIDYN_BESTIARY_LOG") != nullptr;
             if (log) { fprintf(stdout, "Bestiary: %s fought %d (id %04x)\n", name.c_str(), e.fights, (unsigned)MEM_HU(0, sheet)); fflush(stdout); }
             e.ids.insert(MEM_HU(0, sheet));
@@ -13344,11 +13349,27 @@ namespace {
         // ---- the creature ----
         const BestiaryRow& r = rows[std::clamp(bst.cursor, 0, n - 1)];
         const float rx0 = 154.0f, rx1 = 280.0f;
-        g = rect_state(rdram, g);
-        g = rect(rdram, g, X(rx0), Y(52.0f), X(rx1), Y(92.0f), 0x8A607000u | (uint32_t)alpha, hs, vs);                        // the sketch's frame
-        g = rect(rdram, g, X(rx0 + 0.9f), Y(52.9f), X(rx1 - 0.9f), Y(91.1f), 0xF8E8C800u | (uint32_t)alpha, hs, vs);
-        g = ctl_state(rdram, ctx, g);
-        g = ctl_text(rdram, ctx, g, "Alaron's sketch to come", X((rx0 + rx1) / 2.0f), Y(69.0f), 0.45f, dim, alpha, false, true);
+        {  // Alaron's drawing: rough after one fight with it, refined after three, finished (colour) after five; a boss, or a strong Sense Aura, shows it finished.
+            std::string key;
+            for (char c : std::string(r.text ? r.text->game : r.name.c_str())) if (std::isalnum((unsigned char)c)) key += (char)std::tolower((unsigned char)c);
+            const int stage = (r.boss && r.e->fights >= 1) || r.e->aura > 8 || r.e->meetings >= 5 ? 3 : r.e->meetings >= 3 ? 2 : 1;
+            bool any = false;
+            g = prompt_state(rdram, g, alpha);
+            for (int t = 0; t < 3; t++) {
+                const int image = branding_index(("bst_" + key + "_" + std::to_string(stage) + "_" + std::to_string(t)).c_str());
+                if (image < 0) continue;
+                any = true;
+                g = pic(g, image, rx0 + 42.0f * (float)t, 52.0f, rx0 + 42.0f * (float)(t + 1), 92.0f);
+            }
+            g = ctl_state(rdram, ctx, g);
+            if (!any) {  // no drawing of this one yet
+                g = rect_state(rdram, g);
+                g = rect(rdram, g, X(rx0), Y(52.0f), X(rx1), Y(92.0f), 0x8A607000u | (uint32_t)alpha, hs, vs);                        // the sketch's frame
+                g = rect(rdram, g, X(rx0 + 0.9f), Y(52.9f), X(rx1 - 0.9f), Y(91.1f), 0xF8E8C800u | (uint32_t)alpha, hs, vs);
+                g = ctl_state(rdram, ctx, g);
+                g = ctl_text(rdram, ctx, g, "Alaron's sketch to come", X((rx0 + rx1) / 2.0f), Y(69.0f), 0.45f, dim, alpha, false, true);
+            }
+        }
         g = ctl_text(rdram, ctx, g, r.text ? r.text->shown : r.name, X(rx0), Y(94.0f), 0.8f, ink, alpha);
         const bool people = r.text == nullptr;
         g = ctl_text(rdram, ctx, g, people ? std::string("People") : std::string(r.text->family), X(rx0), Y(105.5f), 0.5f, brown, alpha);
@@ -13453,6 +13474,7 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
         for (const auto& smp : kSample) {
             BestiaryEntry e;
             e.fights = smp.fights;
+            e.meetings = std::getenv("AIDYN_BESTIARY_TEST_MEETINGS") ? std::atoi(std::getenv("AIDYN_BESTIARY_TEST_MEETINGS")) : std::max(1, smp.fights / 2);  // (a sample: its drawing's stage follows)
             e.aura = smp.aura;
             for (uint32_t i = 0; heap_pointer(edb) && i < MEM_BU(0, edb); i++) {
                 const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)i);

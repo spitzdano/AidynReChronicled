@@ -643,6 +643,8 @@ import title_panel  # noqa: E402
 IMAGES += title_panel.IMAGES
 import menu_art  # noqa: E402
 IMAGES += menu_art.IMAGES
+import bestiary_art  # noqa: E402
+IMAGES += bestiary_art.IMAGES  # the bestiary's drawings (art/bestiary), each in its three stages
 IMAGES += [("frame_party", hud_frames.FRAME_W, hud_frames.FRAME_W, hud_frames.frame_party),
            ("frame_enemy", hud_frames.FRAME_W, hud_frames.FRAME_W, hud_frames.frame_enemy),
            ("frame_glow", hud_frames.GLOW_W, hud_frames.GLOW_W, hud_frames.frame_glow)]
