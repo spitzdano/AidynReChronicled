@@ -32,7 +32,7 @@ HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[1]
 sys.path.insert(0, str(PROJECT / "tools/hdui"))
 sys.path.insert(0, str(HERE))
-from pngio import write_png  # noqa: E402
+from pngio import write_png, write_png_mask  # noqa: E402
 
 SS = 8  # output pixels per texel
 MARCELLUS = PROJECT / "tools/hdui/fonts/MarcellusSC-Regular.ttf"
@@ -1025,7 +1025,8 @@ def main():
         if (w * 2 + 7) // 8 * 8 * h > 4096:
             sys.exit(f"make_branding.py: {name} ({w}x{h}) is more than one load of TMEM (4 KB): split it")
         img = draw(w, h)
-        write_png(OUT / f"{name}@8x.png", w * SS, h * SS, to_rgba8(img).tobytes())
+        if not (name.startswith("bsd_") and name[-3:-2] in "12" and write_png_mask(OUT / f"{name}@8x.png", w * SS, h * SS, to_rgba8(img).tobytes())):
+            write_png(OUT / f"{name}@8x.png", w * SS, h * SS, to_rgba8(img).tobytes())  # (the bestiary's one-colour stages are palette PNGs)
         words = to_rgba16(img, w, h).flatten()
         if name.startswith("bsd_"):  # a bestiary drawing's tile: in bestiary.bin (in the pack), not in the game (src/game/patches.cpp, "Bestiary")
             BESTIARY_TILES[name] = (w, h, b"".join(int(v).to_bytes(2, "big") for v in words))

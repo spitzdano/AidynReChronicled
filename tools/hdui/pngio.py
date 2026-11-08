@@ -37,6 +37,39 @@ def write_png(path, w, h, rgba):
                            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
 
+def write_png_mask(path, w, h, rgba):
+    """A one-colour picture with soft edges (a pencil or ink stage: RGBA8 whose colour is the same wherever it shows) as a palette PNG whose
+    256 entries are that colour at each alpha (tRNS): a byte a pixel, a fraction of the RGBA size, and the same picture when loaded.
+    Returns False (and writes nothing) if the colour isn't the same everywhere."""
+    import numpy as np
+    a = np.frombuffer(bytes(rgba), np.uint8).reshape(h, w, 4)
+    shown = a[..., 3] > 0
+    if not shown.any():
+        return False
+    colour = np.round(a[shown][:, :3].astype(np.float32).mean(axis=0)).astype(np.uint8)
+    if np.abs(a[shown][:, :3].astype(np.int16) - colour).max() > 3:
+        return False
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    x = a[..., 3].astype(np.int16)
+    up = np.vstack([np.zeros((1, w), np.int16), x[:-1]])
+    left = np.hstack([np.zeros((h, 1), np.int16), x[:, :-1]])
+    ul = np.hstack([np.zeros((h, 1), np.int16), up[:, :-1]])
+    p = left + up - ul
+    pa, pb, pc = np.abs(p - left), np.abs(p - up), np.abs(p - ul)
+    paeth = np.where((pa <= pb) & (pa <= pc), left, np.where(pb <= pc, up, ul))
+    filtered = np.stack([x, x - left, x - up, x - ((left + up) >> 1), x - paeth]).astype(np.uint8)
+    cost = np.abs(filtered.astype(np.int8).astype(np.int16)).sum(axis=2)
+    best = cost.argmin(axis=0)
+    rows = np.empty((h, 1 + w), np.uint8)
+    rows[:, 0] = best
+    rows[:, 1:] = filtered[best, np.arange(h)]
+    palette = bytes(colour.tolist()) * 256
+    Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 3, 0, 0, 0)) + chunk(b"PLTE", palette)
+                           + chunk(b"tRNS", bytes(range(256))) + chunk(b"IDAT", zlib.compress(rows.tobytes(), 9)) + chunk(b"IEND", b""))
+    return True
+
+
 def read_png(path):
     """Returns (w, h, rgba bytearray). Handles 8-bit RGB/RGBA/gray/gray+alpha, all filter types, no interlace."""
     d = Path(path).read_bytes()
