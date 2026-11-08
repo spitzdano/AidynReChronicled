@@ -1890,7 +1890,6 @@ namespace {
         uint32_t address = kBrandingBase;
         for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
             const auto& img = aidyn::branding::kImages[i];
-            if (std::strncmp(img.name, "bsd_", 4) == 0) continue;  // the bestiary's drawings are copied when a page shows them (bestiary_tile_slot): there are too many to keep
             if (address + (uint32_t)img.w * img.h * 2 > kBrandingEnd) {
                 fprintf(stderr, "The branding pictures don't fit below the fixed slots (patches.cpp kBrandingEnd)\n");
                 std::abort();
@@ -1904,13 +1903,13 @@ namespace {
     }
 
     // The image's texel (0, 0) at pixel (x, y), sx and sy pixels a texel.
-    gpr draw_rgba16(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy) {
-        const auto& img = aidyn::branding::kImages[index];
-        const uint32_t w = img.w, h = img.h, line = (w * 2 + 7) / 8;
+    // A picture of w x h texels already in RDRAM at `address`, drawn at (x, y) pixels, sx and sy pixels a texel.
+    gpr draw_rgba16_at(uint8_t* rdram, gpr g, uint32_t address, uint32_t w, uint32_t h, float x, float y, float sx, float sy) {
+        const uint32_t line = (w * 2 + 7) / 8;
         auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
         const uint32_t clamp = (2u << 18) | (2u << 8);                                  // cmt, cms = G_TX_CLAMP
         cmd(0xE7000000, 0);                                                              // gDPPipeSync
-        cmd(0xFD000000 | (0u << 21) | (2u << 19) | (w - 1), (uint32_t)branding_address[index]); // SetTextureImage RGBA16
+        cmd(0xFD000000 | (0u << 21) | (2u << 19) | (w - 1), address); // SetTextureImage RGBA16
         cmd(0xF5000000 | (0u << 21) | (2u << 19) | (line << 9), (7u << 24) | clamp);      // SetTile G_TX_LOADTILE
         cmd(0xE6000000, 0);                                                              // gDPLoadSync
         cmd(0xF4000000, (7u << 24) | (((w - 1) << 2) << 12) | ((h - 1) << 2));          // LoadTile
@@ -1923,6 +1922,12 @@ namespace {
         cmd(0xE4000000 | ((xh & 0xFFF) << 12) | (yh & 0xFFF), (0u << 24) | ((xl & 0xFFF) << 12) | (yl & 0xFFF));
         cmd(0xE1000000, 0);                                                              // s, t = 0
         cmd(0xF1000000, (dsdx << 16) | dtdy);
+        return g;
+    }
+
+    gpr draw_rgba16(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy) {
+        const auto& img = aidyn::branding::kImages[index];
+        g = draw_rgba16_at(rdram, g, (uint32_t)branding_address[index], img.w, img.h, x, y, sx, sy);
         const size_t n = std::strlen(img.name);
         if (n > 2 && img.name[n - 2] == '_' && img.name[n - 1] == 'k') {  // a keyboard twin: its slots get key caps
             g = draw_key_slots(rdram, g, index, x, y, sx, sy);
@@ -13205,13 +13210,54 @@ namespace {
         return f;
     }
 
-    // A drawing's tile in RDRAM for this frame: the page's three tiles go in 4 KB slots at 0x80F88000 (the frame's even and odd ones apart, so one
-    // being drawn is not rewritten by the next frame's), free memory between the save buffer and the Help text.
-    void bestiary_tile_slot(uint8_t* rdram, int image, int tile) {
-        const auto& img = aidyn::branding::kImages[image];
+    // The drawings' low-resolution tiles (tools/branding/bestiary_art.py), read from bestiary.bin in the "rechronicled" texture pack the first time
+    // a page wants one (the sharp ones are the pack's pictures, found by the hash of these): 'BSD1', the count, per tile a 48 byte name, w, h and an
+    // offset into the pixels that follow, all big-endian.
+    struct BestiaryTile { uint32_t w = 0, h = 0, offset = 0; };
+    std::map<std::string, BestiaryTile> bestiary_tiles;
+    std::vector<uint8_t> bestiary_pixels;
+    bool bestiary_tiles_loaded = false;
+
+    void bestiary_tiles_load() {
+        if (bestiary_tiles_loaded) return;
+        bestiary_tiles_loaded = true;
+        std::vector<uint8_t> file;
+        if (!aidyn::packs::read("rechronicled", "bestiary.bin", file) || file.size() < 8 || std::memcmp(file.data(), "BSD1", 4) != 0) {
+            fprintf(stderr, "Bestiary: no drawings in the texture packs (bestiary.bin)\n");
+            return;
+        }
+        auto be32 = [&](size_t at) { return (uint32_t)file[at] << 24 | (uint32_t)file[at + 1] << 16 | (uint32_t)file[at + 2] << 8 | file[at + 3]; };
+        auto be16 = [&](size_t at) { return (uint32_t)file[at] << 8 | file[at + 1]; };
+        const uint32_t count = be32(4);
+        const size_t entry = 48 + 2 + 2 + 4, pixels = 8 + (size_t)count * entry;
+        if (pixels > file.size()) return;
+        for (uint32_t i = 0; i < count; i++) {
+            const size_t at = 8 + (size_t)i * entry;
+            const std::string name(reinterpret_cast<const char*>(&file[at]), strnlen(reinterpret_cast<const char*>(&file[at]), 48));
+            bestiary_tiles[name] = { be16(at + 48), be16(at + 50), be32(at + 52) };
+        }
+        bestiary_pixels.assign(file.begin() + (std::ptrdiff_t)pixels, file.end());
+        fprintf(stdout, "Bestiary: %u drawing tiles\n", count);
+        fflush(stdout);
+    }
+
+    // A tile in RDRAM for this frame, or 0 if there is no such drawing: the page's three tiles go in 4 KB slots at 0x80F88000 (the frame's even and
+    // odd ones apart, so one being drawn is not rewritten by the next frame's), free memory between the save buffer and the Help text.
+    uint32_t bestiary_tile_slot(uint8_t* rdram, const std::string& name, int tile, uint32_t* w, uint32_t* h) {
+        bestiary_tiles_load();
+        const auto it = bestiary_tiles.find(name);
+        if (it == bestiary_tiles.end()) return 0;
+        const BestiaryTile& t = it->second;
+        const size_t bytes = (size_t)t.w * t.h * 2;
+        if (bytes > 0x1000 || t.offset + bytes > bestiary_pixels.size()) return 0;
         const uint32_t base = 0x80F88000u + (popup_frame & 1) * 0x3000u + (uint32_t)tile * 0x1000u;
-        for (uint32_t k = 0; k < (uint32_t)img.w * img.h; k++) MEM_H(k * 2, (gpr)(int32_t)base) = img.rgba16[k];
-        branding_address[image] = (gpr)(int32_t)base;
+        for (uint32_t k = 0; k < (uint32_t)bytes; k += 2) {  // already big-endian: the N64's own order
+            MEM_B(k, (gpr)(int32_t)base) = (int8_t)bestiary_pixels[t.offset + k];
+            MEM_B(k + 1, (gpr)(int32_t)base) = (int8_t)bestiary_pixels[t.offset + k + 1];
+        }
+        *w = t.w;
+        *h = t.h;
+        return base;
     }
 
     // The words under the map page's Journal: Bestiary, and its page.
@@ -13366,11 +13412,12 @@ namespace {
             bool any = false;
             g = prompt_state(rdram, g, alpha);
             for (int t = 0; t < 3; t++) {
-                const int image = branding_index(("bsd_" + key + "_" + std::to_string(stage) + "_" + std::to_string(t)).c_str());
-                if (image < 0) continue;
-                bestiary_tile_slot(rdram, image, t);
+                uint32_t w = 0, h = 0;
+                const uint32_t address = bestiary_tile_slot(rdram, "bsd_" + key + "_" + std::to_string(stage) + "_" + std::to_string(t), t, &w, &h);
+                if (address == 0) continue;
                 any = true;
-                g = pic(g, image, rx0 + 42.0f * (float)t, 52.0f, rx0 + 42.0f * (float)(t + 1), 92.0f);
+                const float px0 = PX(rx0 + 42.0f * (float)t), py0 = PY(52.0f), px1 = PX(rx0 + 42.0f * (float)(t + 1)), py1 = PY(92.0f);
+                g = draw_rgba16_at(rdram, g, address, w, h, px0, py0, (px1 - px0) / (float)w, (py1 - py0) / (float)h);
             }
             g = ctl_state(rdram, ctx, g);
             if (!any) {  // no drawing of this one yet

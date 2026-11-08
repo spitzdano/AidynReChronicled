@@ -995,6 +995,21 @@ for _name, _buttons in ICON_BUTTONS.items():
     IMAGES.append((_name + "_k", _wk, _h, keyed(_name, _d)))
 
 
+BESTIARY_TILES = {}  # name -> (w, h, big-endian RGBA16 bytes): the drawings' tiles, written to bestiary.bin
+
+
+def bestiary_bin():
+    """bestiary.bin: 'BSD1', the count (u32), then per tile its name (48 bytes, padded), w and h (u16) and its offset (u32) from the start of the
+    pixels that follow all the entries; pixels as the N64 reads them (big-endian RGBA16). Big-endian throughout."""
+    import struct
+    entries, pixels, offset = [], [], 0
+    for name, (w, h, data) in BESTIARY_TILES.items():
+        entries.append(struct.pack(">48sHHI", name.encode(), w, h, offset))
+        pixels.append(data)
+        offset += len(data)
+    return b"BSD1" + struct.pack(">I", len(entries)) + b"".join(entries) + b"".join(pixels)
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for path in hud_frames.write_art():
@@ -1009,6 +1024,10 @@ def main():
         img = draw(w, h)
         write_png(OUT / f"{name}@8x.png", w * SS, h * SS, to_rgba8(img).tobytes())
         words = to_rgba16(img, w, h).flatten()
+        if name.startswith("bsd_"):  # a bestiary drawing's tile: in bestiary.bin (in the pack), not in the game (src/game/patches.cpp, "Bestiary")
+            BESTIARY_TILES[name] = (w, h, b"".join(int(v).to_bytes(2, "big") for v in words))
+            print(f"make_branding.py: {name} {w}x{h} -> {OUT / (name + '@8x.png')} (bestiary.bin)")
+            continue
         ident = "k" + "".join(p.capitalize() for p in name.split("_"))
         lines.append(f"    // {name}: {w}x{h} RGBA16")
         lines.append(f"    inline constexpr uint16_t {ident}[{w * h}] = {{")
@@ -1053,6 +1072,7 @@ def write_pack():
     if not tool.exists():
         sys.exit("build/cmake/tmemhash missing: cmake --build build/cmake --target tmemhash")
     images = header_images()
+    images.update(BESTIARY_TILES)
     jobs = []
     for name, (w, h, data) in images.items():
         tmem = bigstrips.tmem_strip(2, w, h, data, None, 0, h)  # Borg8 format 2 = RGBA16
@@ -1074,6 +1094,8 @@ def write_pack():
                             "defaultShift": "none", "hashVersion": 5},
           "textures": textures, "operationFilters": [], "shiftFilters": [], "extraFiles": []}
     (tmp / "rt64.json").write_text(json.dumps(db, indent=1) + "\n")
+    if BESTIARY_TILES:  # the bestiary's low-resolution tiles ride in this pack (the game reads them when a page shows a drawing)
+        (tmp / "bestiary.bin").write_bytes(bestiary_bin())
     shutil.rmtree(PACK, ignore_errors=True)
     tmp.rename(PACK)
     print(f"make_branding.py: {len(textures)} replacements in {PACK}")
