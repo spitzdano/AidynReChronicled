@@ -13535,7 +13535,7 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
         const gpr edb = MEM_W(0, (gpr)(int32_t)0x800E2830);
         static const struct { const char* name; int fights; int aura; } kSample[] = {
             { "Goblin", 12, 0 }, { "Goblin Scout", 4, 0 }, { "Wolf", 7, 0 }, { "Troll", 1, 0 }, { "Wyvern", 3, 9 }, { "Chaos Slayer", 1, 0 },
-            { "Shamsuk", 1, 0 }, { "Skeleton", 6, 0 }, { "Hellhound", 2, 0 }, { "Giant Rat", 15, 0 }, { "Ogre", 5, 0 }, { "Harpy", 1, 0 }, { "Tomb Rat", 4, 0 }, { "Giant Bat", 4, 0 }, { "Darkenbat", 4, 0 } };
+            { "Shamsuk", 1, 0 }, { "Skeleton", 6, 0 }, { "Hellhound", 2, 0 }, { "Giant Rat", 15, 0 }, { "Ogre", 5, 0 }, { "Harpy", 1, 0 }, { "Tomb Rat", 4, 0 }, { "Giant Bat", 4, 0 }, { "Darkenbat", 4, 0 }, { "Dire Wolf", 4, 0 }, { "Spirit Wolf", 4, 0 }, { "Cave Bear", 4, 0 }, { "Giant Scorpion", 4, 0 } };
         for (const auto& smp : kSample) {
             BestiaryEntry e;
             e.fights = smp.fights;
