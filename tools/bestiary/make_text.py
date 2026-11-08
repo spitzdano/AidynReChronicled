@@ -11,8 +11,9 @@ src = (root / "tools/bestiary/descriptions.md").read_text()
 # the game's names for the ones it names differently from how they're written here
 SHOWN = {"Assim": "Drakeguardian Assim", "Behrooz": "Drakeguardian Behrooz", "Golnar": "Drakeguardian Golnar",
          "Ksathra": "Drakeguardian Ksathra", "Mehrdad": "Drakeguardian Mehrdad", "Nasim": "Drakeguardian Nasim",
-         "Shatrevar": "Drakeguardian Shatrevar", "Sheridan": "Prince Sheridan", "Lizard Man Sgt": "Lizard Man Sergeant"}
-BOSSES = {"Shamsuk", "Lugash", "Marquis", "Pochanargat", "Sheridan", "Shadow", "Kitarak", "Firelord", "Assim", "Behrooz",
+         "Shatrevar": "Drakeguardian Shatrevar", "Sheridan": "Prince Sheridan", "Lizard Man Sgt": "Lizard Man Sergeant",
+         "Chaos Sorceror": "Chaos Sorcerer", "Pochanargat": "Pochangarat", "Firelord": "Fire Lord"}  # (the Aidyn Patch spells them right)
+BOSSES = {"Shamsuk", "Lugash", "Marquis", "Pochanargat", "Sheridan", "Shadow", "Kitarak", "Firelord", "Assim", "Behrooz", "Lizard Man King",
           "Golnar", "Ksathra", "Mehrdad", "Nasim", "Shatrevar", "Dougal"}
 entries, family = [], ""
 for line in src.splitlines():

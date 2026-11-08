@@ -24,12 +24,35 @@ How the entries are grouped (a creature appears once, under its name, however ma
 - **Goblin Sergeant**: Keeps a goblin band together and fights better than the rank and file. Also keeps his distance and shoots when he can.
 - **Goblin Poisoner**: Throws poisoned darts. Keep your healer close.
 - **Hobgoblin**: Larger and tougher than a goblin, in heavy armour, with a spirit shield to cast and a trick for draining stamina. Naming magic hurts it more than it should.
+- **Goblin Assassin**: A goblin who kills for a living. Very quick, with a sabre and poisoned darts. Strike first, or not at all.
+- **Goblin Lieutenant**: Leads a goblin band, with a longsword and throwing hatchets. Tougher than the rank and file, and knows it.
+- **Goblin Raider**: A goblin who raids: light on his feet, with a sabre and a great bow. Hard to pin down.
+- **Goblin Warrior**: A goblin who fights at the front, with a broadsword and a strong back. More of a fighter than a thief.
+- **Goblin Archer**: Keeps his distance behind a long bow, with a broadsword for when you come close.
+- **Goblin Commander**: Commands a band: stout, with a broadsword and throwing axes. Fights harder than he talks.
+- **Goblin Robber**: A thief with a hunter's bow and a longsword. Takes what he can, and runs when he can't.
+- **Hobgoblin Major**: A hobgoblin of rank, with a greataxe and a few spells: clumsiness, light, and webs and shields of starlight. Naming magic hurts it more than it should.
 
 ## Bandits
 
 - **Human Bandit**: A road thief with a sabre and a shield. Not much of a fighter, but they come in numbers.
 - **Bandit Woodsman**: A bandit who shoots. Stay out of the open.
 - **Bandit Boss**: Leads a gang. Better armed than his men, with a bow of his own, and some of them know tricks that tire you out.
+- **Bandit Archer**: A bandit who shoots, and shoots well. Keep moving.
+- **Bandit Chieftain**: Leads a gang in heavy armour, with a great bow. Knows tricks that bolster him and addle you.
+- **Bandit Namer**: A bandit who has learned Naming magic: charms, and spells that sharpen his wits and dull yours. Fights with a mace and a bow.
+- **Bandit Necromancer**: A bandit who has turned to the dead arts: darkness, haste, walls of bones, and a spell that drains your vigour.
+- **Bandit Raider**: A bandit who rides with the raiders. A mace, a long reach, and not easy to wear down.
+- **Human Renegade**: A man gone bad, with a stealthy blade and darts thrown from range. Quick, and not easily cornered.
+- **Human Rogue**: A thief with a morningstar and javelins. Throws before he strikes.
+- **Bandit Brute**: Built for the front: a longsword, thrown stars, and a great many hit points.
+- **Bandit Goon**: The lowest of the gang: a blade and not much else. They come in numbers.
+- **Bandit Ranger**: Shoots from cover with a long bow, and draws a bandit blade when pressed.
+- **Bandit Thug**: A heavy bandit with a broadsword, who throws burning bottles when you keep your distance.
+- **Bandit Elementalist**: A bandit who has learned the elements: wind, dragon flames, an air shield, and enough might to swing a sword of it.
+- **Bandit Star Mage**: A bandit who has learned star magic: lights, shields of starlight, clumsiness, and Frozen Doom.
+- **Shadow Bandit**: One of the Shadow gang. Casts darkness and a spirit shield, and drains your stamina. Shoots, too.
+- **Shadow Chieftain**: Leads the Shadow gang. Hastes himself, drains stamina, shields himself, and shoots a great bow.
 
 ## Beasts
 
@@ -63,12 +86,18 @@ How the entries are grouped (a creature appears once, under its name, however ma
 - **Ogre**: Big, slow, and swings a giant axe. Hits hard enough that you should not stand in front of it.
 - **Ogre Boss**: Leads other ogres. Larger, and sometimes throws things from afar.
 - **Troll**: Takes a great many hits, and fire hurts it more than blades do.
+- **Ogre Guard**: An ogre set to watch over something. Swings a giant axe, and knows a little against poison.
+- **Cerberus**: A three-headed hound out of the underworld. Breathes dragonfire, and throws fireballs when it cannot bite.
+- **Dire Bear**: A bear grown bigger and meaner. Slow to fall, and hits like a falling door.
+- **Plague Rat**: A rat that carries sickness. Quick, and its bite is the worst of it.
+- **Scorpion**: A scorpion of the sands, in a hard shell with a quick sting.
 
 ## Lizard Men
 
 - **Lizard Man**: Armoured in scales with a turtleshell shield and a poleaxe. At home in water, and takes water magic poorly.
 - **Lizard Man Sgt**: Drills the others. Throws javelins when you keep your distance.
 - **Lizard Man Boss**: Their chieftain. [? little data: check it in play]
+- **Lizard Man King**: The lizard-men's king. Swings a great axe, casts dragon flames and fireballs, and is not to be met lightly.
 
 ## The restless dead
 
@@ -82,6 +111,7 @@ How the entries are grouped (a creature appears once, under its name, however ma
 - **Shadow**: A shapeless thing of darkness that shields against whole schools of magic. Neither blows nor spells harm it.
 - **Shamsuk**: The necromancer in the bog, who cursed Niesen and destroyed Pome. Casts haste, weakness and acid, and raises walls of bones.
 - **Lugash**: A dark caster who slows the clumsy and walls them in with bones. [?: who he is]
+- **Skeleton Warrior**: A skeleton with a blade and the will to use it, who raises walls of bones. Blades barely mark it; a smashing weapon does far better.
 
 ## Elementals and constructs
 

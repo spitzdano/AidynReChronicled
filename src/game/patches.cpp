@@ -13050,6 +13050,7 @@ namespace {
         return out.empty() ? "-" : out;
     }
 
+    std::string bestiary_canonical(const std::string& name);  // (below)
     void bestiary_parse(const std::string& s) {
         bestiary_book.clear();
         if (s == "-") return;
@@ -13069,7 +13070,17 @@ namespace {
                 std::istringstream idl(ids);
                 for (std::string id; std::getline(idl, id, ',');) e.ids.insert((uint16_t)std::atoi(id.c_str()));
             }
-            bestiary_book[name] = e;
+            name = bestiary_canonical(name);
+            const auto same = bestiary_book.find(name);
+            if (same != bestiary_book.end()) {  // (a book kept before the spellings were one: the two are added)
+                same->second.fights += e.fights;
+                same->second.meetings += e.meetings;
+                same->second.aura = std::max(same->second.aura, e.aura);
+                same->second.hp = std::max(same->second.hp, e.hp);
+                same->second.ids.insert(e.ids.begin(), e.ids.end());
+            } else {
+                bestiary_book[name] = e;
+            }
         }
     }
 
@@ -13090,6 +13101,15 @@ namespace {
         return (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)idx);
     }
 
+    // The same creature spelled another way in another version of the game (the Aidyn Patch corrects "Sorceror", "Pochanargat" and "Firelord"; Aidyn
+    // Plus writes "Lizard Man Sergeant"): one entry in the book, under the name its notes and drawing are filed by.
+    std::string bestiary_canonical(const std::string& name) {
+        static const std::map<std::string, std::string> kSame = { { "Chaos Sorcerer", "Chaos Sorceror" }, { "Pochangarat", "Pochanargat" },
+                                                                  { "Fire Lord", "Firelord" }, { "Lizard Man Sergeant", "Lizard Man Sgt" } };
+        const auto it = kSame.find(name);
+        return it == kSame.end() ? name : it->second;
+    }
+
     std::string bestiary_sheet_name(uint8_t* rdram, gpr sheet) {
         const gpr name = heap_pointer(sheet) ? MEM_W(4, sheet) : 0;
         if (!heap_pointer(name & ~(gpr)3)) return "";
@@ -13099,7 +13119,7 @@ namespace {
             if (c == 0) break;
             s += c;
         }
-        return s;
+        return bestiary_canonical(s);
     }
 
     // The fight has begun: everyone on the other side is entered (or counted once more). False until there is one.
@@ -13558,6 +13578,20 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
                 const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)i);
                 std::string nm;
                 for (int k = 0; k < 21 && MEM_B(2 + k, ent) != 0; k++) nm += (char)MEM_B(2 + k, ent);
+                if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr)
+                    fprintf(stderr, "BestiaryTable: id %u name '%s' level %u category %u described %d\n", (unsigned)MEM_HU(0, ent), nm.c_str(), (unsigned)MEM_BU(0x1C, ent), (unsigned)MEM_BU(0x17, ent), bestiary_text_for(nm) != nullptr);
+                if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr && bestiary_text_for(nm) == nullptr) {
+                    BestiaryEntry probe;
+                    probe.ids.insert(MEM_HU(0, ent));
+                    const BestiaryFacts f = bestiary_facts(rdram, ctx, probe);
+                    std::string line = "BestiaryFacts: '" + nm + "' level " + std::to_string(f.level_hi) + " stats";
+                    for (int v : f.stats) line += " " + std::to_string(v);
+                    line += " attacks";
+                    for (const auto& a : f.attacks) line += " " + a;
+                    line += " resists";
+                    for (const auto& r : f.resists) line += " [" + r.first + " " + r.second + "]";
+                    fprintf(stderr, "%s\n", line.c_str());
+                }
                 if (bestiary_book.count(nm) || bestiary_text_for(nm) == nullptr) continue;
                 BestiaryEntry e;
                 e.fights = e.meetings = meetings;

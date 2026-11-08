@@ -508,7 +508,18 @@ def pause_title(text, size, above=5):
     return draw
 
 
-def colour_word(text, size, colour, above=2.5):
+def embolden(mask, r):
+    """The mask grown by r pixels all round (a heavier weight of the same letters)."""
+    out = mask
+    for _ in range(r):
+        grown = out.copy()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            grown = np.maximum(grown, np.roll(np.roll(out, dy, axis=0), dx, axis=1))
+        out = grown
+    return out
+
+
+def colour_word(text, size, colour, above=2.5, bold=0):
     """A word in one flat colour (the map page's CAMP and JOURNAL labels, and the Bestiary beside them). Centred; drawn untinted."""
     def draw(w, h):
         W, H = w * SS, h * SS
@@ -517,7 +528,8 @@ def colour_word(text, size, colour, above=2.5):
         width = ink_width(text, MARCELLUS, size)
         if width + 4 * SS > W:
             sys.exit(f"make_branding.py: the label {text!r} is wider than {w} texels")
-        over(img, rgb(colour), text_mask(text, MARCELLUS, size, W, H, (W - width) // 2, baseline))
+        mask = text_mask(text, MARCELLUS, size, W, H, (W - width) // 2, baseline)
+        over(img, rgb(colour), embolden(mask, bold) if bold else mask)
         return img
     return draw
 
@@ -615,8 +627,10 @@ for _key, _word in (("inv", "Inventory"), ("spl", "Spells"), ("buy", "Buy"), ("s
 _bst_size = 100
 while ink_width("JOURNAL", MARCELLUS, _bst_size) < 70 * SS:
     _bst_size += 2
-BST_LABEL_W = int(ink_width("BESTIARY", MARCELLUS, _bst_size) / SS) + 6
-IMAGES += [("bst_label", BST_LABEL_W, 16, colour_word("BESTIARY", _bst_size, "#FFFFFF", above=2.5))]
+_bst_size = int(_bst_size * 0.9)  # (the game's letters are a heavier weight: at the same width ours stand taller and thinner, so smaller and bolder)
+BST_BOLD = 2
+BST_LABEL_W = int(ink_width("BESTIARY", MARCELLUS, _bst_size) / SS) + 8
+IMAGES += [("bst_label", BST_LABEL_W, 16, colour_word("BESTIARY", _bst_size, "#FFFFFF", above=2.5, bold=BST_BOLD))]
 ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
            ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]
