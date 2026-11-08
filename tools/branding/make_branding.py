@@ -610,10 +610,13 @@ for _key, _word in (("inv", "Inventory"), ("spl", "Spells"), ("buy", "Buy"), ("s
     _w = (int(ink_width(_word, MARCELLUS, PAUSE_TITLE_SIZE) / SS) + 11) // 2 * 2
     IMAGES += [(_key + "_title_l", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, False)),
                (_key + "_title_r", _w // 2, 25, half(pause_title(_word, PAUSE_TITLE_SIZE), _w, 25, True))]
-# The map page's third choice beside Camp and Journal: the same purple, and the lighter one the chosen label pulses to.
-BST_LABEL_W = int(ink_width("Bestiary", MARCELLUS, 100) / SS) + 6
-IMAGES += [("bst_label", BST_LABEL_W, 14, colour_word("Bestiary", 100, "#7B5A8C")),
-           ("bst_label_on", BST_LABEL_W, 14, colour_word("Bestiary", 100, "#9A8BDB"))]
+# The map page's third choice beside Camp and Journal: BESTIARY in the same capitals at the same size (the game's own CAMP and JOURNAL measure
+# 70 units across for JOURNAL), drawn white: the game tints it as it tints theirs (a rose brown, pulsing to lavender when chosen).
+_bst_size = 100
+while ink_width("JOURNAL", MARCELLUS, _bst_size) < 70 * SS:
+    _bst_size += 2
+BST_LABEL_W = int(ink_width("BESTIARY", MARCELLUS, _bst_size) / SS) + 6
+IMAGES += [("bst_label", BST_LABEL_W, 16, colour_word("BESTIARY", _bst_size, "#FFFFFF", above=2.5))]
 ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
            ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]

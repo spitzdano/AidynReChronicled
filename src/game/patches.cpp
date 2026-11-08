@@ -13281,12 +13281,19 @@ namespace {
                 aidyn::input::captured(&b, &sx, &sy);
                 if (b == 0 || ++bst.closing_frames > 90) { bst.closing = false; bst.closing_frames = 0; aidyn::input::set_capture(false); }
             }
-            // the label, right-aligned with CAMP and JOURNAL, its baseline 19 texels under the Journal's (page texels: Camp's is y 167.6)
-            const int label = branding_index(bst.sel ? "bst_label_on" : "bst_label");
+            // the label: the same capitals as CAMP and JOURNAL (the game's pictures, tinted rose brown, a chosen one pulsing to lavender), the same pitch
+            // under them (21.5 units) and the same right edge
+            const int label = branding_index("bst_label");
             if (label >= 0) {
                 const auto& img = aidyn::branding::kImages[label];
-                g = prompt_state(rdram, g, alpha);
-                g = pic(g, label, 260.0f - (float)img.w, 193.8f, 260.0f, 193.8f + (float)img.h);
+                uint32_t colour = 0x825050;
+                if (bst.sel) {  // the game's pulse: dark to lavender and back over twenty beats
+                    const int beat = popup_frame / 2 % 40, up = beat < 20 ? beat : 40 - beat;
+                    const auto mix = [&](int a, int b) { return (uint32_t)(a + (b - a) * up / 20); };
+                    colour = mix(0x5A, 0x97) << 16 | mix(0x3F, 0x8D) << 8 | mix(0x4A, 0xBF);
+                }
+                g = tinted_image_state(rdram, g, colour << 8 | (uint32_t)alpha);
+                g = pic(g, label, 259.5f - (float)img.w + 3.0f, 196.1f, 259.5f + 3.0f, 196.1f + (float)img.h);
             }
             return g;
         }
