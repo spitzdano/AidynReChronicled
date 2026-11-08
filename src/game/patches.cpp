@@ -13552,6 +13552,20 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
             }
             if (!e.ids.empty()) bestiary_book[smp.name] = e;
         }
+        if (std::getenv("AIDYN_BESTIARY_TEST_ALL") != nullptr) {  // every creature the table has that the bestiary describes, at the given meetings
+            const int meetings = std::getenv("AIDYN_BESTIARY_TEST_MEETINGS") ? std::atoi(std::getenv("AIDYN_BESTIARY_TEST_MEETINGS")) : 5;
+            for (uint32_t i = 0; heap_pointer(edb) && i < MEM_BU(0, edb); i++) {
+                const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)i);
+                std::string nm;
+                for (int k = 0; k < 21 && MEM_B(2 + k, ent) != 0; k++) nm += (char)MEM_B(2 + k, ent);
+                if (bestiary_book.count(nm) || bestiary_text_for(nm) == nullptr) continue;
+                BestiaryEntry e;
+                e.fights = e.meetings = meetings;
+                e.ids.insert(MEM_HU(0, ent));
+                e.hp = 8 * (int)MEM_BU(0x1C, ent) + 20;
+                bestiary_book[nm] = e;
+            }
+        }
     }
     const uint32_t a = MEM_BU(0, kTrekState);
     if (a == 2) {
