@@ -3292,6 +3292,18 @@ namespace {
     bool after_battle(uint8_t* rdram, gpr lists) {
         return heap_pointer(lists) && MEM_BU(0, (gpr)(int32_t)0x800D9550) == 5 && MEM_W(0xA8, lists) != 0;
     }
+    // The Treasure screen (a chest, or what a fight dropped; gGlobals.pauseMenuState 6 with a WidgetBarter whose invType +0x8C is not 0): the loot is
+    // a list in the panel at the left, the party's is the Inventory page's own list (barter +0x84 is that page's list) at the right. This is the
+    // party's list, or 0 when no treasure is up.
+    bool treasure_ui = false;       // the port's list is being drawn for it (no Details card, no page words: left / right switch lists)
+    bool list_inactive = false;     // the list is drawn but the cursor is in the other one (the loot): no wash, no violet
+    gpr treasure_party_list(uint8_t* rdram, gpr lists) {
+        if (!aidyn::settings::graphics().tabbed_lists || !heap_pointer(lists) || !heap_pointer(barter_widget)) return 0;
+        if (MEM_BU(0, (gpr)(int32_t)0x800D9550) != 6 || MEM_BU(0x8C, barter_widget) == 0) return 0;
+        const gpr inv = MEM_W(0x94, lists), party = MEM_W(0x84, barter_widget);
+        if (!heap_pointer(inv) || party != inv) return 0;
+        return inv;
+    }
     gpr bestiary_ui(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o);  // "Bestiary", below
     bool bestiary_wants_journal_unchosen(gpr widget);
     bool bestiary_page_open();
@@ -3905,6 +3917,23 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         } else {
             draw_row({ branding_index(loot_list ? "hint_take" : "hint_putback"), branding_index("hint_leave"),
                        branding_index("hint_switch") }, 192.0f);
+        }
+    }
+    // Treasure: the party's list at the right in the port's way (tabs, headings, sort); the loot's stays the game's, in its panel.
+    if (treasure_title.seen && treasure_title.alpha != 0 && !treasure_title.shop && frame_ctx != nullptr && inventory_page.seen && inventory_page.alpha != 0 && heap_pointer(doll_lists)) {
+        const gpr inv = treasure_party_list(rdram, doll_lists);
+        if (inv != 0) {
+            const bool party_active = MEM_W(0x88, barter_widget) == MEM_W(0x84, barter_widget);
+            hide_list_ttl = 3;
+            menu_keys = party_active ? (0x0008u | 0x0800u | 0x0400u | 0x0020u | 0x0010u) : 0u;  // (X and the D-pad's left / right stay the game's)
+            const uint32_t edges = aidyn::input::take_menu_keys();
+            post_battle_ui = true;
+            treasure_ui = true;
+            list_inactive = !party_active;
+            g = list_overlay(rdram, frame_ctx, g, inventory_page, 0, inv, party_active ? edges : 0u);
+            post_battle_ui = false;
+            treasure_ui = false;
+            list_inactive = false;
         }
     }
     bool page_clipped = false;
@@ -8313,7 +8342,8 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
         for (int off : { 0x94, 0x98, 0x9C, 0xA0 }) {
             const gpr page = MEM_W(off, doll_lists);
             if (off == 0xA0 && !after_battle(rdram, doll_lists)) continue;  // (the Stats page's title: only where the port draws its page)
-            if (heap_pointer(page) && (((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists)) && w == MEM_W(0x7C, page)) {
+            const bool treasure_title_here = off == 0x94 && treasure_party_list(rdram, doll_lists) != 0;  // (Treasure: the Inventory page's)
+            if (heap_pointer(page) && (((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists) || treasure_title_here) && w == MEM_W(0x7C, page)) {
                 ctx->r2 = ctx->r5;
                 return 1;
             }
@@ -10295,6 +10325,7 @@ extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     // is only drawn once the page is seen): the pause menu proper (state 7, or 3 in a fight) with its lists up, none after a battle.
     const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);  // gGlobals.BigAssMenu: the pause menu is up
     const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
+    if (treasure_party_list(rdram, doll_lists) != 0 && widget == MEM_W(0x80, MEM_W(0x94, doll_lists))) return 1;  // Treasure: the party's list
     if (!heap_pointer(big) || !(((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists))) return 0;
     for (uint32_t off : { 0x94u, 0x98u, 0x9Cu }) {  // the inventory, spells and skills lists of the doll page's lists widget
         const gpr list = MEM_W(off, doll_lists);
@@ -11026,7 +11057,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     for (int i = ui.top; i < (int)view.size() && i < ui.top + visible; i++) {
         const float y = snap_row(rows_y + (i - ui.top) * kListRowStep);
         if (view[i].heading) g = pic(g, heading_pic, kListX0, y + 2.4f, kListX1, y + 7.4f);
-        else if (i == pos) g = pic(g, hl_pic, kListX0, y - 0.5f, kListX1, y + 8.5f);
+        else if (i == pos && !list_inactive) g = pic(g, hl_pic, kListX0, y - 0.5f, kListX1, y + 8.5f);
     }
     // The scroll bar, when there is more than fits.
     if ((int)view.size() > visible) {
@@ -11079,7 +11110,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     {  // where the D-pad goes: the page to the left and to the right (the pages turn Inventory, Spells, Character; right is the previous index)
         static const char* const pages[3] = { "Inventory", "Spells", "Character" };
         // (no arrows: the game's font draws < and > as a skull and a heart)
-        if (!shop && !tr && post_battle_ui) {  // after a battle the pages turn Attributes, Character, Spells (the inventory is not among them)
+        if (treasure_ui) {
+            // (Treasure: left / right switch between the loot and the party's list: the game's own hint)
+        } else if (!shop && !tr && post_battle_ui) {  // after a battle the pages turn Attributes, Character, Spells (the inventory is not among them)
             g = ctl_text(rdram, ctx, g, kind == 2 ? "Attributes" : "Character", X(228.0f), Y(208.4f), 0.45f, brown, alpha);
             g = ctl_text(rdram, ctx, g, kind == 2 ? "Spells" : "Attributes", X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
         } else if (!shop && !tr) {
@@ -11109,7 +11142,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             g = ctl_text(rdram, ctx, g, e.text, X(kListX0 + 15.0f), Y(y + 0.2f), 0.45f, brown, alpha);
             continue;
         }
-        const bool sel = i == pos;
+        const bool sel = i == pos && !list_inactive;
         if (e.portrait_widget != 0) {
             // The portrait is drawn by the game's own widget (its Render, WidgetBorg8: the same call as in the game's list), set in the
             // place and size wanted: a picture of mine drawn the same way came out low resolution (the redrawn portraits replace it only
