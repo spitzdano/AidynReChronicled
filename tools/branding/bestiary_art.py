@@ -6,7 +6,7 @@ into the three stages the page shows as Alaron meets more of them, for make_bran
   stage 3  the finished drawing    (after 5 fights)  as painted
 
 Each stage is the 126 x 40 unit frame cut into three tiles of 42 x 40 units (a picture is at most one 4 KB load of the N64's texture memory),
-named bst_<slug>_<stage>_<tile>: the slug is the creature's name in lower case without spaces, as src/game/patches.cpp makes it. A tile with
+named bsd_<slug>_<stage>_<tile>: the slug is the creature's name in lower case without spaces, as src/game/patches.cpp makes it. A tile with
 nothing in it is left out (the page draws the ones there are). The stages are made from the finished drawing alone: nothing is drawn by hand.
 """
 from pathlib import Path
@@ -21,7 +21,7 @@ SOURCE = Path(__file__).resolve().parents[2] / "art/bestiary"
 S = 8
 FRAME_W, FRAME_H, TILE_W = 126, 40, 42
 INK = np.array([0x4A, 0x34, 0x3A], np.float32) / 255
-GRAPHITE = np.array([0x6A, 0x5C, 0x62], np.float32) / 255
+GRAPHITE = np.array([0x5A, 0x4C, 0x52], np.float32) / 255
 
 
 def slug(name):
@@ -92,7 +92,7 @@ def stage_rough(rgb, alpha, seed):
         gaps = np.clip(_smooth_noise(base.shape, 14, rng) * 2.2 + 0.9 - k * 0.35, 0, 1)  # the pencil lifts: breaks in the line
         grain = np.clip(0.55 + rng.random(base.shape) * 0.7, 0, 1)  # paper tooth
         out = np.maximum(out, stroke * gaps * grain * (0.85 - 0.25 * k))
-    out = np.clip(out * 1.15, 0, 1)
+    out = np.clip(out * 1.5, 0, 1)
     return out, GRAPHITE
 
 
@@ -108,7 +108,7 @@ def _tiles(img_premul, name, stage):
         part = img_premul[:, t * TILE_W * S:(t + 1) * TILE_W * S]
         if part[..., 3].max() < 0.02:
             continue  # nothing in this piece
-        out.append((f"bst_{slug(name)}_{stage}_{t}", TILE_W, FRAME_H, part.copy()))
+        out.append((f"bsd_{slug(name)}_{stage}_{t}", TILE_W, FRAME_H, part.copy()))
     return out
 
 

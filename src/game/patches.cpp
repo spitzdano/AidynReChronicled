@@ -1890,6 +1890,7 @@ namespace {
         uint32_t address = kBrandingBase;
         for (size_t i = 0; i < std::size(aidyn::branding::kImages); i++) {
             const auto& img = aidyn::branding::kImages[i];
+            if (std::strncmp(img.name, "bsd_", 4) == 0) continue;  // the bestiary's drawings are copied when a page shows them (bestiary_tile_slot): there are too many to keep
             if (address + (uint32_t)img.w * img.h * 2 > kBrandingEnd) {
                 fprintf(stderr, "The branding pictures don't fit below the fixed slots (patches.cpp kBrandingEnd)\n");
                 std::abort();
@@ -12997,9 +12998,9 @@ extern "C" void aidyn_journal_dump(uint8_t* rdram, recomp_context* ctx) {
 // count of those fought, and what Sense Aura told of them, decide how much the page says (below). The record goes with each save the
 // port writes (save-bestiary.txt beside the saves, by the save's hash, as the Fair play records do).
 //   Always        the name, its family, Alaron's note, how many have been fought
-//   3 fought, or Sense Aura at level 3+     level and hit points (the game's Sense Aura: 3+ hit points, 5+ level)
-//   6 fought, or Sense Aura at level 7+     resistances, and the weapons it fights with
-//   10 fought, or Sense Aura at level 9+    the six attributes
+//   3 fights, or Sense Aura at level 3+     level and hit points (the game's Sense Aura: 3+ hit points, 5+ level)
+//   6 fights, or Sense Aura at level 7+     resistances, and the weapons it fights with
+//   10 fights, or Sense Aura at level 9+    the six attributes
 //   A boss (one fought only once: the story's) shows everything after the first fight.
 // What it shows is read from the game's own creature table (EntityRAM, 0x80 each: name +2, Category +0x17, Level +0x1C, weapon skills
 // +0x2E, stats +0x39, resist elements +0x63, resist multipliers (floats) +0x68), so nothing here is copied from the game.
@@ -13131,11 +13132,11 @@ namespace {
 
     // How much of an entry the page may say: 0 the note only, 1 + level and hit points, 2 + resistances and attacks, 3 + attributes.
     int bestiary_tier(const BestiaryEntry& e, bool boss) {
-        if (boss && e.fights >= 1) return 3;
+        if (boss && e.meetings >= 1) return 3;
         int t = 0;
-        if (e.fights >= 3 || e.aura > 2) t = 1;
-        if (e.fights >= 6 || e.aura > 6) t = 2;
-        if (e.fights >= 10 || e.aura > 8) t = 3;
+        if (e.meetings >= 3 || e.aura > 2) t = 1;  // fights it was in, not creatures: a fight with five goblins is one
+        if (e.meetings >= 6 || e.aura > 6) t = 2;
+        if (e.meetings >= 10 || e.aura > 8) t = 3;
         return t;
     }
 
@@ -13202,6 +13203,15 @@ namespace {
                                   std::string(kElements[element]) + (percent > 0 ? " (takes " + std::to_string(percent) + "%)" : "") });
         }
         return f;
+    }
+
+    // A drawing's tile in RDRAM for this frame: the page's three tiles go in 4 KB slots at 0x80F88000 (the frame's even and odd ones apart, so one
+    // being drawn is not rewritten by the next frame's), free memory between the save buffer and the Help text.
+    void bestiary_tile_slot(uint8_t* rdram, int image, int tile) {
+        const auto& img = aidyn::branding::kImages[image];
+        const uint32_t base = 0x80F88000u + (popup_frame & 1) * 0x3000u + (uint32_t)tile * 0x1000u;
+        for (uint32_t k = 0; k < (uint32_t)img.w * img.h; k++) MEM_H(k * 2, (gpr)(int32_t)base) = img.rgba16[k];
+        branding_address[image] = (gpr)(int32_t)base;
     }
 
     // The words under the map page's Journal: Bestiary, and its page.
@@ -13352,12 +13362,13 @@ namespace {
         {  // Alaron's drawing: rough after one fight with it, refined after three, finished (colour) after five; a boss, or a strong Sense Aura, shows it finished.
             std::string key;
             for (char c : std::string(r.text ? r.text->game : r.name.c_str())) if (std::isalnum((unsigned char)c)) key += (char)std::tolower((unsigned char)c);
-            const int stage = (r.boss && r.e->fights >= 1) || r.e->aura > 8 || r.e->meetings >= 5 ? 3 : r.e->meetings >= 3 ? 2 : 1;
+            const int stage = (r.boss && r.e->meetings >= 1) || r.e->aura > 8 || r.e->meetings >= 5 ? 3 : r.e->meetings >= 3 ? 2 : 1;
             bool any = false;
             g = prompt_state(rdram, g, alpha);
             for (int t = 0; t < 3; t++) {
-                const int image = branding_index(("bst_" + key + "_" + std::to_string(stage) + "_" + std::to_string(t)).c_str());
+                const int image = branding_index(("bsd_" + key + "_" + std::to_string(stage) + "_" + std::to_string(t)).c_str());
                 if (image < 0) continue;
+                bestiary_tile_slot(rdram, image, t);
                 any = true;
                 g = pic(g, image, rx0 + 42.0f * (float)t, 52.0f, rx0 + 42.0f * (float)(t + 1), 92.0f);
             }
@@ -13373,7 +13384,7 @@ namespace {
         g = ctl_text(rdram, ctx, g, r.text ? r.text->shown : r.name, X(rx0), Y(94.0f), 0.8f, ink, alpha);
         const bool people = r.text == nullptr;
         g = ctl_text(rdram, ctx, g, people ? std::string("People") : std::string(r.text->family), X(rx0), Y(105.5f), 0.5f, brown, alpha);
-        g = ctl_text(rdram, ctx, g, "Fought: " + std::to_string(r.e->fights), X(rx1), Y(105.5f), 0.5f, brown, alpha, true);
+        g = ctl_text(rdram, ctx, g, "Fights: " + std::to_string(r.e->meetings), X(rx1), Y(105.5f), 0.5f, brown, alpha, true);
         const std::string note = r.text ? r.text->text : "A person of the story, met in a fight. Alaron has not written about them yet.";
         float y = 115.0f;
         for (const std::string& l : wrap_lines(rdram, ctx, note, X(rx1) - X(rx0), 0.55f)) {
@@ -13470,7 +13481,7 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
         const gpr edb = MEM_W(0, (gpr)(int32_t)0x800E2830);
         static const struct { const char* name; int fights; int aura; } kSample[] = {
             { "Goblin", 12, 0 }, { "Goblin Scout", 4, 0 }, { "Wolf", 7, 0 }, { "Troll", 1, 0 }, { "Wyvern", 3, 9 }, { "Chaos Slayer", 1, 0 },
-            { "Shamsuk", 1, 0 }, { "Skeleton", 6, 0 }, { "Hellhound", 2, 0 }, { "Giant Rat", 15, 0 }, { "Ogre", 5, 0 }, { "Harpy", 1, 0 } };
+            { "Shamsuk", 1, 0 }, { "Skeleton", 6, 0 }, { "Hellhound", 2, 0 }, { "Giant Rat", 15, 0 }, { "Ogre", 5, 0 }, { "Harpy", 1, 0 }, { "Tomb Rat", 4, 0 }, { "Giant Bat", 4, 0 }, { "Darkenbat", 4, 0 } };
         for (const auto& smp : kSample) {
             BestiaryEntry e;
             e.fights = smp.fights;
