@@ -3285,6 +3285,13 @@ namespace {
     gpr draw_skill_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, gpr list);
     gpr draw_details_state(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, bool on, int sort_mode);
     gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& page, int kind, gpr list, uint32_t keys, gpr shop = 0, gpr trainer = 0);  // "Inventory page lists", below
+    // After a battle (gGlobals.pauseMenuState 5, the Train panel over the page's left side): the port's lists are drawn at the right as in the pause
+    // menu, but there is no Details card (the panel is where the doll goes) and X is the game's own.
+    bool post_battle_ui = false;
+    gpr stats_page_after_battle(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, gpr lists);  // below, with the Character page's pieces
+    bool after_battle(uint8_t* rdram, gpr lists) {
+        return heap_pointer(lists) && MEM_BU(0, (gpr)(int32_t)0x800D9550) == 5 && MEM_W(0xA8, lists) != 0;
+    }
     gpr bestiary_ui(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o);  // "Bestiary", below
     bool bestiary_wants_journal_unchosen(gpr widget);
     bool bestiary_page_open();
@@ -3999,17 +4006,25 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         // keys (X Details, Y sort, the D-pad, LB / RB) are the port's, and the game's own list is hidden under them. The skills list
         // is the game's, with X as the Details switch. Not after a battle (the Train panel).
         const uint32_t pause_state = MEM_BU(0, (gpr)(int32_t)0x800D9550);  // gGlobals.pauseMenuState: 7 the pause menu, 3 its fight form, 4 a trainer, 5 after a battle, 6 a shop
-        const bool trained = MEM_W(0xA8, lists) != 0 || (pause_state != 7 && pause_state != 3);  // (the game's own lists there: shops and trainers are not redone yet)
+        const bool battle_over = after_battle(rdram, lists);
+        const bool trained = !battle_over && (MEM_W(0xA8, lists) != 0 || (pause_state != 7 && pause_state != 3));  // (the game's own lists there: shops and trainers are not redone yet)
         const bool own_lists = aidyn::settings::graphics().tabbed_lists && frame_ctx != nullptr && !trained && inventory_page.alpha != 0;
         hide_list_ttl = std::max(0, hide_list_ttl - 1);
         bool own_drawn = false;
+        if (frame_ctx != nullptr && battle_over && shown != 0 && heap_pointer(shown) && shown == MEM_W(0xA0, lists) && inventory_page.alpha != 0) {
+            own_drawn = true;  // (the Stats page: drawn by the port; the game's cursor, A and the pages are still the game's)
+            menu_keys = 0;
+            g = stats_page_after_battle(rdram, frame_ctx, g, inventory_page, lists);
+        }
         if (frame_ctx != nullptr && !trained && (on_inventory || on_spells || on_skills)) {
             uint32_t edges = 0;
             if (own_lists) {
                 own_drawn = true;
-                menu_keys = 0x0004 | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;
+                menu_keys = (battle_over ? 0u : 0x0004u) | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;  // (X is the game's after a battle)
                 edges = aidyn::input::take_menu_keys();
+                post_battle_ui = battle_over;
                 g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : on_spells ? 1 : 2, on_inventory ? inventory : on_spells ? spells_list : skills_list, edges);
+                post_battle_ui = false;
                 if (on_skills) menu_keys |= chr_ui.keys;  // the attributes row, while it is chosen, keeps left / right and A (and B to refuse)
             } else {
                 menu_keys = 0x0004;
@@ -8295,9 +8310,10 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     if (heap_pointer(w) && heap_pointer(doll_lists) && aidyn::settings::graphics().tabbed_lists) {
         const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
         // (the Inventory and Spells titles too: they slid on the game's own clock, out of step with the lists: list_overlay draws all three)
-        for (int off : { 0x94, 0x98, 0x9C }) {
+        for (int off : { 0x94, 0x98, 0x9C, 0xA0 }) {
             const gpr page = MEM_W(off, doll_lists);
-            if (heap_pointer(page) && (state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0 && w == MEM_W(0x7C, page)) {
+            if (off == 0xA0 && !after_battle(rdram, doll_lists)) continue;  // (the Stats page's title: only where the port draws its page)
+            if (heap_pointer(page) && (((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists)) && w == MEM_W(0x7C, page)) {
                 ctx->r2 = ctx->r5;
                 return 1;
             }
@@ -10279,10 +10295,14 @@ extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     // is only drawn once the page is seen): the pause menu proper (state 7, or 3 in a fight) with its lists up, none after a battle.
     const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);  // gGlobals.BigAssMenu: the pause menu is up
     const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
-    if (!heap_pointer(big) || (state != 7 && state != 3) || MEM_W(0xA8, doll_lists) != 0) return 0;
+    if (!heap_pointer(big) || !(((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists))) return 0;
     for (uint32_t off : { 0x94u, 0x98u, 0x9Cu }) {  // the inventory, spells and skills lists of the doll page's lists widget
         const gpr list = MEM_W(off, doll_lists);
         if (heap_pointer(list) && widget == MEM_W(0x80, list)) return 1;
+    }
+    if (after_battle(rdram, doll_lists)) {  // the Stats page's list (the port draws its attributes)
+        const gpr stats = MEM_W(0xA0, doll_lists);
+        if (heap_pointer(stats) && widget == MEM_W(0x80, stats)) return 1;
     }
     return 0;
 }
@@ -10581,6 +10601,61 @@ gpr draw_attribute_card(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleS
                           "Raise it with experience, a point at a time, each costing more than the one before. Equipment and spells can lower or raise it "
                           "for a while: the number in brackets.", facts);
 }
+
+// The Stats page after a battle (the first page of the Train screen: the attributes are trained here, A on the one the game's list has the
+// cursor on): the same plates as the Character page's, a title of the port's, the experience as a short ledger. Up and down, A and the page
+// turns are the game's own; the list under it is not drawn (aidyn_hide_list).
+gpr stats_page_after_battle(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o, gpr lists) {
+    const int alpha = o.alpha;
+    const float hs = MEM_HU(kHres1, (gpr)gGfxManager) / 320.0f, vs = MEM_HU(kVres1, (gpr)gGfxManager) / 240.0f;
+    auto X = [&](float tx) { return (o.x + tx * o.sx) / hs; };
+    auto Y = [&](float ty) { return (o.y + ty * o.sy) / vs; };
+    const gpr stat_menu = MEM_W(0xA0, lists);
+    const gpr scroll = heap_pointer(stat_menu) ? MEM_W(0x80, stat_menu) : 0;
+    const gpr sub = heap_pointer(scroll) ? MEM_W(0x40, scroll) : 0;
+    if (!heap_pointer(sub)) return g;
+    const uint32_t hl = MEM_HU(0x1E, sub);
+    chr_ui.strip = true;  // (the strip's chosen attribute follows the game's cursor)
+    chr_ui.stat = std::min<int>((int)hl, 5);
+    chr_ui.confirm = -1;
+    chr_ui.msg_frames = 0;
+    {  // the title
+        const int title_l = branding_index("att_title_l"), title_r = branding_index("att_title_r");
+        g = prompt_state(rdram, g, alpha);
+        if (title_l >= 0 && title_r >= 0) {
+            const auto& il = aidyn::branding::kImages[title_l];
+            const float w = (float)il.w * 2.0f, x0 = 228.5f - w / 2.0f;
+            g = page_pic(rdram, g, o, title_l, x0, 77.0f, x0 + il.w, 77.0f + (float)il.h);
+            g = page_pic(rdram, g, o, title_r, x0 + il.w, 77.0f, x0 + w, 77.0f + (float)il.h);
+        }
+        const int rule = branding_index("mt_rule");
+        g = page_pic(rdram, g, o, rule, 163.0f, 129.6f, 294.0f, 131.2f);
+        g = ctl_state(rdram, ctx, g);
+    }
+    g = character_strip(rdram, ctx, g, o, alpha, 1.0f);
+    chr_ui.strip = false;  // (only for the drawing: the Character page's own strip keeps the D-pad's left and right while it is chosen)
+    // the experience: what is to spend, the total, and what the next level asks
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);
+    const uint32_t who = MEM_BU(0x91, lists);
+    const gpr sheet = heap_pointer(party) && who < 4 ? MEM_W(4 * who, party) : 0;
+    const gpr exp = heap_pointer(sheet) ? MEM_W(0x14, sheet) : 0;
+    const uint32_t brown = 0x7B5560, ink = 0x825050;
+    const std::string total = text_widget_string(rdram, MEM_W(0x98, stat_menu)), next = text_widget_string(rdram, MEM_W(0x9C, stat_menu));
+    struct Line { const char* label; std::string value; };
+    const Line lines[] = { { "XP to spend", heap_pointer(exp) ? std::to_string((int32_t)MEM_W(8, exp)) : std::string() },
+                           { "Total XP", total }, { "Next level at", next } };
+    float y = 140.0f;
+    for (const Line& l : lines) {
+        if (l.value.empty()) continue;
+        g = ctl_text(rdram, ctx, g, l.label, X(164.0f), Y(y), 0.5f, brown, alpha);
+        g = ctl_text(rdram, ctx, g, l.value, X(293.0f), Y(y), 0.5f, ink, alpha, true);
+        y += 9.5f;
+    }
+    // where the D-pad goes (Attributes, Character, Spells turn in that order)
+    g = ctl_text(rdram, ctx, g, "Spells", X(228.0f), Y(208.4f), 0.45f, brown, alpha);
+    g = ctl_text(rdram, ctx, g, "Character", X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
+    return g;
+}
 }  // namespace
 
 namespace {
@@ -10851,7 +10926,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             } else if (ty >= chip_y && ty < chip_y + 8.0f) {
                 if (!chr && !shop && !tr && tx >= 161.0f && tx < 197.0f) { settings.inventory_sort = (settings.inventory_sort + 1) % 3; aidyn::settings::save_number("graphics", "inventory_sort", settings.inventory_sort); }
                 else if (shop && tx >= 244.0f && tx < 296.0f) set_shop_side(tx < 270.0f ? 0 : 1);
-                else if (!shop && !tr && tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
+                else if (!shop && !tr && !post_battle_ui && tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
             }
         }
     }
@@ -10889,9 +10964,10 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     hover_frames[kind] = std::max(0, hover_frames[kind] - 1);
     if (hover_moved_over_rows[kind]) hover_frames[kind] = 150;  // a mouse over the rows shows the card for a while even with Details off
     hover_moved_over_rows[kind] = false;
-    if (chr && chr_ui.strip && settings.details) {
+    if (post_battle_ui) hover_frames[kind] = 0;  // (no card after a battle: the Train panel is where it would go)
+    if (!post_battle_ui && chr && chr_ui.strip && settings.details) {
         g = draw_attribute_card(rdram, ctx, g, o, chr_ui.stat);
-    } else if (settings.details || hover_frames[kind] > 0 || shop || tr) {
+    } else if (!post_battle_ui && (settings.details || hover_frames[kind] > 0 || shop || tr)) {
         shop_card_price = shop && pos >= 0 ? price_of(view[pos]) : -2;
         shop_card_buying = shop_side == 0;
         if (tr && pos >= 0) {  // what training it costs, in the game's terms (the Oriana's trainers ask no gold: its own gold line is blank)
@@ -10928,7 +11004,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     const float sort_x = 161.0f, sort_w = 36.0f, det_x = 244.0f, det_w = 52.0f;
     const bool left_chip = !chr && !tr && (!shop || shop_side == 0);  // Sort; in a shop Y appraises (the keeper's stock only)
     if (left_chip) g = pic(g, branding_index("mc_chip"), sort_x, chip_y, sort_x + sort_w, chip_y + 8.0f);
-    const bool chip_up = !tr && !(chr && (chr_ui.strip || chr_ui.msg_frames > 0));  // the attributes' line takes the Details chip's place while it speaks
+    const bool chip_up = !tr && !post_battle_ui && !(chr && (chr_ui.strip || chr_ui.msg_frames > 0));  // the attributes' line takes the Details chip's place while it speaks
     if (chip_up) g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, chip_y, det_x + det_w, chip_y + 8.0f);
     {  // the button icons in the middle of where the slot was (4 texels in, 4 down: the chip is 8 tall), 6.4 texels across
         const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
@@ -11003,7 +11079,10 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     {  // where the D-pad goes: the page to the left and to the right (the pages turn Inventory, Spells, Character; right is the previous index)
         static const char* const pages[3] = { "Inventory", "Spells", "Character" };
         // (no arrows: the game's font draws < and > as a skull and a heart)
-        if (!shop && !tr) {
+        if (!shop && !tr && post_battle_ui) {  // after a battle the pages turn Attributes, Character, Spells (the inventory is not among them)
+            g = ctl_text(rdram, ctx, g, kind == 2 ? "Attributes" : "Character", X(228.0f), Y(208.4f), 0.45f, brown, alpha);
+            g = ctl_text(rdram, ctx, g, kind == 2 ? "Spells" : "Attributes", X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
+        } else if (!shop && !tr) {
             g = ctl_text(rdram, ctx, g, pages[(kind + 1) % 3], X(228.0f), Y(208.4f), 0.45f, brown, alpha);
             g = ctl_text(rdram, ctx, g, pages[(kind + 2) % 3], X(294.0f), Y(208.4f), 0.45f, brown, alpha, true);
         }
@@ -13744,6 +13823,14 @@ bool popup_borg8(uint8_t* rdram, recomp_context* ctx, gpr w) {
 // WidgetText::Render (a message) and WidgetClipText::Render (a choice), before they draw (a0 the widget, a1 the display list): in a pop-up the words
 // are written here instead. 1: done.
 extern "C" int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice) {
+    if (aidyn::settings::graphics().tabbed_lists && heap_pointer(doll_lists) && after_battle(rdram, doll_lists)) {  // the Stats page's own words: the port writes them
+        const gpr stats = MEM_W(0xA0, doll_lists), w0 = (gpr)(int32_t)ctx->r4;
+        if (heap_pointer(stats) && heap_pointer(w0)) {
+            for (uint32_t off = 0x84; off <= 0xAC; off += 4) {
+                if (MEM_W(off, stats) == (int32_t)w0) { ctx->r2 = ctx->r5; return 1; }
+            }
+        }
+    }
     if (!popup_rendering || popup_box_frame != popup_frame || !aidyn::settings::graphics().tabbed_lists) return 0;
     const gpr w = (gpr)(int32_t)ctx->r4;
     if (!heap_pointer(w)) return 0;
