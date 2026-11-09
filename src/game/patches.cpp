@@ -13447,7 +13447,7 @@ namespace {
                     colour = mix(0x5A, 0x97) << 16 | mix(0x3F, 0x8D) << 8 | mix(0x4A, 0xBF);
                 }
                 g = tinted_image_state(rdram, g, colour << 8 | (uint32_t)alpha);
-                g = pic(g, label, 259.5f - (float)img.w + 3.0f, 196.1f, 259.5f + 3.0f, 196.1f + (float)img.h);
+                g = pic(g, label, 259.5f - (float)img.w + 3.0f, 193.5f, 259.5f + 3.0f, 193.5f + (float)img.h);
             }
             return g;
         }

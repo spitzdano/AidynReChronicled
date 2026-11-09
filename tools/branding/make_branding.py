@@ -630,7 +630,7 @@ while ink_width("JOURNAL", MARCELLUS, _bst_size) < 70 * SS:
 _bst_size = int(_bst_size * 0.9)  # (the game's letters are a heavier weight: at the same width ours stand taller and thinner, so smaller and bolder)
 BST_BOLD = 2
 BST_LABEL_W = int(ink_width("BESTIARY", MARCELLUS, _bst_size) / SS) + 8
-IMAGES += [("bst_label", BST_LABEL_W, 16, colour_word("BESTIARY", _bst_size, "#FFFFFF", above=2.5, bold=BST_BOLD))]
+IMAGES += [("bst_label", BST_LABEL_W, 16, colour_word("BESTIARY", _bst_size, "#FFFFFF", above=2.94, bold=BST_BOLD))]
 ACH_TITLE_W = (int(ink_width("Achievements", MARCELLUS, TITLE_SIZE) / SS) + 11) // 2 * 2
 IMAGES += [("ach_title_l", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, False)),
            ("ach_title_r", ACH_TITLE_W // 2, 25, half(page_title("Achievements", TITLE_SIZE, 5), ACH_TITLE_W, 25, True))]
