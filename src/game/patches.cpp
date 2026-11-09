@@ -2876,9 +2876,11 @@ namespace {
         }
         return idx;
     }
-    const int portrait_forced() {
+    int portrait_forced() {
         static const int forced = std::getenv("AIDYN_PORTRAIT_STATE") ? std::atoi(std::getenv("AIDYN_PORTRAIT_STATE")) : -1;
         static const bool off = std::getenv("AIDYN_NO_PORTRAIT_STATES") != nullptr;
+        static const bool cycle = std::getenv("AIDYN_PORTRAIT_CYCLE") != nullptr;  // every state in turn, two seconds each (to see the changes)
+        if (cycle) return (popup_frame / 120) % 5;
         return off ? -2 : forced;
     }
 }
@@ -2900,6 +2902,13 @@ void portrait_states_frame(uint8_t* rdram, recomp_context* ctx) {
         const int hp_max = (int)(call_game(rdram, ctx, Entity__getHPMax, (uint32_t)member) & 0xFF);
         const int idx = portrait_apply(rdram, img, forced, true, portrait_hp_state(hp, hp_max));
         if (idx >= 0) portrait_want[idx] = portrait_hp_state(hp, hp_max);
+        static const bool log = std::getenv("AIDYN_PORTRAIT_LOG") != nullptr;
+        static int last[4] = { -9, -9, -9, -9 };
+        if (log && last[i] != hp * 1000 + hp_max) {
+            last[i] = hp * 1000 + hp_max;
+            fprintf(stdout, "Portrait: member %u hp %d / %d -> state %d (%s)\n", i, hp, hp_max, portrait_hp_state(hp, hp_max), idx >= 0 ? kPortraitStates[idx].name : "no portrait");
+            fflush(stdout);
+        }
     }
 }
 
