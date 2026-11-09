@@ -12,7 +12,7 @@ struct PortraitStateInfo {
 };
 
 constexpr PortraitStateInfo kPortraitStates[] = {
-    { 0x84F4294D132DBBC2ull, 40, 40, 0x00, "PortraitAbrecan" },
+    { 0x84F4294D132DBBC2ull, 40, 40, 0x1E, "PortraitAbrecan" },
     { 0x368C0689F865FA67ull, 40, 40, 0x1E, "PortraitAlaron" },
     { 0x6A411BC6D00CA7DAull, 40, 40, 0x1E, "PortraitArturo" },
     { 0xB10A6F568C90D6ACull, 40, 40, 0x1E, "PortraitBaird" },
