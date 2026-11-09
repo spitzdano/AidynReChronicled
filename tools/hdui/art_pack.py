@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_pack import PROJECT, image_key  # noqa: E402
 import portraits  # noqa: E402
+import portrait_states  # noqa: E402
 import potions  # noqa: E402
 import redone  # noqa: E402
 import romimages  # noqa: E402
@@ -168,6 +169,7 @@ def main():
                               crop_scale_of=lambda name: 4 if name in party else 2)
     entries += romimages.build(args.rom, decomp, tmemhash, None, None, out, 4, set(), image_key, art=art, only_art=True)
     entries += big_pictures(args.rom, decomp, art, out, tmemhash)
+    entries += portrait_states.entries(args.rom, out, portrait_states.STATES, tmemhash)  # the party's damage portraits (art/portraits/party/states)
     textures = {} if args.no_world else redone.collect_textures()
     if textures:
         entries += world_textures(args.rom, textures, out, tmemhash)

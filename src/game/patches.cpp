@@ -32,6 +32,8 @@ namespace {
 // They are drawn only when settings.json has "overscan_borders": true; everything else is as the original.
 gpr aidyn_ff_marker(uint8_t* rdram, gpr g);  // "Fast-forward", below
 gpr aidyn_prompts(uint8_t* rdram, gpr g);    // "Button prompts", below
+void portrait_states_frame(uint8_t* rdram, recomp_context* ctx);  // "Portrait states", below
+void portrait_states_widget(uint8_t* rdram, gpr widget);
 std::string help_keys_text();               // "Keys on the prompts", below
 gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float sx, float sy);  // "Keys on the prompts", below
 gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover, bool text_state = false);
@@ -91,6 +93,7 @@ extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
     heap_trace_frame(rdram);
     free_spill_frame(rdram, ctx);
     g = treasure_sparkle(rdram, ctx, g);
+    portrait_states_frame(rdram, ctx);
     if (!prompts_early) g = aidyn_prompts(rdram, g);  // (in a pause menu with a pop-up over it they were drawn under the pop-up: aidyn_handler_widget)
     handler_big_seen = prompts_early = popup_rendering = false;
     popup_frame++;
@@ -2798,6 +2801,115 @@ extern "C" void CharStats__getModded(uint8_t* rdram, recomp_context* ctx);
 
 extern "C" int aidyn_combat_bars_hidden() {
     return redesigned_card() ? 1 : 0;
+}
+
+// ---- Portrait states ----
+// A party member's portrait shows how hurt they are: the portrait picture the game keeps on each CharSheet (+0x44, the same one the pause menu,
+// the combat columns and the turn-order strip draw) is changed in place, once a frame, to the picture of the state the hit points are in: more
+// than 80 % the ordinary portrait, 61 to 80 % state 1, 41 to 60 % state 2, 21 to 40 % state 3, 20 % or less state 4. The art pack replaces a
+// picture by the hash of its pixels, so each state is the same picture with a change that draws the same but hashes differently (the item
+// icons' trick: tools/hdui/portrait_states.py): for state n the (n - 1)th palette entry the picture doesn't use takes the colour of its middle
+// texel and the middle texel points at that entry. portrait_states.h says which portraits (by the hash of their pixels, middle texel
+// left out) have which states painted: a state without its picture is never shown. AIDYN_PORTRAIT_STATE=n shows state n on everyone, to look at.
+#include "portrait_states.h"
+namespace {
+    struct PortraitSlot {
+        int state = 0;          // the state applied to this picture now
+        int entry = -1;         // the palette entry it uses
+        uint16_t saved_entry = 0;
+        uint8_t saved_mid = 0;  // the middle texel's own index
+    };
+    std::map<gpr, PortraitSlot> portrait_slots;
+    int portrait_hp_state(int hp, int hp_max) {
+        if (hp_max <= 0) return 0;
+        const int pct = hp * 100 / hp_max;
+        return pct > 80 ? 0 : pct > 60 ? 1 : pct > 40 ? 2 : pct > 20 ? 3 : 4;
+    }
+}
+
+namespace {
+    int portrait_want[std::size(kPortraitStates)];  // each portrait's state as of the last frame: -1 not in the party
+    bool portrait_want_init = false;
+
+    // The picture `img` (any copy of a party portrait: the sheet's own, the pause page's, a combat column's) changed to `want`.
+    // Returns which portrait it is (an index into kPortraitStates), or -1.
+    int portrait_apply(uint8_t* rdram, gpr img, int forced, bool use_want, int want_in) {
+        if (!heap_pointer(img) || MEM_HU(0x08, img) != 4) return -1;
+        const uint32_t w = MEM_HU(0x0A, img), h = MEM_HU(0x0C, img);
+        const gpr pixels = MEM_W(0x14, img), palette = MEM_W(0x10, img);
+        if (w == 0 || h == 0 || w * h > 4096 || !heap_pointer(pixels) || !heap_pointer(palette)) return -1;
+        PortraitSlot& slot = portrait_slots[img];
+        const uint32_t mid = (h / 2) * w + w / 2;
+        if (slot.state > 0 && MEM_BU(mid, pixels) != (uint32_t)slot.entry) slot.state = 0;  // (the picture was loaded afresh)
+        uint64_t hash = 0xCBF29CE484222325ull;
+        for (uint32_t k = 0; k < w * h; k++) hash = (hash ^ (k == mid ? 0u : MEM_BU(k, pixels))) * 0x100000001B3ull;
+        int idx = -1;
+        for (size_t i = 0; i < std::size(kPortraitStates); i++) {
+            if (kPortraitStates[i].hash == hash && kPortraitStates[i].w == w && kPortraitStates[i].h == h) { idx = (int)i; break; }
+        }
+        if (idx < 0) return -1;
+        int want = use_want ? want_in : (portrait_want_init ? portrait_want[idx] : 0);
+        if (forced >= 0) want = std::min(forced, 4);
+        if (want < 0) want = 0;
+        while (want > 0 && !(kPortraitStates[idx].states & (1u << want))) want--;  // the nearest state that has a picture, fresher
+        if (want == slot.state) return idx;
+        if (slot.state > 0) {  // back to the ordinary picture first
+            MEM_H(2 * slot.entry, palette) = (int16_t)slot.saved_entry;
+            MEM_B(mid, pixels) = (int8_t)slot.saved_mid;
+            slot.state = 0;
+        }
+        if (want > 0) {
+            bool used[256] = {};
+            for (uint32_t k = 0; k < w * h; k++) used[MEM_BU(k, pixels)] = true;
+            int left = want - 1, entry = -1;
+            for (int e = 0; e < 256; e++) {
+                if (used[e]) continue;
+                if (left-- == 0) { entry = e; break; }
+            }
+            if (entry < 0) return idx;
+            slot.entry = entry;
+            slot.saved_entry = (uint16_t)MEM_HU(2 * entry, palette);
+            slot.saved_mid = (uint8_t)MEM_BU(mid, pixels);
+            MEM_H(2 * entry, palette) = (int16_t)MEM_HU(2 * slot.saved_mid, palette);
+            MEM_B(mid, pixels) = (int8_t)entry;
+            slot.state = want;
+        }
+        return idx;
+    }
+    const int portrait_forced() {
+        static const int forced = std::getenv("AIDYN_PORTRAIT_STATE") ? std::atoi(std::getenv("AIDYN_PORTRAIT_STATE")) : -1;
+        static const bool off = std::getenv("AIDYN_NO_PORTRAIT_STATES") != nullptr;
+        return off ? -2 : forced;
+    }
+}
+
+// Once a frame (Graphics__EndList): each party member's state from their hit points, and their sheet's picture changed to it.
+void portrait_states_frame(uint8_t* rdram, recomp_context* ctx) {
+    const int forced = portrait_forced();
+    if (forced == -2) return;
+    const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party
+    if (!heap_pointer(party)) return;
+    for (int& v : portrait_want) v = -1;
+    portrait_want_init = true;
+    const uint32_t size = std::min<uint32_t>(MEM_BU(0x24, party), 4);
+    for (uint32_t i = 0; i < size; i++) {
+        const gpr member = MEM_W(4 * i, party);
+        const gpr img = heap_pointer(member) ? MEM_W(0x44, member) : 0;
+        if (!heap_pointer(img)) continue;
+        const int hp = (int)(int32_t)call_game(rdram, ctx, Entity__getHPCurrent, (uint32_t)member);
+        const int hp_max = (int)(call_game(rdram, ctx, Entity__getHPMax, (uint32_t)member) & 0xFF);
+        const int idx = portrait_apply(rdram, img, forced, true, portrait_hp_state(hp, hp_max));
+        if (idx >= 0) portrait_want[idx] = portrait_hp_state(hp, hp_max);
+    }
+}
+
+// Before a Borg8 widget draws (WidgetBorg8::Render, a0 the widget; its picture +0x6C): a copy of a party portrait is changed to its member's state.
+void portrait_states_widget(uint8_t* rdram, gpr widget) {
+    const int forced = portrait_forced();
+    if (forced == -2 || !heap_pointer(widget)) return;
+    const gpr img = MEM_W(0x6C, widget);
+    if (!heap_pointer(img) || MEM_HU(0x0A, img) * MEM_HU(0x0C, img) != 1600) return;
+    portrait_apply(rdram, img, forced, false, 0);
 }
 
 gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, float w, float fx, float fy);  // below
@@ -8324,6 +8436,7 @@ extern "C" void aidyn_options_layout(uint8_t* rdram, recomp_context* ctx) {
 bool popup_borg8(uint8_t* rdram, recomp_context* ctx, gpr w);  // "Pop-ups in the parchment style", below
 extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
     const gpr menu = MEM_W(0, kTitleScreen), w = ctx->r4;
+    portrait_states_widget(rdram, w);
     if (heap_pointer(w) && popup_borg8(rdram, ctx, w)) return 1;  // a pop-up over a pause page: parchment, not black glass
     if (heap_pointer(w) && bestiary_wants_journal_unchosen(w)) {  // the cursor is on Bestiary: Journal's label isn't pulsing
         MEM_B(0x58, w) = (int8_t)130; MEM_B(0x59, w) = (int8_t)80; MEM_B(0x5A, w) = (int8_t)80; MEM_B(0x5B, w) = (int8_t)0xFF;
