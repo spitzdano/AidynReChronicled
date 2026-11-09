@@ -432,6 +432,7 @@ extern "C" void aidyn_camera_stick(uint8_t* rdram, gpr handler, gpr actor) {
 // turned by cam+0x58 degrees at the follow distance and height angle. Same, except after the right stick has turned the
 // camera: then the direction is the camera's own (Camera_struct.rotationXZ, +0x30, player minus camera), as
 // func_800A681C uses, so Mode0 has nothing to swing back to.
+extern "C" void func_800317E0(uint8_t* rdram, recomp_context* ctx);  // DollMenuLists::ShowEXPCosts (recompiled)
 extern "C" void func_800A68E0(uint8_t* rdram, recomp_context* ctx) {
     const gpr cam = ctx->r4, out = ctx->r5, facing = ctx->r6;
     const float dtor = read_f32(rdram, (gpr)(int32_t)0x800D5828);   // the game's degrees-to-radians constant
@@ -10960,6 +10961,11 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
                 else if (!shop && !tr && !post_battle_ui && tx >= 244.0f && tx < 296.0f) { settings.details = !settings.details; aidyn::settings::save_bool("graphics", "details", settings.details); }
             }
         }
+    }
+    if (post_battle_ui && !treasure_ui && heap_pointer(doll_lists)) {
+        // After a battle the Train panel's cost line (DollMenuLists::ShowEXPCosts, func_800317E0) is the game's: it is refreshed when the game's own
+        // cursor moves, which it no longer does (this list moves the highlight), so the line is asked for again every frame.
+        call_game(rdram, ctx, func_800317E0, (uint32_t)doll_lists);
     }
     if (pos >= 0) {  // what the cursor is on now
         ui.cursor_thing = view[pos].thing;
