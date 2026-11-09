@@ -1906,6 +1906,14 @@ namespace {
     // The image's texel (0, 0) at pixel (x, y), sx and sy pixels a texel.
     // A picture of w x h texels already in RDRAM at `address`, drawn at (x, y) pixels, sx and sy pixels a texel.
     gpr draw_rgba16_at(uint8_t* rdram, gpr g, uint32_t address, uint32_t w, uint32_t h, float x, float y, float sx, float sy) {
+        // A rectangle's corners are 12 bits (10.2): 0 to 1023 pixels. A picture off the screen (the pause pages slide in and out, taking the port's
+        // lists with them) would wrap round and be stretched over the page, with its last column smeared: it is cut to the screen instead, its
+        // texture coordinates moved on by what was cut (10.5), and not drawn at all when none of it is left.
+        constexpr float kMaxPx = 1023.0f;
+        const float x1 = x + (float)w * sx, y1 = y + (float)h * sy;
+        if (x1 <= 0.0f || y1 <= 0.0f || x >= kMaxPx || y >= kMaxPx) return g;
+        const float cx0 = std::max(x, 0.0f), cy0 = std::max(y, 0.0f), cx1 = std::min(x1, kMaxPx), cy1 = std::min(y1, kMaxPx);
+        const uint32_t s0 = (uint32_t)(int)std::lround((cx0 - x) / sx * 32.0f) & 0xFFFF, t0 = (uint32_t)(int)std::lround((cy0 - y) / sy * 32.0f) & 0xFFFF;
         const uint32_t line = (w * 2 + 7) / 8;
         auto cmd = [&](uint32_t w0, uint32_t w1) { MEM_W(0, g) = (int32_t)w0; MEM_W(4, g) = (int32_t)w1; g += 8; };
         const uint32_t clamp = (2u << 18) | (2u << 8);                                  // cmt, cms = G_TX_CLAMP
@@ -1917,11 +1925,11 @@ namespace {
         cmd(0xE7000000, 0);                                                              // gDPPipeSync
         cmd(0xF5000000 | (0u << 21) | (2u << 19) | (line << 9), (0u << 24) | clamp);      // SetTile G_TX_RENDERTILE
         cmd(0xF2000000, (0u << 24) | (((w - 1) << 2) << 12) | ((h - 1) << 2));          // SetTileSize
-        const uint32_t xl = (uint32_t)std::max(0, (int)(x * 4.0f)), yl = (uint32_t)std::max(0, (int)(y * 4.0f));
-        const uint32_t xh = (uint32_t)(int)((x + w * sx) * 4.0f), yh = (uint32_t)(int)((y + h * sy) * 4.0f);
+        const uint32_t xl = (uint32_t)(int)(cx0 * 4.0f), yl = (uint32_t)(int)(cy0 * 4.0f);
+        const uint32_t xh = (uint32_t)(int)(cx1 * 4.0f), yh = (uint32_t)(int)(cy1 * 4.0f);
         const uint32_t dsdx = (uint32_t)(int)(1024.0f / sx) & 0xFFFF, dtdy = (uint32_t)(int)(1024.0f / sy) & 0xFFFF;
         cmd(0xE4000000 | ((xh & 0xFFF) << 12) | (yh & 0xFFF), (0u << 24) | ((xl & 0xFFF) << 12) | (yl & 0xFFF));
-        cmd(0xE1000000, 0);                                                              // s, t = 0
+        cmd(0xE1000000, (s0 << 16) | t0);                                                // s, t: 0 unless the picture's left or top was cut
         cmd(0xF1000000, (dsdx << 16) | dtdy);
         return g;
     }
