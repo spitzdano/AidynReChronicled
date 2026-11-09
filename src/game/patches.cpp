@@ -2890,9 +2890,9 @@ void portrait_states_frame(uint8_t* rdram, recomp_context* ctx) {
     const int forced = portrait_forced();
     if (forced == -2) return;
     const gpr party = MEM_W(0, (gpr)(int32_t)0x800D9684);  // gGlobals.party
-    if (!heap_pointer(party)) return;
-    for (int& v : portrait_want) v = -1;
+    for (int& v : portrait_want) v = -1;  // (no party, as at the title screen: every portrait is fresh)
     portrait_want_init = true;
+    if (!heap_pointer(party)) return;
     const uint32_t size = std::min<uint32_t>(MEM_BU(0x24, party), 4);
     for (uint32_t i = 0; i < size; i++) {
         const gpr member = MEM_W(4 * i, party);
