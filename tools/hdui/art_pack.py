@@ -33,6 +33,57 @@ import romimages  # noqa: E402
 # bottom row is a fringe of cut-out spikes, the cut-out rose above the ground and the sky showed as a pale wedge.
 
 
+def _blur(a, sigma):
+    import numpy as np
+    r = max(1, int(sigma * 3))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    out = np.apply_along_axis(lambda m: np.convolve(np.pad(m, r, mode="edge"), k, mode="valid"), 1, a)
+    return np.apply_along_axis(lambda m: np.convolve(np.pad(m, r, mode="edge"), k, mode="valid"), 0, out)
+
+
+ROUND_SIGMA = 7.0     # (pixels at 8x: about a texel) how far a corner of the game's 1-bit mask is rounded
+ROUND_MAX_CHANGE = 0.02  # a cut-out whose smoothed outline would move more than this share of its area is left alone (leaves, fur, lace)
+
+
+def round_cutout(img):
+    """The painted picture of a cut-out (RGBA16 or palette: a shape with a sharp edge) with its outline rounded. The game's mask is 1 bit at the
+    N64's own size (32 x 32, say), so scaled up its edge is a staircase: stairs a texel wide, many pixels each, and the painted alpha follows
+    them. The shape is blurred and cut again at one half, which is a smooth outline of the same shape, and given an edge about two pixels soft.
+    Left alone: a picture whose transparency is not just an edge (glass, smoke), and one where the rounding would move more than
+    ROUND_MAX_CHANGE of the area (fine edges: foliage, hair, chains). Where the outline grows, the colour of the nearest painted pixel fills in."""
+    import numpy as np
+    alpha = img[..., 3]
+    hard = alpha >= 128
+    if hard.all() or not hard.any():
+        return img
+    if ((alpha > 20) & (alpha < 235)).sum() > 0.25 * hard.sum():  # (an edge's soft pixels are a thin ring: not a soft picture)
+        return img
+    blurred = _blur(hard.astype(np.float32), ROUND_SIGMA)
+    smooth = blurred >= 0.5
+    if (smooth != hard).sum() > ROUND_MAX_CHANGE * hard.sum():
+        return img
+    out = img.copy()
+    have = hard.copy()
+    colour = out[..., :3].astype(np.float32)
+    for _ in range(12):  # colour bleeds outward a pixel at a time into what the smoothed edge newly covers
+        need = (blurred > 0.2) & ~have
+        if not need.any():
+            break
+        acc = np.zeros_like(colour)
+        cnt = np.zeros(have.shape, np.float32)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            sh = np.roll(np.roll(have, dy, 0), dx, 1)
+            acc += np.roll(np.roll(colour, dy, 0), dx, 1) * sh[..., None]
+            cnt += sh
+        fill = need & (cnt > 0)
+        colour[fill] = acc[fill] / cnt[fill][:, None]
+        have = have | fill
+    out[..., :3] = np.clip(colour + 0.5, 0, 255).astype(np.uint8)
+    out[..., 3] = np.clip((blurred - 0.5) * 8.0 + 0.5, 0.0, 1.0).__mul__(255.0).round().astype(np.uint8)
+    return out
+
+
 def world_textures(rom_path, textures, out, tmemhash):
     """Replacements for the redrawn world textures ({ROM index: path}); returns rt64.json entries."""
     import tempfile
@@ -61,6 +112,8 @@ def world_textures(rom_path, textures, out, tmemhash):
             img = np.frombuffer(bytes(rgba), np.uint8).reshape(H, W, 4).copy()
             if info["type"] == 0:  # RGBA16: 1-bit alpha, a cut-out
                 img[..., 3] = np.where(img[..., 3] >= 128, 255, 0)
+            if info["type"] in (0, 2):  # RGBA16 or palette: the cut-outs' outlines are rounded
+                img = round_cutout(img)
             pictures[index] = img
         img = pictures[index]
         if (lw, lh) == (w0, h0):
