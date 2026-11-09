@@ -3608,20 +3608,28 @@ void note_treasure_title(uint8_t* rdram, recomp_context* ctx, gpr img) {
 // texel (0, 0) on screen, its scale and fade.
 void note_inventory_page(uint8_t* rdram, recomp_context* ctx, gpr img) {
     constexpr uint32_t kX = 242, kY = 211, kW = 33, kH = 7;
+    // The picture's pixels once it has been told by its word: a page sliding in from the Menu page shows its left part first, which does not
+    // include the word (a page sliding in from the map shows its right part first, which does). The same pixels are the same page.
+    static gpr known_pixels = 0;
     const gpr sp = ctx->r29;
     const uint32_t xoff = MEM_HU(0x12, sp), yoff = MEM_HU(0x16, sp), h = MEM_HU(0x1A, sp), v = MEM_HU(0x1E, sp);
-    if (xoff > kX || h < kX + kW || yoff > kY || v < kY + kH) {
-        return;  // only the part of the picture with the word in it identifies it
-    }
     const gpr pixels = MEM_W(0x14, img);
-    uint64_t hash = 0xCBF29CE484222325ULL;
-    for (uint32_t y = kY; y < kY + kH; y++) {
-        for (uint32_t x = kX; x < kX + kW; x++) {
-            hash = (hash ^ MEM_BU(y * 320 + x, pixels)) * 0x100000001B3ULL;
+    if (xoff > kX || h < kX + kW || yoff > kY || v < kY + kH) {
+        if (known_pixels == 0 || pixels != known_pixels) {
+            return;  // only the part of the picture with the word in it identifies it
         }
-    }
-    if (hash != 0x2E5ED04143174A58ULL) {
-        return;
+    } else {
+        uint64_t hash = 0xCBF29CE484222325ULL;
+        for (uint32_t y = kY; y < kY + kH; y++) {
+            for (uint32_t x = kX; x < kX + kW; x++) {
+                hash = (hash ^ MEM_BU(y * 320 + x, pixels)) * 0x100000001B3ULL;
+            }
+        }
+        if (hash != 0x2E5ED04143174A58ULL) {
+            if (pixels == known_pixels) known_pixels = 0;  // (something else is in that place now)
+            return;
+        }
+        known_pixels = pixels;
     }
     const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
     float x, y;
