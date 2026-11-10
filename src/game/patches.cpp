@@ -13949,6 +13949,7 @@ extern "C" void aidyn_sense_aura(uint8_t* rdram, recomp_context* ctx) {
     const std::string name = bestiary_sheet_name(rdram, sheet);
     if (name.empty()) return;
     const auto it = bestiary_book.find(name);
+    if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr) { fprintf(stdout, "Bestiary: Sense Aura level %u on %s (%s)\n", (unsigned)(ctx->r5 & 0xFF), name.c_str(), it != bestiary_book.end() ? "in the book" : "not in the book"); fflush(stdout); }
     if (it != bestiary_book.end()) it->second.aura = std::max<int>(it->second.aura, (int)(ctx->r5 & 0xFF));
 }
 
@@ -14052,9 +14053,24 @@ namespace {
     }
 }
 
+// A widget of the menu held open in a fight with X or Y (gCombatCVertMenu, a WidgetChoiceDia: its box pieces, list and rows are its
+// descendants): it keeps the game's own dark look, with the port's hints under it, not the parchment pop-up's.
+namespace {
+    bool in_combat_menu(uint8_t* rdram, gpr w) {
+        const gpr menu = MEM_W(0, (gpr)(int32_t)0x800E3170);
+        if (!heap_pointer(menu)) return false;
+        for (int depth = 0; depth < 8 && heap_pointer(w); depth++) {
+            if (w == menu) return true;
+            w = MEM_W(0x44, w);  // BaseWidget.parent
+        }
+        return false;
+    }
+}
+
 // WidgetBorg8::Render (aidyn_title_box): in a pop-up, the box becomes the frame and its gradient pieces are not drawn. 1: done (g in v0).
 bool popup_borg8(uint8_t* rdram, recomp_context* ctx, gpr w) {
     if (!popup_rendering || !aidyn::settings::graphics().tabbed_lists) return false;
+    if (in_combat_menu(rdram, w)) return false;
     if (popup_pixel(rdram, w)) {
         const int alpha = MEM_BU(0x5B, w);
         popup_alpha = (float)alpha;
@@ -14086,7 +14102,7 @@ extern "C" int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice)
     }
     if (!popup_rendering || popup_box_frame != popup_frame || !aidyn::settings::graphics().tabbed_lists) return 0;
     const gpr w = (gpr)(int32_t)ctx->r4;
-    if (!heap_pointer(w)) return 0;
+    if (!heap_pointer(w) || in_combat_menu(rdram, w)) return 0;
     const gpr sub = MEM_W(0x40, w), str = heap_pointer(sub) ? MEM_W(0, sub) : 0;
     const std::string text = heap_pointer(str) ? game_string(rdram, str, 240) : std::string();
     if (text.empty() || popup_alpha <= 0.0f) return text.empty() ? 0 : (ctx->r2 = ctx->r5, 1);
