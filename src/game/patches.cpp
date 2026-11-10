@@ -2166,10 +2166,12 @@ bool redesigned_card() {
 gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, float sy, uint32_t rgba) {
     copy_branding(rdram);
     title_version_switch();
+    // The two pictures are found by name (a picture added to make_branding.py's IMAGES ahead of them moves their positions: #76, #77).
+    static const int rechronicled_image = find_image("rechronicled"), credit_image = find_image("credit");
     // "Rechronicled": centred under THE FIRST MAGE (card texels 26..172, rows 120..138) on the card's lower parchment
     // (the redesigned card has its own).
     if (!redesigned_card()) {
-        g = draw_rgba16(rdram, g, 0, ox + (97 - 48) * sx, oy + 139 * sy, sx, sy);
+        if (rechronicled_image >= 0) g = draw_rgba16(rdram, g, (size_t)rechronicled_image, ox + (97 - 48) * sx, oy + 139 * sy, sx, sy);
     } else {
         g = edition_line(rdram, g, ox, oy, sx, sy, rgba);
     }
@@ -2179,7 +2181,7 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     const float hs = read_f32(rdram, (gpr)(int32_t)0x800E49A0), vs = read_f32(rdram, (gpr)(int32_t)0x800E49A4);
     // The game's scissor ends at the 4:3 edge, so it is widened to the whole window meanwhile (as for the clouds).
     if (aidyn::settings::graphics().aspect == aidyn::settings::Aspect::Original) {
-        g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
+        if (credit_image >= 0) g = draw_rgba16(rdram, g, (size_t)credit_image, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
         g = version_number(rdram, g, hs, vs, rgba);
         g = version_list(rdram, g, hs, vs, rgba);
         return title_versions_panel(rdram, g);
@@ -2189,7 +2191,7 @@ gpr draw_title_branding(uint8_t* rdram, gpr g, float ox, float oy, float sx, flo
     gEXSetScissor(&c[1], 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, 240);
     gEXSetRectAlign(&c[3], G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT, -320 * 4, 0, -320 * 4, 0);
     g = put_cmds(rdram, g, c, 5);
-    g = draw_rgba16(rdram, g, 1, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
+    if (credit_image >= 0) g = draw_rgba16(rdram, g, (size_t)credit_image, (310 - 140) * hs, (230 - 14) * vs, hs, vs);
     g = version_number(rdram, g, hs, vs, rgba);
     // The version list: bottom left, from the left edge of the whole picture.
     gEXSetRectAlign(&c[0], G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, 0, 0, 0, 0);
