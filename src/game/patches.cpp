@@ -2912,13 +2912,50 @@ void portrait_states_frame(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+namespace {
+    // A save slot on the Load Game / Save Game screens (ControllerPakSliders, a child widget of the list) draws its four party portraits as
+    // WidgetBorg8 children: they show how hurt each member was when the game was saved, not how hurt the party is now. The slot holds the
+    // party's CharSheets bit-packed in its gameState (QuestData::Save, savefiles.h): 100 bits of time, gold and timers, then each member's
+    // sheet (SaveBits_CharSheetEffects, 1280 bits; Alaron's name and spells, 356 bits, follow his): the sheet's id (8), experience (48),
+    // base stats (stamina 8, endurance 6, level 6, four of 5: 40) and the current ones (stamina 8, endurance 6, level 6, ...).
+    // Hit points are endurance + stamina + level, the current ones capped at the base ones (Entity::getHPCurrent / getHPMax).
+    // Returns the portrait's state for the slot's member, or -1 if `widget` isn't one of a slot's portraits.
+    constexpr uint32_t kSlotSheetBits = 1280, kSlotAlaronBits = 356, kSlotFirstBit = 100;
+    uint32_t slot_bits(uint8_t* rdram, gpr data, uint32_t pos, int n) {
+        uint32_t v = 0;
+        for (int k = 0; k < n; k++) v |= ((uint32_t)MEM_BU((pos + k) >> 3, data) >> ((pos + k) & 7) & 1u) << k;
+        return v;
+    }
+    int saved_slot_state(uint8_t* rdram, gpr widget) {
+        const gpr slider = MEM_W(0x44, widget);  // BaseWidget.parent
+        if (!heap_pointer(slider)) return -1;
+        int member = -1;
+        for (int i = 0; i < 4; i++) {
+            if ((uint32_t)MEM_W(0x9C + 4 * i, slider) == (uint32_t)widget) member = i;  // ControllerPakSliders::PartyPortraits
+        }
+        const gpr dat = member >= 0 ? MEM_W(0x84, slider) : 0;  // ::saveDat (a SaveDatPointers)
+        const gpr state = heap_pointer(dat) ? MEM_W(0x10, dat) : 0;  // its gamestate
+        if (!heap_pointer(state)) return -1;
+        const uint32_t sheet = kSlotFirstBit + (member > 0 ? kSlotSheetBits + kSlotAlaronBits + (member - 1) * kSlotSheetBits : 0);
+        const uint32_t base = sheet + 8 + 48, health = base + 40;
+        const int hp_max = (int)(slot_bits(rdram, state, base, 8) + slot_bits(rdram, state, base + 8, 6) + slot_bits(rdram, state, base + 14, 6)) & 0xFF;
+        int hp = (int)(slot_bits(rdram, state, health, 8) + slot_bits(rdram, state, health + 8, 6) + slot_bits(rdram, state, health + 14, 6));
+        hp = std::min(hp, hp_max);
+        static const bool log = std::getenv("AIDYN_PORTRAIT_LOG") != nullptr;
+        if (log) { fprintf(stdout, "Portrait: save slot member %d hp %d / %d -> state %d\n", member, hp, hp_max, portrait_hp_state(hp, hp_max)); fflush(stdout); }
+        return portrait_hp_state(hp, hp_max);
+    }
+}
+
 // Before a Borg8 widget draws (WidgetBorg8::Render, a0 the widget; its picture +0x6C): a copy of a party portrait is changed to its member's state.
 void portrait_states_widget(uint8_t* rdram, gpr widget) {
     const int forced = portrait_forced();
     if (forced == -2 || !heap_pointer(widget)) return;
     const gpr img = MEM_W(0x6C, widget);
     if (!heap_pointer(img) || MEM_HU(0x0A, img) * MEM_HU(0x0C, img) != 1600) return;
-    portrait_apply(rdram, img, forced, false, 0);
+    const int saved = saved_slot_state(rdram, widget);
+    if (saved >= 0) portrait_apply(rdram, img, forced, true, saved);
+    else portrait_apply(rdram, img, forced, false, 0);
 }
 
 gpr tired_mark(uint8_t* rdram, recomp_context* ctx, gpr g, float x, float y, float w, float fx, float fy);  // below
@@ -7753,10 +7790,36 @@ namespace {
     bool save_versions_loaded = false;
     std::string passed_over;  // read_newest: the version of a save it passed over, for the notice
 
+    // A save's identity for the records kept beside the saves (versions, Fair play, the bestiary): the hash of everything but its last four
+    // bytes, the checksum. The game verifies a save it reads from the pak by taking 8 off that checksum in place (CRC::VerifyChecksum), so the
+    // same save hashed as written and as read differed there, and a pak save never found its records (the bestiary came back empty).
+    // Records made before that were by the hash of all of it: `save_hash_old` gives those (as written, and as read back after the 8 came off).
     uint64_t save_hash(const uint8_t* bytes) {
         uint64_t h = 0xCBF29CE484222325ULL;
-        for (uint32_t i = 0; i < kSaveSize; i++) h = (h ^ bytes[i]) * 0x100000001B3ULL;
+        for (uint32_t i = 0; i < kSaveSize - 4; i++) h = (h ^ bytes[i]) * 0x100000001B3ULL;
         return h;
+    }
+    void save_hash_old(const uint8_t* bytes, uint64_t out[2]) {
+        uint64_t h = 0xCBF29CE484222325ULL;
+        for (uint32_t i = 0; i < kSaveSize - 4; i++) h = (h ^ bytes[i]) * 0x100000001B3ULL;
+        uint64_t full = h;
+        for (uint32_t i = kSaveSize - 4; i < kSaveSize; i++) full = (full ^ bytes[i]) * 0x100000001B3ULL;
+        uint8_t tail[4] = { bytes[kSaveSize - 4], bytes[kSaveSize - 3], bytes[kSaveSize - 2], bytes[kSaveSize - 1] };
+        uint32_t word = (uint32_t)tail[0] << 24 | (uint32_t)tail[1] << 16 | (uint32_t)tail[2] << 8 | tail[3];
+        word += 8;  // the checksum as it was before the game's verify took the 8 off
+        uint64_t plus = h;
+        for (int k = 0; k < 4; k++) plus = (plus ^ ((word >> (24 - 8 * k)) & 0xFF)) * 0x100000001B3ULL;
+        out[0] = full;
+        out[1] = plus;
+    }
+    uint64_t read_hash_old[2] = { 0, 0 };  // the save about to load, by the old kind of hash (see foreign_save)
+    template <class M>
+    typename M::const_iterator find_record(const M& records, uint64_t hash) {
+        auto it = records.find(hash);
+        for (int k = 0; it == records.end() && k < 2; k++) {
+            if (read_hash_old[k] != 0) it = records.find(read_hash_old[k]);
+        }
+        return it;
     }
     uint64_t save_hash(uint8_t* rdram, gpr buffer) {
         std::vector<uint8_t> b(kSaveSize);
@@ -7799,7 +7862,12 @@ namespace {
     std::string foreign_save(uint8_t* rdram, gpr buffer) {
         load_save_versions();
         read_hash = save_hash(rdram, buffer);
-        const auto it = save_versions.find(read_hash);
+        {
+            std::vector<uint8_t> b(kSaveSize);
+            for (uint32_t i = 0; i < kSaveSize; i++) b[i] = MEM_BU(i, buffer);
+            save_hash_old(b.data(), read_hash_old);
+        }
+        const auto it = find_record(save_versions, read_hash);
         const std::string here = version_name(aidyn::settings::game().rom_patch);
         return it == save_versions.end() || it->second == here ? std::string() : it->second;
     }
@@ -8052,6 +8120,7 @@ extern "C" int aidyn_save_loading(uint8_t* rdram, recomp_context* ctx) {
     fair_loaded_save(read_hash);  // the hash of the bytes read (a file's, the pak's): its record in save-rules.txt
     bestiary_loaded_save(read_hash);  // ... and the book of creatures in save-bestiary.txt
     read_hash = 0;
+    read_hash_old[0] = read_hash_old[1] = 0;
     saves.save_loaded = true;
     saves.explored = 0.0;
     saves.pending = 0;
@@ -12271,7 +12340,7 @@ void fair_note_save(uint64_t hash) {
 
 void fair_loaded_save(uint64_t hash) {
     fair_load_records();
-    const auto it = fair_records.find(hash);
+    const auto it = find_record(fair_records, hash);
     fair = it != fair_records.end() ? it->second : FairRules{ false, { false, false, false }, false, false, false, false };
     healed_since_rest.clear();
     fprintf(stdout, "Fair play: loaded save %016llx, %s, %zu groups beaten and %zu containers emptied for good\n",
@@ -13773,6 +13842,7 @@ namespace {
 
 void bestiary_note_save(uint64_t hash) {
     bestiary_load_records();
+    if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr) { fprintf(stdout, "Bestiary: save %016llx, %zu kinds\n", (unsigned long long)hash, bestiary_book.size()); fflush(stdout); }
     if (bestiary_book.empty() && bestiary_records.find(hash) == bestiary_records.end()) return;
     const std::string rec = bestiary_serialize();
     bestiary_records[hash] = rec;
@@ -13783,7 +13853,8 @@ void bestiary_note_save(uint64_t hash) {
 
 void bestiary_loaded_save(uint64_t hash) {
     bestiary_load_records();
-    const auto it = bestiary_records.find(hash);
+    if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr) { fprintf(stdout, "Bestiary: load %016llx, %s\n", (unsigned long long)hash, find_record(bestiary_records, hash) != bestiary_records.end() ? "has a record" : "no record"); fflush(stdout); }
+    const auto it = find_record(bestiary_records, hash);
     if (it == bestiary_records.end()) bestiary_book.clear();
     else bestiary_parse(it->second);
     bst = BestiaryUi{};
