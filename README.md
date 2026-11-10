@@ -12,6 +12,25 @@ mods, fixed and improved.
 
 ![Aidyn ReChronicled: The First Mage](docs/banner.jpg)
 
+## Quick start
+
+New to GitHub? This is all you need (Windows; Linux is at the end).
+
+1. **Download.** Open the [1.0.0 release](https://github.com/spitzdano/AidynReChronicled/releases/tag/v1.0.0), scroll to **Assets**
+   and download `AidynReChronicled-1.0.0-windows-x86_64.zip` (about 1 GB). Use this one even though newer versions are listed:
+   those are updates only, and the game installs them for you (step 5).
+2. **Unzip** it anywhere (right-click, Extract All).
+3. **Add your own copy of the game.** The download doesn't include the game. Copy your ROM of *Aidyn Chronicles: The First Mage*
+   (the US version, 1.0; a `.z64`, `.n64` or `.v64` file) into the `ROMs` folder inside the unzipped folder. Aidyn Patch and
+   Aidyn Plus ROMs go there too, if you have them.
+4. **Play.** Run `AidynReChronicled.exe`. It finds the ROM on its own. To start it from Steam, run `Add to Steam.bat` once.
+5. **Update.** On the title screen choose **Updates**, then **Update**.
+
+Needs Windows 10 or 11 (64-bit) and a graphics card with Vulkan (any recent one has it). **Linux:** download the
+`linux-x86_64.tar.gz` from the same page, unpack it, put the ROM in `ROMs` and run `bash install.sh` (or
+`game/aidyn-rechronicled.sh`). **Mac:** see "Download and play" below. Stuck? Open an
+[issue](https://github.com/spitzdano/AidynReChronicled/issues) and say what you see.
+
 **1.0.0 is the main release.** New features stop here: spitzdano is putting the work down to play the game. Bug fixes will follow as they turn up, and maybe some quality-of-life additions. Updates come through the game itself (Updates on the title menu), so there is nothing to download again.
 
 ## Features
