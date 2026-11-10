@@ -13834,6 +13834,7 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
                 const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)i);
                 std::string nm;
                 for (int k = 0; k < 21 && MEM_B(2 + k, ent) != 0; k++) nm += (char)MEM_B(2 + k, ent);
+                nm = bestiary_canonical(nm);  // (as the real book names them: "Chaos Sorcerer" is the Sorceror's entry)
                 if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr)
                     fprintf(stderr, "BestiaryTable: id %u name '%s' level %u category %u described %d\n", (unsigned)MEM_HU(0, ent), nm.c_str(), (unsigned)MEM_BU(0x1C, ent), (unsigned)MEM_BU(0x17, ent), bestiary_text_for(nm) != nullptr);
                 if (std::getenv("AIDYN_BESTIARY_LOG") != nullptr && bestiary_text_for(nm) == nullptr) {
