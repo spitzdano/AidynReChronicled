@@ -416,6 +416,7 @@ these defaults on the first run:
 | `inventory_sort` | the order of those lists (Y): 0 the game's, 1 by type or school (default), 2 by name |
 | `details` | Details on (X): a card for the highlighted entry beside the list; off in a new game, remembered |
 | `combat_log` | combat: the log of the fight at the bottom left (see "Combat log" below; `false`: none) |
+| `damaged_portraits` | a party member's portrait shows how hurt they are, in five steps by their hit points, in the pause menu, the party bar, the combat columns and strips and the save slots (the ReChronicled page's Damaged portraits; `false`: always the fresh portrait) |
 | `combat_descriptions` | combat: what the highlighted spell, skill or item does, beside its menu (the ReChronicled page's Combat descriptions; `false`: none) |
 | `fps_counter` | `true`: the frames shown a second at the top right (left of the fast-forward marker when that shows), over everything, in the game's font (the Display page; default `false`) |
 | `turn_order` | combat: the round's turn order across the top of the screen, then the next round's (see "Turn order" below; `false`: none, and the game's own order within each speed group) |

@@ -2881,6 +2881,7 @@ namespace {
         static const bool off = std::getenv("AIDYN_NO_PORTRAIT_STATES") != nullptr;
         static const bool cycle = std::getenv("AIDYN_PORTRAIT_CYCLE") != nullptr;  // every state in turn, two seconds each (to see the changes)
         if (cycle) return (popup_frame / 120) % 5;
+        if (!aidyn::settings::graphics().damaged_portraits) return 0;  // the ReChronicled page's Damaged portraits off: every portrait fresh
         return off ? -2 : forced;
     }
 }
@@ -5135,6 +5136,7 @@ namespace {
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
             { "rc_combat_log", &gfx.combat_log, "combat_log", nullptr },
             { "rc_combat_info", &gfx.combat_descriptions, "combat_descriptions", nullptr },
+            { "rc_damaged_portraits", &gfx.damaged_portraits, "damaged_portraits", nullptr },
             { "rc_smooth_loops", &gfx.smooth_animation_loops, "smooth_animation_loops", nullptr },
             { "rc_stick_camera", &gfx.right_stick_camera, "right_stick_camera", nullptr },
             { "rc_camera_sensitivity", nullptr, "camera_sensitivity", nullptr, nullptr, &camera_sensitivity },

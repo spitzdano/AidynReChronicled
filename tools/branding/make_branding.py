@@ -579,7 +579,7 @@ IMAGES += [("verno_v", 6, 9, version_label("v", 44)), ("verno_dot", 4, 9, versio
 IMAGES += [(f"verno_{d}", 6, 9, version_label(str(d), 44)) for d in range(10)]
 # The pause menu's ReChronicled page: its title, each row's name and the values (tinted by the game), and the hints.
 RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_vsync", "VSync"), ("rc_turn_order", "Turn order"),
-            ("rc_combat_log", "Combat log"), ("rc_combat_info", "Combat descriptions"), ("rc_fps", "FPS counter"),
+            ("rc_combat_log", "Combat log"), ("rc_combat_info", "Combat descriptions"), ("rc_damaged_portraits", "Damaged portraits"), ("rc_fps", "FPS counter"),
             ("rc_frame_rate", "Frame rate"), ("rc_fr_60", "60"), ("rc_fr_90", "90"), ("rc_fr_100", "100"),
             ("rc_fr_120", "120"), ("rc_fr_144", "144"), ("rc_fr_175", "175"), ("rc_fr_240", "240"),
             ("rc_fr_unlimited", "Unlimited"),
