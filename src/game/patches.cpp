@@ -13833,7 +13833,12 @@ namespace {
             line("Attributes", "?", dim);
         }
         if (tier < 3) {
-            g = ctl_text(rdram, ctx, g, "Fight more of them, or cast Sense Aura.", X((rx0 + rx1) / 2.0f), Y(200.0f), 0.42f, dim, alpha, false, true);
+            std::string hint = "Fight more of them, or cast Sense Aura.";
+            if (r.e->aura > 0) {  // Sense Aura was cast on one, and what its rank tells isn't enough for more of the page
+                const int need = r.e->aura < 3 ? 3 : r.e->aura < 7 ? 7 : 9;
+                hint = "Sense Aura rank " + std::to_string(r.e->aura) + ": rank " + std::to_string(need) + " tells more.";
+            }
+            g = ctl_text(rdram, ctx, g, hint, X((rx0 + rx1) / 2.0f), Y(200.0f), 0.42f, dim, alpha, false, true);
         }
         return g;
     }
