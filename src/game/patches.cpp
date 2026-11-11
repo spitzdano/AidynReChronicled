@@ -14016,6 +14016,25 @@ extern "C" void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx) {
     prompts_early = true;
 }
 
+// ---- Dialogue: an actor sent to a point the map doesn't have ----
+// DialogCallbackC's ActorWalk / ActorRun commands (aidyn.us.toml, before 0x8004FBD4: s3 the reference point the map gave for the command's
+// number, s5 the actor) read the point's x and z without looking. A point the map doesn't have is a null pointer there: the N64 reads
+// something and goes on, the recompiled game faults (issue #81: the original's Keelin conversation in the Terminor inn). With no point the
+// actor is sent to where it already stands (s3 pointed at its own position, playerData +0x68: x, y, z), so the conversation goes on and
+// nobody walks; with no actor either the walk is skipped. 1: skip it (a jump to the label after the call).
+extern "C" int aidyn_dialog_walk_guard(uint8_t* rdram, recomp_context* ctx) {
+    if ((int32_t)ctx->r19 != 0) return 0;
+    static int logged = 0;
+    const bool actor = (int32_t)ctx->r21 != 0;
+    if (logged++ < 20) {
+        fprintf(stdout, "Dialogue: a walk to a point the map doesn't have (%s)\n", actor ? "the actor stays where it is" : "no actor either: skipped");
+        fflush(stdout);
+    }
+    if (!actor) return 1;
+    ctx->r19 = (int32_t)((uint32_t)ctx->r21 + 0x68);
+    return 0;
+}
+
 // ---- Pop-ups in the parchment style ----
 // The game's pop-ups (a message: TextPopup_New; a choice: WidgetChoiceDia, DollBarterConfirm) are a black 1 x 1 picture stretched over their box with
 // sixteen-unit gradient pieces round it, and white words. Over a pause page (the handler's widgets after the pause menu's: popup_rendering) the
