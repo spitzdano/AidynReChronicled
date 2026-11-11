@@ -13896,7 +13896,7 @@ void bestiary_tick(uint8_t* rdram, recomp_context* ctx) {
             BestiaryEntry e;
             e.fights = smp.fights;
             e.meetings = std::getenv("AIDYN_BESTIARY_TEST_MEETINGS") ? std::atoi(std::getenv("AIDYN_BESTIARY_TEST_MEETINGS")) : std::max(1, smp.fights / 2);  // (a sample: its drawing's stage follows)
-            e.aura = smp.aura;
+            e.aura = std::getenv("AIDYN_BESTIARY_TEST_AURA") ? std::atoi(std::getenv("AIDYN_BESTIARY_TEST_AURA")) : smp.aura;  // (AURA=n: a Sense Aura of that rank on every one)
             for (uint32_t i = 0; heap_pointer(edb) && i < MEM_BU(0, edb); i++) {
                 const gpr ent = (gpr)(int32_t)(MEM_W(0x10, edb) + 0x80 * (int32_t)i);
                 std::string nm;
