@@ -4214,7 +4214,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         // is the game's, with X as the Details switch. Not after a battle (the Train panel).
         const uint32_t pause_state = MEM_BU(0, (gpr)(int32_t)0x800D9550);  // gGlobals.pauseMenuState: 7 the pause menu, 3 its fight form, 4 a trainer, 5 after a battle, 6 a shop
         const bool battle_over = after_battle(rdram, lists);
-        const bool trained = !battle_over && (MEM_W(0xA8, lists) != 0 || (pause_state != 7 && pause_state != 3));  // (the game's own lists there: shops and trainers are not redone yet)
+        const bool trained = !battle_over && (MEM_W(0xA8, lists) != 0 || (pause_state != 7 && pause_state != 3 && pause_state != 12));  // (the game's own lists there: shops and trainers are not redone yet)
         const bool own_lists = aidyn::settings::graphics().tabbed_lists && frame_ctx != nullptr && !trained && inventory_page.alpha != 0;
         hide_list_ttl = std::max(0, hide_list_ttl - 1);
         bool own_drawn = false;
@@ -4247,7 +4247,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                       : on_spells ? draw_spell_card(rdram, frame_ctx, g, inventory_page, spells_list)
                                   : draw_skill_card(rdram, frame_ctx, g, inventory_page, skills_list);
                 }
-                g = draw_details_state(rdram, frame_ctx, g, inventory_page, on, -1);
+                if (on) g = draw_details_state(rdram, frame_ctx, g, inventory_page, on, -1);  // (the game's own lists: no word saying Off)
                 g = prompt_state(rdram, g, inventory_page.alpha);
             }
         }
@@ -8556,7 +8556,7 @@ extern "C" int aidyn_title_box(uint8_t* rdram, recomp_context* ctx) {
             const gpr page = MEM_W(off, doll_lists);
             if (off == 0xA0 && !after_battle(rdram, doll_lists)) continue;  // (the Stats page's title: only where the port draws its page)
             const bool treasure_title_here = off == 0x94 && treasure_party_list(rdram, doll_lists) != 0;  // (Treasure: the Inventory page's)
-            if (heap_pointer(page) && (((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists) || treasure_title_here) && w == MEM_W(0x7C, page)) {
+            if (heap_pointer(page) && (((state == 7 || state == 3 || state == 12) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists) || treasure_title_here) && w == MEM_W(0x7C, page)) {
                 ctx->r2 = ctx->r5;
                 return 1;
             }
@@ -10539,7 +10539,7 @@ extern "C" int aidyn_hide_list(uint8_t* rdram, recomp_context* ctx) {
     const gpr big = MEM_W(0, (gpr)(int32_t)0x800D9558);  // gGlobals.BigAssMenu: the pause menu is up
     const uint32_t state = MEM_BU(0, (gpr)(int32_t)0x800D9550);
     if (treasure_party_list(rdram, doll_lists) != 0 && widget == MEM_W(0x80, MEM_W(0x94, doll_lists))) return 1;  // Treasure: the party's list
-    if (!heap_pointer(big) || !(((state == 7 || state == 3) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists))) return 0;
+    if (!heap_pointer(big) || !(((state == 7 || state == 3 || state == 12) && MEM_W(0xA8, doll_lists) == 0) || after_battle(rdram, doll_lists))) return 0;  // (12: the pause menu closing)
     for (uint32_t off : { 0x94u, 0x98u, 0x9Cu }) {  // the inventory, spells and skills lists of the doll page's lists widget
         const gpr list = MEM_W(off, doll_lists);
         if (heap_pointer(list) && widget == MEM_W(0x80, list)) return 1;
