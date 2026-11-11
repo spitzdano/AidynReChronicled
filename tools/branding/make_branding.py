@@ -583,7 +583,7 @@ RC_WORDS = [("rc_widescreen", "Widescreen"), ("rc_textures", "Textures"), ("rc_v
             ("rc_frame_rate", "Frame rate"), ("rc_fr_60", "60"), ("rc_fr_90", "90"), ("rc_fr_100", "100"),
             ("rc_fr_120", "120"), ("rc_fr_144", "144"), ("rc_fr_175", "175"), ("rc_fr_240", "240"),
             ("rc_fr_unlimited", "Unlimited"),
-            ("rc_controls_card", "Controls card"), ("rc_button_prompts", "Button prompts"),
+            ("rc_controls_card", "Controls card"), ("rc_button_prompts", "Button prompts"), ("rc_tabbed_lists", "Tabbed lists"),
             ("rc_hud_edges", "HUD at the screen edges"),
             ("rc_draw_distance", "Draw distance"), ("rc_smooth_loops", "Smooth walk cycles"),
             ("rc_stick_camera", "Right-stick camera"), ("rc_camera_sensitivity", "Walking camera sensitivity"),

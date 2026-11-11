@@ -5136,6 +5136,7 @@ namespace {
             { "rc_enemy_turns", nullptr, "combat_enemy_speed", nullptr, nullptr, &enemy, nullptr, "rc_on", "rc_off", "game" },
             { "rc_controls_card", &gfx.controls_card, "controls_card", nullptr },
             { "rc_button_prompts", &gfx.button_prompts, "button_prompts", nullptr },
+            { "rc_tabbed_lists", &gfx.tabbed_lists, "tabbed_lists", nullptr },
             { "rc_combat_log", &gfx.combat_log, "combat_log", nullptr },
             { "rc_combat_info", &gfx.combat_descriptions, "combat_descriptions", nullptr },
             { "rc_damaged_portraits", &gfx.damaged_portraits, "damaged_portraits", nullptr },
