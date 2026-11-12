@@ -1157,8 +1157,9 @@ before_vram = 0x800AE1E0
 text = "extern int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice); if (aidyn_popup_text(rdram, ctx, 1)) return;"
 
 # A dialogue's "actor walks / runs to a point" command (DialogCallbackC, case ActorWalk / ActorRun) takes its destination from a reference point of
-# the loaded map (get_map_referencepoint, s3) and reads its x and z from it without looking: a point the map doesn't have (as in the original's
-# Keelin conversation in the Terminor inn, issue #81) was a read through a null pointer, which the N64 let by and the recompiled game does not.
+# the loaded map (get_map_referencepoint, s3) and reads its x and z from it without looking: a point the map doesn't have was a read through a null
+# pointer, which faults in the recompiled game (the original's Keelin conversation in the Terminor inn, issue #81, asks for point 34; the inn's map has
+# points 1 to 33; what the N64 itself did there isn't known).
 # aidyn_dialog_walk_guard: with no point the actor is sent to where it already stands (s3 is pointed at its own position), with no actor
 # either the walk is skipped (to the label after the call). Hooked before the two loads (L_8004FBD4).
 [[patches.hook]]

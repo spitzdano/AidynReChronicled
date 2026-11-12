@@ -14025,8 +14025,9 @@ extern "C" void aidyn_handler_widget(uint8_t* rdram, recomp_context* ctx) {
 
 // ---- Dialogue: an actor sent to a point the map doesn't have ----
 // DialogCallbackC's ActorWalk / ActorRun commands (aidyn.us.toml, before 0x8004FBD4: s3 the reference point the map gave for the command's
-// number, s5 the actor) read the point's x and z without looking. A point the map doesn't have is a null pointer there: the N64 reads
-// something and goes on, the recompiled game faults (issue #81: the original's Keelin conversation in the Terminor inn). With no point the
+// number, s5 the actor) read the point's x and z without looking. A point the map doesn't have is a null pointer there, which faults in the recompiled game
+// (issue #81: the original's Keelin conversation in the Terminor inn asks for point 34; the inn's map has points 1 to 33; what the N64 itself did
+// there isn't known). With no point the
 // actor is sent to where it already stands (s3 pointed at its own position, playerData +0x68: x, y, z), so the conversation goes on and
 // nobody walks; with no actor either the walk is skipped. 1: skip it (a jump to the label after the call).
 extern "C" int aidyn_dialog_walk_guard(uint8_t* rdram, recomp_context* ctx) {
