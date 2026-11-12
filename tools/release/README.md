@@ -1,15 +1,14 @@
 # Aidyn ReChronicled
 
-*Aidyn Chronicles: The First Mage* (Nintendo 64, 2001) as a native game for Linux and Windows, enhanced: high
+*Aidyn Chronicles: The First Mage* (Nintendo 64, 2001) as a native game for Linux, Windows and macOS, enhanced: high
 resolution, widescreen, up to 240 fps, a free camera, further draw distance, quicksaves and autosaves, a faster walk,
 and the community rebalances Aidyn Patch and Aidyn Plus a button away.
 
 > **Work in progress.** This is a hobby project I'm making for myself, in my own time, with no schedule. Expect some
-> rough edges. New features stop with 1.0.0 so I can play the game; I'll fix bugs as they turn up, and maybe add small
-> quality-of-life things. I haven't played very far into the game yet, so playtests and problem reports from further
+> rough edges. I haven't played very far into the game yet, so playtests and problem reports from further
 > along are very welcome (see "Found a problem?" below); I'll work on them when I can.
 
-**1.0.0 is the main release.** New features stop here: spitzdano is putting the work down to play the game. Bug fixes will follow as they turn up, and maybe some quality-of-life additions. Updates come through the game itself (Updates on the title menu), so there is nothing to download again.
+Updates come through the game itself (**Updates** on the title menu), so once it is installed there is nothing to download again.
 
 **Working with MDoulos.** MDoulos, author of the Action Edition mod, is working on a project of his own built on a new
 engine. The two stay separate and share art, fixes and findings. Aidyn ReChronicled remains the original game and its

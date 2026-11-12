@@ -1,6 +1,6 @@
 # Aidyn ReChronicled
 
-*Aidyn Chronicles: The First Mage* (NTSC-U 1.0), enhanced by Spitzdano: a native Linux and Windows build of *AIDYN_CHRONICLES*
+*Aidyn Chronicles: The First Mage* (NTSC-U 1.0), enhanced by Spitzdano: a native Linux, Windows and macOS build of *AIDYN_CHRONICLES*
 (NAYE, version 0), made by static
 recompilation with [N64Recomp](https://github.com/N64Recomp/N64Recomp) and run on
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) with the
@@ -16,9 +16,8 @@ mods, fixed and improved.
 
 New to GitHub? This is all you need (Windows; Linux is at the end).
 
-1. **Download.** Open the [1.0.0 release](https://github.com/spitzdano/AidynReChronicled/releases/tag/v1.0.0), scroll to **Assets**
-   and download `AidynReChronicled-1.0.0-windows-x86_64.zip` (about 1 GB). Use this one even though newer versions are listed:
-   those are updates only, and the game installs them for you (step 5).
+1. **Download.** Open the [latest release](https://github.com/spitzdano/AidynReChronicled/releases/latest), scroll to **Assets**
+   and download `AidynReChronicled-<version>-windows-x86_64.zip` (about 1 GB).
 2. **Unzip** it anywhere (right-click, Extract All).
 3. **Add your own copy of the game.** The download doesn't include the game. Copy your ROM of *Aidyn Chronicles: The First Mage*
    (the US version, 1.0; a `.z64`, `.n64` or `.v64` file) into the `ROMs` folder inside the unzipped folder. Aidyn Patch and
@@ -28,14 +27,14 @@ New to GitHub? This is all you need (Windows; Linux is at the end).
 
 Needs Windows 10 or 11 (64-bit) and a graphics card with Vulkan (any recent one has it). **Linux:** download the
 `linux-x86_64.tar.gz` from the same page, unpack it, put the ROM in `ROMs` and run `bash install.sh` (or
-`game/aidyn-rechronicled.sh`). **Mac:** see "Download and play" below. Stuck? Open an
+`game/aidyn-rechronicled.sh`). **Mac:** download the `macos-arm64.dmg` from the same page (see "Download and play" below). Stuck? Open an
 [issue](https://github.com/spitzdano/AidynReChronicled/issues) and say what you see.
 
-**1.0.0 is the main release.** New features stop here: spitzdano is putting the work down to play the game. Bug fixes will follow as they turn up, and maybe some quality-of-life additions. Updates come through the game itself (Updates on the title menu), so there is nothing to download again.
+Updates come through the game itself (**Updates** on the title menu), so once it is installed there is nothing to download again.
 
 ## Features
 
-- **A native game for Linux and Windows**, not an emulator. Linux: one download for any current distribution, with an
+- **A native game for Linux, Windows and macOS**, not an emulator. Linux: one download for any current distribution, with an
   installer that adds it to the app menu and to Steam (Steam Deck and ROG Ally friendly). Windows: a folder to unpack
   and play (Windows 10 or 11, nothing to install), with an Add to Steam button.
 - **Your ROMs in one folder**: put the 1.0 ROM, and the Aidyn Patch, Aidyn Plus and Action Edition ones if you have them, in the
@@ -81,8 +80,7 @@ checks it against this SHA-1:
 ```
 
 > **Work in progress.** This is a hobby project I'm making for myself, in my own time, with no schedule. Expect some
-> rough edges. New features stop with 1.0.0 so I can play the game; I'll fix bugs as they turn up, and maybe add small
-> quality-of-life things. I haven't played very far into the game yet, so playtests and problem reports from further
+> rough edges. I haven't played very far into the game yet, so playtests and problem reports from further
 > along are very welcome (see [Found a problem?](#found-a-problem)); I'll work on them when I can.
 
 > **Unofficial fan project.** Not affiliated with or endorsed by THQ, H2O Entertainment or Nintendo. *Aidyn
@@ -123,11 +121,11 @@ checks it against this SHA-1:
 - **Windows** (`AidynReChronicled-<version>-windows-x86_64.zip`: Windows 10 or 11, 64-bit, a Vulkan driver; the
   Visual C++ runtime is included, nothing to install). Unpack it anywhere and run `AidynReChronicled.exe`;
   `Add to Steam.bat` adds it to Steam with its library art.
-- **macOS, a beta** (`AidynReChronicled-<version>-macos-arm64.dmg`, on the releases marked pre-release: Apple Silicon,
+- **macOS** (`AidynReChronicled-<version>-macos-arm64.dmg`, beside the other downloads on the release page: Apple Silicon,
   M1 or later, macOS 15 or later). Open the `.dmg`, drag the app to Applications, and allow it once in System Settings >
   Privacy & Security > Open Anyway (it is signed ad hoc, not notarized: there is no Apple developer account behind it).
-  The first start asks for your own NTSC-U 1.0 ROM. It is built by GitHub's Mac runners from the same code, was tried on
-  one Mac (an M2 MacBook Pro, 8 GB), and anti-aliasing starts off there (Metal's was slow); its data lives in
+  The first start asks for your own NTSC-U 1.0 ROM. It is built by GitHub's Mac runners from the same code and was tried on
+  one Mac (an M2 MacBook Pro, 8 GB); anti-aliasing starts off there (Metal's was slow); its data lives in
   `~/Library/Application Support/AidynReChronicled`. It doesn't update itself yet: the game's Updates page opens the
   release page. Problems, with the problem report (see below) or the issue "macOS version", are very welcome.
 

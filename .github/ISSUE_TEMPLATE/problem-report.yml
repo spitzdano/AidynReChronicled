@@ -19,7 +19,7 @@ body:
         - **Windows:** `%APPDATA%\AidynReChronicled\reports` (paste that into File Explorer's address bar).
         - **Linux:** `~/.local/share/AidynReChronicled/reports` (on a Steam Deck or an Ally, switch to Desktop Mode to
           reach it).
-        - **macOS (beta):** `~/Library/Application Support/AidynReChronicled/reports` (in Finder: Go, Go to Folder, and
+        - **macOS:** `~/Library/Application Support/AidynReChronicled/reports` (in Finder: Go, Go to Folder, and
           paste that). If the app closes the moment it starts, there may be no report: say so, and say which Mac and
           macOS you have. macOS's own crash reports, if any, are in `~/Library/Logs/DiagnosticReports` (files starting
           `AidynReChronicled`).
@@ -50,7 +50,7 @@ body:
       options:
         - A Windows PC
         - A Linux PC
-        - A Mac (Apple Silicon, the macOS beta)
+        - A Mac (Apple Silicon)
         - Steam Deck
         - ROG Ally / Xbox Ally (Bazzite, SteamOS)
         - Other (say which in the description)

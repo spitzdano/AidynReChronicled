@@ -183,8 +183,9 @@ jobs:
         if: always()
         run: rm -f baserom.z64
 
-  # A draft pre-release holding the .dmg: visible only to people with write access, never published from here.
-  # Publishing it (as a pre-release, so it is never "Latest" and the game's own update check ignores it) is spitzdano's call.
+  # The .dmg joins the version's own release when that is already published (Linux and Windows first, then this: the packs come from
+  # its update.json), beside the other downloads; only the .dmg and its checksum are added, nothing else on the release is touched.
+  # With no such release a draft pre-release holds it instead (visible only to people with write access, never published from here).
   draft:
     needs: macos
     if: github.event_name == 'workflow_dispatch'
@@ -205,17 +206,22 @@ jobs:
           cd dmg
           ls -l
           sha256sum -c ./*.sha256 2>/dev/null || shasum -a 256 -c ./*.sha256
-      - name: Make the draft
+      - name: Attach to the release (or make a draft)
         run: |
           tag="v$VERSION"
-          # An earlier draft of the same name is replaced; a published release never is.
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null | grep -q true; then
+          state=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q '.isDraft' 2>/dev/null || echo none)
+          if [ "$state" = "false" ]; then
+            # The version's release is published: the Mac download joins its assets (an earlier .dmg of the same name is replaced).
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber dmg/*.dmg dmg/*.sha256
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets -q '"attached to \(.url): " + ([.assets[].name] | map(select(test("macos"))) | join(", "))'
+            exit 0
+          fi
+          # No published release of that name: an earlier draft of it is replaced, and a draft pre-release holds the .dmg.
+          if [ "$state" = "true" ]; then
             gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
-          elif gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "$tag is already published: not touching it"; exit 1
           fi
           cat > notes.md <<NOTES
-          **Aidyn ReChronicled for macOS ($VERSION), a beta.** Apple Silicon (M1 or later), macOS 15 or later. It was tried on one Mac (an M2 MacBook Pro, 8 GB) and plays; other Macs may differ, so please report what you find. Anti-aliasing starts off on a Mac (Metal's was slow); it can be turned on in the Display page.
+          **Aidyn ReChronicled for macOS ($VERSION).** Apple Silicon (M1 or later), macOS 15 or later. It was tried on one Mac (an M2 MacBook Pro, 8 GB) and plays; other Macs may differ, so please report what you find. Anti-aliasing starts off on a Mac (Metal's was slow); it can be turned on in the Display page.
 
           1. Open the \`.dmg\` and drag **Aidyn ReChronicled** to Applications.
           2. Open it. macOS says it can't verify the app: click **Done**.
@@ -227,5 +233,5 @@ jobs:
           Saves and settings live in \`~/Library/Application Support/AidynReChronicled\`. The game's Updates page opens this release page when a newer Mac build is out. If something goes wrong, the pause menu's ReChronicled page can write a problem report (reports/ in that folder), or open an issue on this repository.
           NOTES
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
-              --title "Aidyn ReChronicled $VERSION for macOS (beta)" --notes-file notes.md dmg/*.dmg dmg/*.sha256
+              --title "Aidyn ReChronicled $VERSION for macOS" --notes-file notes.md dmg/*.dmg dmg/*.sha256
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,url -q '"draft=\(.isDraft) prerelease=\(.isPrerelease) \(.url)"'
