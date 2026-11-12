@@ -1084,3 +1084,13 @@ text = "extern void aidyn_message_box_begin(uint8_t* rdram, recomp_context* ctx)
 func = "CombatTextboxWidget_Tick"
 before_vram = 0x800879E4
 text = "extern void aidyn_message_box_end(uint8_t* rdram, recomp_context* ctx); aidyn_message_box_end(rdram, ctx);"
+
+# A dialogue's "actor walks / runs to a point" command (DialogCallbackC, case ActorWalk / ActorRun) takes its destination from a reference point of
+# the loaded map (get_map_referencepoint, s3) and reads its x and z from it without looking: a point the map doesn't have (as in the original's
+# Keelin conversation in the Terminor inn, issue #81) was a read through a null pointer, which the N64 let by and the recompiled game does not.
+# aidyn_dialog_walk_guard: with no point the actor is sent to where it already stands (s3 is pointed at its own position), with no actor
+# either the walk is skipped (to the label after the call). Hooked before the two loads (L_8004FBD4).
+[[patches.hook]]
+func = "DialogCallbackC"
+before_vram = 0x8004FBD4
+text = "extern int aidyn_dialog_walk_guard(uint8_t* rdram, recomp_context* ctx); if (aidyn_dialog_walk_guard(rdram, ctx)) goto after_28;"
