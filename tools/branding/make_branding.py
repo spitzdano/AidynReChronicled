@@ -391,7 +391,7 @@ def menu_hint(label, button, light=False):
     return draw
 
 
-HINTS = [("hint_take", "Take", "A"), ("hint_putback", "Put back", "A"), ("hint_leave", "Leave", "B"),
+HINTS = [("hint_take", "Take", "A"), ("hint_drop", "Drop", "A"), ("hint_leave", "Leave", "B"),
          ("hint_switch", "Switch", "DPAD"), ("hint_equip", "Equip", "A"), ("hint_unequip", "Unequip", "A"),
          ("hint_use", "Use", "A"), ("hint_details", "Details", "CD"), ("hint_lists", "Lists", "DPAD"), ("hint_train", "Train", "A"),
          ("hint_buy", "Buy", "A"), ("hint_sell", "Sell", "A"), ("hint_appraise", "Appraise", "CU"),

@@ -4093,7 +4093,7 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                        loot_list ? branding_index("hint_appraise") : -1 }, 184.0f);
             draw_row({ branding_index("hint_switch"), branding_index("hint_leave") }, 197.0f);
         } else {
-            draw_row({ branding_index(loot_list ? "hint_take" : "hint_putback"), branding_index("hint_leave"),
+            draw_row({ branding_index(loot_list ? "hint_take" : "hint_drop"), branding_index("hint_leave"),
                        branding_index("hint_switch") }, 192.0f);
         }
     }
