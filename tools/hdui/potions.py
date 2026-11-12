@@ -106,9 +106,9 @@ MDOULOS_POTIONS = ["fire", "inferno", "sleep-gas", "acid", "healing", "stamina",
 # ...and a scroll for each school (MagicSchoolEnum order, as SCHOOL_COLOURS): Chaos, which is every school, has his neutral one.
 MDOULOS_SCROLLS = ["neutral", "elemental", "naming", "necromancy", None, "star"]
 MDOULOS = Path(__file__).resolve().parents[2] / "art/items/mdoulos"
-# Held back until 1.0.5: False builds the recoloured bottles and scrolls as before. Set True for 1.0.5 (AIDYN_MDOULOS_ICONS=1 tries it
-# without editing), and add "; the painted potion and scroll icons are his" to the credits in tools/release/README.md (ships with releases).
-USE_MDOULOS = os.environ.get("AIDYN_MDOULOS_ICONS", "") == "1" or False
+# On from 1.1.0 (spitzdano, 2026-11-11), credited in the README and in tools/release/README.md (ships with releases). AIDYN_MDOULOS_ICONS=0
+# builds the recoloured bottles and scrolls instead, to compare.
+USE_MDOULOS = os.environ.get("AIDYN_MDOULOS_ICONS", "") != "0"
 
 
 def write_art(art, folder):
