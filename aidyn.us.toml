@@ -1166,3 +1166,16 @@ text = "extern int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int cho
 func = "DialogCallbackC"
 before_vram = 0x8004FBD4
 text = "extern int aidyn_dialog_walk_guard(uint8_t* rdram, recomp_context* ctx); if (aidyn_dialog_walk_guard(rdram, ctx)) goto after_28;"
+
+# A map point a dialogue asks for and the map doesn't have (src/game/patches.cpp, aidyn_refpoint_safe): just after DialoguePreCallback's lookup
+# (get_map_referencepoint, 0x8004F3F4; v0 is stored at the next instruction) and the camera object code's (FindReferncePoint, 0x80016200; v0 is
+# used at the next), a missing point becomes a stand-in at the party's place.
+[[patches.hook]]
+func = "DialoguePreCallback"
+before_vram = 0x8004F3FC
+text = "extern void aidyn_refpoint_safe(uint8_t* rdram, recomp_context* ctx); aidyn_refpoint_safe(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_800160D4"
+before_vram = 0x80016208
+text = "extern void aidyn_refpoint_safe(uint8_t* rdram, recomp_context* ctx); aidyn_refpoint_safe(rdram, ctx);"

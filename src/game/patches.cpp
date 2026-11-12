@@ -14043,6 +14043,31 @@ extern "C" int aidyn_dialog_walk_guard(uint8_t* rdram, recomp_context* ctx) {
     return 0;
 }
 
+// A map point a dialogue asks for and the map doesn't have: the stand-in (issue #81, tools/data/refpoint_audit.py lists them: 44 dialogues on 32 maps
+// ask for one). DialoguePreCallback (0x8004F3F4: before the camera, face and create-actor commands) and the camera object code (func_800160D4,
+// 0x80016200: the camera a dialogue sends to a point) look the point up with get_map_referencepoint / FindReferncePoint and read its position
+// without looking; a missing one is a null pointer there. Hooked just after each call (aidyn.us.toml): a missing point (v0 = 0) becomes a
+// scratch map-point object, all zero but its position, which is the player's, so a camera looks at the party and an actor appears beside
+// it instead of the game faulting. The walk command's lookup (DialogCallbackC) has its own answer (aidyn_dialog_walk_guard: stay where it is).
+// AIDYN_REFPOINT_TEST_MISSING=1: every lookup at those two places is treated as missing, to see it.
+extern "C" void aidyn_refpoint_safe(uint8_t* rdram, recomp_context* ctx) {
+    static const bool test = std::getenv("AIDYN_REFPOINT_TEST_MISSING") != nullptr;
+    if (test) ctx->r2 = 0;
+    if ((int32_t)ctx->r2 != 0) return;
+    constexpr gpr kStandIn = (gpr)(int32_t)0x80F8D000;  // scratch above the game's 15 MB, one voxelObject (0x6C bytes)
+    for (uint32_t i = 0; i < 0x6C; i += 4) MEM_W(i, kStandIn) = 0;
+    const gpr player = MEM_W(0, (gpr)(int32_t)0x800D8130);  // gGlobals.playerCharStruct.playerDat
+    if (heap_pointer(player)) {
+        for (uint32_t i = 0; i < 12; i += 4) MEM_W(i, kStandIn) = MEM_W(0x68 + i, player);  // collision.pos
+    }
+    ctx->r2 = (int32_t)kStandIn;
+    static int logged = 0;
+    if (logged++ < 20) {
+        fprintf(stdout, "Dialogue: a point the map doesn't have is looked up: the party's own place stands in\n");
+        fflush(stdout);
+    }
+}
+
 // ---- Pop-ups in the parchment style ----
 // The game's pop-ups (a message: TextPopup_New; a choice: WidgetChoiceDia, DollBarterConfirm) are a black 1 x 1 picture stretched over their box with
 // sixteen-unit gradient pieces round it, and white words. Over a pause page (the handler's widgets after the pause menu's: popup_rendering) the
