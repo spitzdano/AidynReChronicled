@@ -4101,14 +4101,21 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
     if (treasure_title.seen && treasure_title.alpha != 0 && !treasure_title.shop && frame_ctx != nullptr && inventory_page.seen && inventory_page.alpha != 0 && heap_pointer(doll_lists)) {
         const gpr inv = treasure_party_list(rdram, doll_lists);
         if (inv != 0) {
+            // A pop-up over the loot screen (Put Back's "Are you sure you wish to drop...?": the handler's last widget isn't the pause menu) has the
+            // keys, the pointer and the clicks: the list is drawn as it is and does nothing (as in a shop or a trainer).
+            const gpr handler = MEM_W(0, (gpr)(int32_t)0x800D9690);
+            const bool popup = heap_pointer(handler) && MEM_W(4, handler) != MEM_W(0, (gpr)(int32_t)0x800D9558);
             const bool party_active = MEM_W(0x88, barter_widget) == MEM_W(0x84, barter_widget);
             hide_list_ttl = 3;
-            menu_keys = party_active ? (0x0008u | 0x0800u | 0x0400u | 0x0020u | 0x0010u) : 0u;  // (X and the D-pad's left / right stay the game's)
+            menu_keys = (party_active && !popup) ? (0x0008u | 0x0800u | 0x0400u | 0x0020u | 0x0010u) : 0u;  // (X and the D-pad's left / right stay the game's)
             const uint32_t edges = aidyn::input::take_menu_keys();
             post_battle_ui = true;
             treasure_ui = true;
             list_inactive = !party_active;
-            g = list_overlay(rdram, frame_ctx, g, inventory_page, 0, inv, party_active ? edges : 0u);
+            list_frozen = popup;
+            g = list_overlay(rdram, frame_ctx, g, inventory_page, 0, inv, (party_active && !popup) ? edges : 0u);
+            if (popup) aidyn::controls::set_click_zones(nullptr, -1);
+            list_frozen = false;
             post_battle_ui = false;
             treasure_ui = false;
             list_inactive = false;
@@ -14043,7 +14050,8 @@ extern "C" int aidyn_dialog_walk_guard(uint8_t* rdram, recomp_context* ctx) {
 // in violet on the row wash. The widgets still do everything else: the keys, the fades (the box's alpha is the fade), the choices.
 namespace {
     float popup_alpha = 0.0f;        // the box's fade (0..255), as the game fades it
-    int popup_box_frame = -1;        // the frame a box was drawn in (a pop-up without a box, a game panel's menu, keeps the game's own words)
+    int popup_box_frame = -1;
+    int popup_pulse_frame = -1000;   // the frame a pulsing plain text (the chosen row of a Save page pop-up) was last drawn in        // the frame a box was drawn in (a pop-up without a box, a game panel's menu, keeps the game's own words)
     float popup_x0 = 0.0f, popup_x1 = 320.0f, popup_y0 = 0.0f;  // the box last drawn: what the words fit
     struct PopupWord { uint32_t colour = 0; int changed = 0; };
     std::map<gpr, PopupWord> popup_words;   // by text widget: when its colour last changed (the chosen choice's does every frame)
@@ -14136,6 +14144,16 @@ extern "C" int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice)
     const int alpha = (int)std::clamp(popup_alpha, 0.0f, 255.0f);
     gpr g = (gpr)(int32_t)ctx->r5;
     bool chosen = false;
+    // The Save and Delete pages' pop-ups ("Overwrite" / "Cancel", "Continue") are plain texts, not choices: the chosen row's colour pulses
+    // through greys (all four bytes the same, below 255) while the other stays white (e1e1e1ff). A pulsing text is the chosen row, and short
+    // texts beside it (within a few frames) are its fellow rows, drawn as choices; the longer message above them is not.
+    bool as_choice = choice != 0;
+    if (!choice) {
+        const uint32_t c = (uint32_t)MEM_W(0x58, w);
+        const bool pulsing = (c & 0xFF) != 0xFF && (c & 0xFF) == ((c >> 8) & 0xFF) && (c & 0xFF) == ((c >> 16) & 0xFF) && (c & 0xFF) == (c >> 24);
+        if (pulsing) { popup_pulse_frame = popup_frame; chosen = true; as_choice = true; }
+        else if (text.size() <= 14 && popup_frame - popup_pulse_frame <= 2) as_choice = true;
+    }
     if (choice) {  // the chosen row's colour changes every frame
         PopupWord& pw = popup_words[w];
         const uint32_t colour = (uint32_t)MEM_W(0x58, w);
@@ -14154,7 +14172,7 @@ extern "C" int aidyn_popup_text(uint8_t* rdram, recomp_context* ctx, int choice)
             g = ctl_state(rdram, ctx, g);
         }
     }
-    const uint32_t colour = choice ? (chosen ? 0x4B3174 : 0x7B5560) : 0x40386A;
+    const uint32_t colour = as_choice ? (chosen ? 0x4B3174 : 0x7B5560) : 0x40386A;
     const float width = std::max(40.0f, popup_x1 - x);
     float ly = y;
     for (const std::string& line : wrap_lines(rdram, ctx, text, width, 0.9f)) {
