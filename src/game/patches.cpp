@@ -2536,7 +2536,7 @@ extern "C" void aidyn_minimap_end(uint8_t* rdram, recomp_context* ctx) {
 // it until it returns 0, then steps that many ticks of 1/60 s (capped at 6: made for the N64's 10 to 20 frames a
 // second). aidyn.us.toml hooks GetInput's entry (the port) and its return: while fast-forward is on, every real sample
 // is followed by (speed - 1) quiet ones, copies of it without its new presses (same stick, held buttons and hold
-// times), so the game runs that many ticks a frame and no press is handled twice. Fast-forward is L3 or a held Tab
+// times), so the game runs that many ticks a frame and no press is handled twice. Fast-forward is toggled by L3 or Tab
 // (src/main/input.cpp), at game.fast_forward_speed; turns in combat get their own: combat_controls (the combat frame's
 // sample loop) is hooked on entry and looks at gCombatP->current_Ent->aiP (set for enemies and the AI-led Sholeh):
 // enemies' turns at game.combat_enemy_speed, the party's at game.combat_party_speed while they move and act (not while
@@ -13174,7 +13174,7 @@ std::string help_keys_text() {
     std::string t = "On a keyboard, " + move_keys() + " move; " + k(kA) + " and " + k(kB) + " are " + sym("7F", "A") + " and " + sym("80", "B") + "; " +
                     k(kX) + " and " + k(kY) + " are " + sym("84", "X") + " and " + sym("83", "Y") + "; " + k(kView) + " and " + k(kRT) +
                     " are " + sym("82", "View") + " and " + sym("81", "RT") + "; " + k(kLT) + ", " + k(kLB) + " and " + k(kRB) + " are " +
-                    sym("87", "LT") + ", LB and RB; " + k(kMenu) + " is " + sym("85", "Menu") + ". Hold " + k(kFastForward) + " to fast-forward.";
+                    sym("87", "LT") + ", LB and RB; " + k(kMenu) + " is " + sym("85", "Menu") + ". Press " + k(kFastForward) + " to turn fast-forward on or off.";
     if (mouse_look()) {
         t += " The mouse turns the camera; " + k(kCamReset) + " puts it behind the party.";
     }
