@@ -32,8 +32,9 @@ namespace aidyn::platform {
                     const std::function<bool()>& keep_going);
     // The call stack, one line per frame ("program(+0x1234) [0x...]" or a symbol), skipping the first `skip` frames.
     std::vector<std::string> backtrace_lines(int skip, int max_frames = 24);
-    // Windows: the program's output goes to dir/last-run.log (the run before: previous-run.log), as the Linux launcher
-    // (tools/ally/aidyn-rechronicled.sh) arranges there; a windowed program has nowhere else to write. Linux: nothing.
+    // Windows, and macOS when there is no terminal: the program's output goes to dir/last-run.log (the run before:
+    // previous-run.log), as the Linux launcher (tools/ally/aidyn-rechronicled.sh) arranges there; a windowed program has
+    // nowhere else to write. Linux: nothing.
     void start_log(const std::filesystem::path& dir, const std::vector<std::string>& args);
     // "Start: <what> at <ms>" in the log: how long since the process began (on Windows from its creation, DLL loading
     // included), to see where a slow start goes.

@@ -23,7 +23,9 @@
 #include <unistd.h>
 #ifdef __APPLE__
 #include <crt_externs.h>
+#include <dlfcn.h>
 #include <mach-o/dyld.h>
+#include <mach-o/loader.h>
 #include <sys/sysctl.h>
 #endif
 #endif
@@ -323,6 +325,45 @@ int aidyn::platform::capture_stack(void** frames, int max_frames) {
 
 std::vector<std::string> aidyn::platform::describe_stack(void* const* frames, int count) {
     std::vector<std::string> out;
+#ifdef __APPLE__
+    // backtrace_symbols names the nearest exported symbol, which in a stripped program is some unrelated one
+    // ("osInitialize + 562220"). What can be read later is the offset inside the image and the image's UUID (LC_UUID: the
+    // build; an unstripped binary of that build gives the function): "3  AidynReChronicled +0x45a33c (near name + off)".
+    if (const auto* header = reinterpret_cast<const mach_header_64*>(_dyld_get_image_header(0)); header != nullptr && header->magic == MH_MAGIC_64) {
+        const auto* cmd = reinterpret_cast<const load_command*>(header + 1);
+        for (uint32_t i = 0; i < header->ncmds; i++, cmd = reinterpret_cast<const load_command*>(reinterpret_cast<const char*>(cmd) + cmd->cmdsize)) {
+            if (cmd->cmd == LC_UUID) {
+                const uint8_t* u = reinterpret_cast<const uuid_command*>(cmd)->uuid;
+                char text[64];
+                std::snprintf(text, sizeof text, "image UUID %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                              u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
+                out.push_back(text);
+                break;
+            }
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        Dl_info info{};
+        char line[512];
+        if (dladdr(frames[i], &info) != 0 && info.dli_fbase != nullptr) {
+            const char* image = info.dli_fname != nullptr ? std::strrchr(info.dli_fname, '/') : nullptr;
+            image = image != nullptr ? image + 1 : (info.dli_fname != nullptr ? info.dli_fname : "?");
+            const unsigned long offset = (unsigned long)((uintptr_t)frames[i] - (uintptr_t)info.dli_fbase);
+            if (info.dli_saddr != nullptr && info.dli_sname != nullptr) {
+                std::snprintf(line, sizeof line, "%-2d %s +0x%lx (near %s + %lu)", i, image, offset, info.dli_sname,
+                              (unsigned long)((uintptr_t)frames[i] - (uintptr_t)info.dli_saddr));
+            }
+            else {
+                std::snprintf(line, sizeof line, "%-2d %s +0x%lx", i, image, offset);
+            }
+        }
+        else {
+            std::snprintf(line, sizeof line, "%-2d %p", i, frames[i]);
+        }
+        out.push_back(line);
+    }
+    return out;
+#endif
     char** names = backtrace_symbols(frames, count);
     for (int i = 0; names != nullptr && i < count; i++) {
         out.push_back(names[i]);
@@ -391,8 +432,18 @@ void aidyn::platform::startup_mark(const char* what) {
     std::fflush(stdout);
 }
 
+// Windows and macOS have no launcher script to send the output to logs/last-run.log (the Linux launchers do), so the game
+// does it itself. On a Mac the game started from a terminal keeps its output there, for whoever is watching it; started
+// from Finder or the Dock (no terminal: the output would be lost) it goes to the log, which a problem report holds.
 void aidyn::platform::start_log(const fs::path& dir, const std::vector<std::string>& args) {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
+#ifdef __APPLE__
+    if (isatty(STDERR_FILENO)) {
+        (void)dir;
+        (void)args;
+        return;
+    }
+#endif
     std::error_code ec;
     fs::create_directories(dir, ec);
     const fs::path log = dir / "last-run.log";
@@ -411,7 +462,11 @@ void aidyn::platform::start_log(const fs::path& dir, const std::vector<std::stri
     char when[32];
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
     localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
     std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", &tm);
     std::string line = std::string("== ") + when + " " + exe_path().string();
     for (size_t i = 1; i < args.size(); i++) {

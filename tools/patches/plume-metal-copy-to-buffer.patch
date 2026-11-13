@@ -1,0 +1,63 @@
+Aidyn ReChronicled: copyTextureRegion from a texture into a buffer on Metal (copyFromTexture:...toBuffer:), for reading
+back save pictures (tools/patches/rt64-save-pictures.patch, src/game/save_pictures.cpp). Without it the macOS game
+crashed (NULL read in RT64's Workload thread) when the pause menu opened or a quicksave was made. Also: an unsupported
+copy now does nothing instead of reading through a NULL texture.
+
+diff --git i/plume_metal.cpp w/plume_metal.cpp
+index 373c87e..8591e2b 100644
+--- i/plume_metal.cpp
++++ w/plume_metal.cpp
+@@ -3022,9 +3022,53 @@ namespace plume {
+                 dstOrigin
+             );
+             activeBlitEncoder->popDebugGroup();
++        }
++        // Aidyn ReChronicled (tools/patches/plume-metal-copy-to-buffer.patch): a texture's area into a buffer, for reading
++        // back save pictures (tools/patches/rt64-save-pictures.patch). Without this branch the copy fell into the
++        // texture-to-texture one below, with no destination texture.
++        else if (dstLocation.type == RenderTextureCopyType::PLACED_FOOTPRINT && srcLocation.type == RenderTextureCopyType::SUBRESOURCE) {
++            assert(dstBuffer != nullptr);
++            assert(srcTexture != nullptr);
++            if (dstBuffer == nullptr || srcTexture == nullptr) {
++                return;
++            }
++
++            MTL::Origin srcOrigin;
++            MTL::Size size;
++            if (srcBox != nullptr) {
++                srcOrigin = { NS::UInteger(srcBox->left), NS::UInteger(srcBox->top), NS::UInteger(srcBox->front) };
++                size = { NS::UInteger(srcBox->right - srcBox->left), NS::UInteger(srcBox->bottom - srcBox->top), NS::UInteger(srcBox->back - srcBox->front) };
++            } else {
++                srcOrigin = { 0, 0, 0 };
++                size = { dstLocation.placedFootprint.width, dstLocation.placedFootprint.height, dstLocation.placedFootprint.depth };
++            }
++
++            // The rows of the buffer are rowWidth texels apart (the footprint's, as on Vulkan's bufferRowLength).
++            const uint32_t blockWidth = RenderFormatBlockWidth(srcTexture->desc.format);
++            const uint32_t horizontalBlocks = (dstLocation.placedFootprint.rowWidth + blockWidth - 1) / blockWidth;
++            const uint32_t verticalBlocks = (dstLocation.placedFootprint.height + blockWidth - 1) / blockWidth;
++            const uint32_t bytesPerRow = horizontalBlocks * RenderFormatSize(srcTexture->desc.format);
++            const uint32_t bytesPerImage = bytesPerRow * verticalBlocks;
++
++            activeBlitEncoder->pushDebugGroup(MTLSTR("CopyTextureRegionToBuffer"));
++            activeBlitEncoder->copyFromTexture(
++                srcTexture->mtl,
++                srcLocation.subresource.arrayIndex,
++                srcLocation.subresource.mipLevel,
++                srcOrigin,
++                size,
++                dstBuffer->mtl,
++                dstLocation.placedFootprint.offset,
++                bytesPerRow,
++                bytesPerImage
++            );
++            activeBlitEncoder->popDebugGroup();
+         } else {
+             assert(dstTexture != nullptr);
+             assert(srcTexture != nullptr);
++            if (dstTexture == nullptr || srcTexture == nullptr) {
++                return;  // an unsupported copy: nothing done, rather than a read through NULL
++            }
+ 
+             MTL::Origin srcOrigin;
+             MTL::Size size;
