@@ -9,7 +9,7 @@ namespace aidyn::input {
     bool get(int controller_num, uint16_t* buttons, float* x, float* y);
     void right_stick(float* x, float* y); // -1..1 after the dead zone, as last polled; y up = positive
     bool right_stick_click();               // R3 held, as last polled (recentres the camera)
-    bool fast_forward();                    // fast-forward on: toggled by L3, or Tab held (src/game/patches.cpp)
+    bool fast_forward();                    // fast-forward on: toggled by a press of L3 or of the Fast-forward key, Tab (src/game/patches.cpp)
     bool c_down_held();                     // N64 C-down held (X, keyboard K), as last polled (title screen: switch version)
     bool c_up_held();                       // N64 C-up held (Y, keyboard I), as last polled (title screen: switch version)
     void set_stick_keys(bool on);           // the right stick's flicks are the port's (kept for take_menu_keys: left 0x20000, right 0x40000) instead of turning the pages; refresh every frame

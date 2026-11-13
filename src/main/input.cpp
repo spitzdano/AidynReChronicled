@@ -42,8 +42,8 @@ namespace {
     // The right stick as last polled, for the camera (src/game/patches.cpp).
     std::atomic<float> right_x{ 0.0f }, right_y{ 0.0f };
     std::atomic_bool right_click{ false };
-    std::atomic_bool ff_toggled{ false }, ff_held{ false };
-    bool l3_was_down = false;
+    std::atomic_bool ff_toggled{ false };
+    bool l3_was_down = false, keyboard_ff_was_down = false;
     std::atomic_bool c_down{ false }, c_up{ false };
     std::atomic_bool capture{ false };
     std::atomic_uint32_t captured_buttons{ 0 };
@@ -268,11 +268,12 @@ bool aidyn::input::get(int controller_num, uint16_t* buttons, float* x, float* y
     right_x.store(rx, std::memory_order_relaxed);
     right_y.store(ry, std::memory_order_relaxed);
     right_click.store(click, std::memory_order_relaxed);
-    if (l3 && !l3_was_down) {
+    // Fast-forward is a toggle from either: a new press of L3 or of the Fast-forward key (Tab) flips it.
+    if ((l3 && !l3_was_down) || (keyboard_ff && !keyboard_ff_was_down)) {
         ff_toggled.store(!ff_toggled.load(std::memory_order_relaxed), std::memory_order_relaxed);
     }
     l3_was_down = l3;
-    ff_held.store(keyboard_ff, std::memory_order_relaxed);
+    keyboard_ff_was_down = keyboard_ff;
     c_down.store((b & CD) != 0, std::memory_order_relaxed);
     c_up.store((b & CU) != 0, std::memory_order_relaxed);
     start.store((b & START) != 0, std::memory_order_relaxed);
@@ -490,7 +491,7 @@ bool aidyn::input::c_up_held() {
 }
 
 bool aidyn::input::fast_forward() {
-    return ff_toggled.load(std::memory_order_relaxed) || ff_held.load(std::memory_order_relaxed);
+    return ff_toggled.load(std::memory_order_relaxed);
 }
 
 bool aidyn::input::right_stick_click() {

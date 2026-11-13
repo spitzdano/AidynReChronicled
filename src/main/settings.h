@@ -22,7 +22,7 @@ namespace aidyn::settings {
     struct Game {
         RomPatch rom_patch = RomPatch::None;
         bool skip_intro = true;      // start at the title screen, without the Nintendo, THQ and H2O logos
-        int fast_forward_speed = 3;  // L3 (keyboard: hold Tab) toggles fast-forward: the game runs this many times faster, 2..6
+        int fast_forward_speed = 3;  // L3 (keyboard: Tab) toggles fast-forward: the game runs this many times faster, 2..6
         float combat_enemy_speed = 2.0f;  // enemy turns in combat run this many times faster on their own; 1 = off, up to 6
                                           // (the ReChronicled page's Enemy turns)
         float combat_party_speed = 1.0f;  // the party's turns in combat while they move and act (not while choosing):
