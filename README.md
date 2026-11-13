@@ -129,7 +129,9 @@ checks it against this SHA-1:
   `~/Library/Application Support/AidynReChronicled`. It doesn't update itself yet: the game's Updates page opens the
   release page. Problems, with the problem report (see below) or the issue "macOS version", are very welcome.
 
-**Your ROMs:** put them in the download's `ROMs` folder: the NTSC-U 1.0 ROM, and the same ROM with Aidyn Patch or Aidyn
+**Your ROMs:** put them in the download's `ROMs` folder (on a Mac there is no folder beside the app: it is
+`~/Library/Application Support/AidynReChronicled/ROMs`, which the game makes at every start; in Finder: Go, Go to Folder, and
+paste that): the NTSC-U 1.0 ROM, and the same ROM with Aidyn Patch or Aidyn
 Plus applied if you have them, under any names (`.z64`, `.n64` or `.v64`). At each start the game looks there for any
 version it doesn't have yet, recognises each by its hash, keeps a copy in its data folder and lists it on the title
 screen; on Linux, `install.sh` copies them to the installed game's `ROMs` folder and keeps that folder through updates.
@@ -250,7 +252,7 @@ build/cmake/AidynReChronicled --rom /path/to/aidyn-chronicles-ntsc-u-1.0.z64    
 ```
 F1: the manual. F2: the redrawn art (`rechronicled-art` pack) off and on, to compare ("Redrawn art off" shows top right while it's off). F11 / Alt+Enter (or the Display page's Window row): windowed or borderless, remembered. Shift+Esc: quit. The game starts at the title screen (`skip_intro`). Data (settings, saves, the stored
 ROMs, texture packs) lives in `~/.local/share/AidynReChronicled` (Windows: `%APPDATA%\AidynReChronicled`); ROMs put in
-`ROMs` beside the executable (or one folder up) are found and stored at the start; a folder from the project's earlier name, `AidynRecompiled`, is moved
+`ROMs` beside the executable (or one folder up; on macOS in the data folder's own `ROMs`) are found and stored at the start; a folder from the project's earlier name, `AidynRecompiled`, is moved
 there on the first run.
 
 **Aidyn Patch and Aidyn Plus.** Two community rebalances by halibabica (u/halibabica) can be played instead of the

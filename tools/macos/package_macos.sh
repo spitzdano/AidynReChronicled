@@ -100,10 +100,13 @@ Aidyn ReChronicled for macOS (Apple Silicon, macOS 15 or later). BETA: untested 
 2. Open it. macOS says it can't verify the app. Click Done.
 3. Open System Settings > Privacy & Security, scroll down and click "Open Anyway" next to the Aidyn message. Confirm with your password.
 4. On the first start, choose your own North American 1.0 Aidyn Chronicles ROM (.z64). The app contains no ROM.
+   To add more later (Aidyn Patch, Aidyn Plus, Action Edition), put them in the ROMs folder, which the game makes at every start:
+   ~/Library/Application Support/AidynReChronicled/ROMs  (in Finder: Go > Go to Folder..., paste that). Any file names will do;
+   start the game again and it finds them.
 
 Power users can skip steps 2 and 3 with:  xattr -dr com.apple.quarantine "/Applications/Aidyn ReChronicled.app"
 
-Saves, settings and your ROM are kept in ~/Library/Application Support/AidynReChronicled.
+Saves, settings and your ROMs are kept in ~/Library/Application Support/AidynReChronicled.
 Updates: the game tells you when a newer version is out; download its .dmg from the release page.
 TXT
 dmg=$out/AidynReChronicled-$version-macos-arm64.dmg

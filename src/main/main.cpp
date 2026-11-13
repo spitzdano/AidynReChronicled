@@ -468,6 +468,41 @@ void aidyn::switch_version(aidyn::settings::RomPatch version) {
     aidyn::platform::restart(args);
 }
 
+// Where the player is told to put ROMs. Beside the game on Linux and Windows. On macOS the program sits in a signed app
+// bundle with no place for files beside it, so the folder is the data folder's own: ~/Library/Application Support/
+// AidynReChronicled/ROMs (hidden from Finder by default: its path is given in full in every message).
+static std::string roms_folder_phrase() {
+#ifdef __APPLE__
+    return "the ROMs folder in " + (data_folder() / "ROMs").string();
+#else
+    return "the ROMs folder next to the game";
+#endif
+}
+
+// macOS: the ROMs folder is made at every start, with a README saying what it is for, so it is there to be found.
+static void make_roms_folder() {
+#ifdef __APPLE__
+    std::error_code ec;
+    const std::filesystem::path dir = data_folder() / "ROMs";
+    std::filesystem::create_directories(dir, ec);
+    const std::filesystem::path readme = dir / "README.txt";
+    if (!std::filesystem::exists(readme, ec)) {
+        std::ofstream(readme) <<
+            "Put your Aidyn Chronicles ROMs in this folder:\n"
+            "\n"
+            "  - the North American 1.0 cartridge (.z64, .n64 or .v64), and if you have them,\n"
+            "  - the same ROM with Aidyn Patch applied,\n"
+            "  - the same ROM with Aidyn Plus applied,\n"
+            "  - the Action Edition mod's ROM (a whole ROM: as it is).\n"
+            "\n"
+            "Any file names will do: the game recognises each one by its contents when it\n"
+            "starts, keeps a copy, and lists the versions it found on the title screen\n"
+            "(Y on the title screen opens the list to switch between them). Start the game\n"
+            "again after adding a ROM. Nothing from the game comes with this download.\n";
+    }
+#endif
+}
+
 // The ROMs folder: the player's ROMs, put in ROMs beside the game (the Windows download, the installed Linux game) or one
 // level up (the unpacked Linux download, which keeps the game in game/). At every start, each version (the 1.0 release,
 // Aidyn Patch, Aidyn Plus) whose ROM isn't stored yet is looked for there and stored when found, whatever the files
@@ -491,7 +526,11 @@ static void store_roms_from_folders() {
     }
     const std::filesystem::path here = aidyn::platform::exe_path().parent_path();
     std::error_code ec;
-    for (const std::filesystem::path& dir : { here / "ROMs", here.parent_path() / "ROMs" }) {
+    std::vector<std::filesystem::path> dirs{ here / "ROMs", here.parent_path() / "ROMs" };
+#ifdef __APPLE__
+    dirs.insert(dirs.begin(), data_folder() / "ROMs");
+#endif
+    for (const std::filesystem::path& dir : dirs) {
         if (!std::filesystem::is_directory(dir, ec)) {
             continue;
         }
@@ -568,15 +607,15 @@ static void store_rom(const std::filesystem::path& rom_path) {
 
 // The first start: explains what is wanted, then a file picker. Empty when cancelled or when no picker works here.
 static std::filesystem::path pick_rom(aidyn::settings::RomPatch version) {
-    const char* text =
+    const std::string text =
         version == aidyn::settings::RomPatch::AidynPatch
             ? "Choose your Aidyn Chronicles ROM with Aidyn Patch applied (.z64).\n\nIt is checked and kept, so this is only asked once."
         : version == aidyn::settings::RomPatch::AidynPlus
             ? "Choose your Aidyn Chronicles ROM with Aidyn Plus applied (.z64).\n\nIt is checked and kept, so this is only asked once."
         : version == aidyn::settings::RomPatch::ActionEdition
             ? "Choose your Aidyn Chronicles: Action Edition ROM (.z64).\n\nIt is checked and kept, so this is only asked once."
-            : "Choose your Aidyn Chronicles ROM: the North American 1.0 cartridge (.z64).\n\nIt is checked and kept, so this is only asked once. (Or put your ROMs in the ROMs folder next to the game: they're found by themselves.)";
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Aidyn ReChronicled", text, nullptr);
+            : "Choose your Aidyn Chronicles ROM: the North American 1.0 cartridge (.z64).\n\nIt is checked and kept, so this is only asked once. (Or put your ROMs in " + roms_folder_phrase() + ": they're found by themselves.)";
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Aidyn ReChronicled", text.c_str(), nullptr);
     if (NFD_Init() != NFD_OKAY) {
         fprintf(stderr, "No file picker: %s\n", NFD_GetError());
         return {};
@@ -637,12 +676,12 @@ static aidyn::settings::RomPatch choose_version(bool asked, bool interactive) {
         return aidyn::settings::game().rom_patch;
     }
     if (wanted == RomPatch::None) {
-        fatal("No ROM yet. Put your NTSC-U 1.0 Aidyn Chronicles ROM (.z64) in the ROMs folder next to the game, or "
-              "choose it when the game asks (or start it with --rom <path to the ROM>).");
+        fatal("%s", ("No ROM yet. Put your NTSC-U 1.0 Aidyn Chronicles ROM (.z64) in " + roms_folder_phrase() + ", or choose it "
+                     "when the game asks (or start it with --rom <path to the ROM>).").c_str());
     }
     const std::string name = version_name(wanted);
-    fatal("%s", ("No " + name + " ROM yet. Put your 1.0 ROM with " + name + " applied in the ROMs folder next to the "
-                 "game, or choose it when the game asks (or start it with --rom <path to it>).").c_str());
+    fatal("%s", ("No " + name + " ROM yet. Put your 1.0 ROM with " + name + " applied in " + roms_folder_phrase() + ", or "
+                 "choose it when the game asks (or start it with --rom <path to it>).").c_str());
 }
 
 int main(int argc, char** argv) {
@@ -751,6 +790,7 @@ int main(int argc, char** argv) {
         store_rom(rom_path);
     }
     recomp::check_all_stored_roms();
+    make_roms_folder();
     store_roms_from_folders();
     const aidyn::settings::RomPatch version = choose_version(version_flag >= 0, report_reason.empty());
     const char8_t* chosen_id = game_id_for(version);
