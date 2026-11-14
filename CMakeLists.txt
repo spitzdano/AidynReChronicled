@@ -24,19 +24,21 @@ elseif (NOT CMAKE_SYSTEM_NAME MATCHES "Linux|Windows" OR NOT CMAKE_SYSTEM_PROCES
 endif()
 
 # RT64 and the runtime, as submodules pinned by new-game.sh (same arrangement as Zelda64Recomp).
-# Changes to the pinned RT64 (tools/patches/rt64-*.patch, see each file) and to its plume submodule
-# (tools/patches/plume-*.patch) are applied here once. Without git (the portable build's container) the tree is taken
+# Changes to the pinned RT64 (tools/patches/rt64-*.patch, see each file), to its plume submodule
+# (tools/patches/plume-*.patch) and to the runtime (tools/patches/n64modernruntime-*.patch) are applied here once. Without git (the portable build's container) the tree is taken
 # as it is: the source it's given has them applied already.
 find_package(Git QUIET)
 if (NOT GIT_FOUND)
     message(STATUS "git not found: tools/patches not checked (lib/rt64 is used as it is)")
 endif()
-foreach(target rt64 plume)
+foreach(target rt64 plume n64modernruntime)
     if (NOT GIT_FOUND)
         break()
     endif()
     if (target STREQUAL "rt64")
         set(patch_dir ${CMAKE_SOURCE_DIR}/lib/rt64)
+    elseif (target STREQUAL "n64modernruntime")
+        set(patch_dir ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
     else()
         set(patch_dir ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/plume)
     endif()

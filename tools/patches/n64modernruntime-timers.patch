@@ -1,0 +1,161 @@
+Timer thread: timers ordered by a copy of what osSetTimer was given, removed by address (upstream orders its set by
+the timestamp read from the OSTimer in game memory; a stack timer stopped late and its memory reused corrupted the set,
+and timers stopped firing: a game hung in a sleep). Found in another port on 2026-10-17.
+
+diff --git i/ultramodern/src/timer.cpp w/ultramodern/src/timer.cpp
+index ee26c45..5e36467 100644
+--- i/ultramodern/src/timer.cpp
++++ w/ultramodern/src/timer.cpp
+@@ -1,6 +1,7 @@
+ #include <thread>
+ #include <variant>
+ #include <set>
++#include <unordered_map>
+ #include "blockingconcurrentqueue.h"
+ 
+ #include "ultramodern/ultra64.h"
+@@ -29,8 +30,21 @@ struct OSTimer {
+     OSMesg msg;
+ };
+ 
+-struct AddTimerAction {
++// A timer as the timer thread knows it: what osSetTimer was given, copied when it was called. The game's OSTimer often
++// lives on a stack, and its memory can be reused (for the next timer) before an osStopTimer reaches this thread; a set
++// ordered by the timestamp read from that memory then corrupts and timers stop firing (a game's pause menu hung
++// in a sleep). So nothing here reads the OSTimer after osSetTimer: timers are ordered by the copied deadline and
++// found by their address.
++struct ArmedTimer {
+     PTR(OSTimer) timer;
++    uint64_t timestamp;
++    uint64_t interval;
++    PTR(OSMesgQueue) mq;
++    OSMesg msg;
++};
++
++struct AddTimerAction {
++    ArmedTimer armed;
+ };
+ 
+ struct RemoveTimerAction {
+@@ -70,30 +84,33 @@ void timer_thread(RDRAM_ARG1) {
+     ultramodern::set_native_thread_name("Timer Thread");
+     ultramodern::set_native_thread_priority(ultramodern::ThreadPriority::VeryHigh);
+ 
+-    // Lambda comparator function to keep the set ordered
+-    auto timer_sort = [PASS_RDRAM1](PTR(OSTimer) a_, PTR(OSTimer) b_) {
+-        OSTimer* a = TO_PTR(OSTimer, a_);
+-        OSTimer* b = TO_PTR(OSTimer, b_);
+-
+-        // Order by timestamp if the timers have different timestamps
+-        if (a->timestamp != b->timestamp) {
+-            return a->timestamp < b->timestamp;
++    // Armed timers, earliest first (by the copied deadline, then address), and each armed address's deadline.
++    auto timer_sort = [](const ArmedTimer& a, const ArmedTimer& b) {
++        if (a.timestamp != b.timestamp) {
++            return a.timestamp < b.timestamp;
+         }
+-
+-        // If they have the exact same timestamp then order by address instead
+-        return a < b;
++        return a.timer < b.timer;
+     };
++    std::set<ArmedTimer, decltype(timer_sort)> active_timers{timer_sort};
++    std::unordered_map<PTR(OSTimer), uint64_t> deadlines;
+ 
+-    // Ordered set of timers that are currently active
+-    std::set<PTR(OSTimer), decltype(timer_sort)> active_timers{timer_sort};
+-    
+-    // Lambda to process a timer action to handle adding and removing timers
++    auto remove_timer = [&](PTR(OSTimer) timer) {
++        auto it = deadlines.find(timer);
++        if (it != deadlines.end()) {
++            active_timers.erase(ArmedTimer{ timer, it->second, 0, 0, 0 });
++            deadlines.erase(it);
++        }
++    };
++    auto add_timer = [&](const ArmedTimer& armed) {
++        remove_timer(armed.timer);  // setting a timer that's still armed re-arms it
++        active_timers.insert(armed);
++        deadlines[armed.timer] = armed.timestamp;
++    };
+     auto process_timer_action = [&](const Action& action) {
+-        // Determine the action type and act on it
+         if (const auto* add_action = std::get_if<AddTimerAction>(&action)) {
+-            active_timers.insert(add_action->timer);
++            add_timer(add_action->armed);
+         } else if (const auto* remove_action = std::get_if<RemoveTimerAction>(&action)) {
+-            active_timers.erase(remove_action->timer);
++            remove_timer(remove_action->timer);
+         }
+     };
+ 
+@@ -110,32 +127,21 @@ void timer_thread(RDRAM_ARG1) {
+             process_timer_action(cur_action);
+         }
+ 
+-        // Get the timer that's closest to running out
+-        PTR(OSTimer) cur_timer_ = *active_timers.begin();
+-        OSTimer* cur_timer = TO_PTR(OSTimer, cur_timer_);
+-
+-        // Remove the timer from the queue (it may get readded if waiting is interrupted)
+-        active_timers.erase(cur_timer_);
+-
+-        // Determine how long to wait to reach the timer's timestamp
+-        auto wait_duration = ticks_to_timepoint(cur_timer->timestamp) - std::chrono::high_resolution_clock::now();
+-
+-        // Wait for either the duration to complete or a new action to come through
+-        if (wait_duration.count() >= 0 && timer_context.action_queue.wait_dequeue_timed(cur_action, wait_duration)) {
+-            // Timer was interrupted by a new action 
+-            // Add the current timer back to the queue (done first in case the action is to remove this timer)
+-            active_timers.insert(cur_timer_);
+-            // Process the new action
++        // Wait for the earliest timer, or for a new action (then look again)
++        const ArmedTimer cur = *active_timers.begin();
++        auto wait_duration = ticks_to_timepoint(cur.timestamp) - std::chrono::high_resolution_clock::now();
++        if (wait_duration.count() > 0 && timer_context.action_queue.wait_dequeue_timed(cur_action, wait_duration)) {
+             process_timer_action(cur_action);
++            continue;
+         }
+-        else {
+-            // Waiting for the timer completed, so send the timer's message to its message queue
+-            ultramodern::enqueue_external_message_src(cur_timer->mq, cur_timer->msg, false, ultramodern::EventMessageSource::Timer);
+-            // If the timer has a specified interval then reload it with that value
+-            if (cur_timer->interval != 0) {
+-                cur_timer->timestamp = cur_timer->interval + time_now();
+-                active_timers.insert(cur_timer_);
+-            }
++
++        // It's due: send its message, and reload it if it repeats
++        remove_timer(cur.timer);
++        ultramodern::enqueue_external_message_src(cur.mq, cur.msg, false, ultramodern::EventMessageSource::Timer);
++        if (cur.interval != 0) {
++            ArmedTimer next = cur;
++            next.timestamp = cur.interval + time_now();
++            add_timer(next);
+         }
+     }
+ }
+@@ -181,18 +187,15 @@ extern "C" void osSetTime(OSTime t) {
+ extern "C" int osSetTimer(RDRAM_ARG PTR(OSTimer) t_, OSTime countdown, OSTime interval, PTR(OSMesgQueue) mq, OSMesg msg) {
+     OSTimer* t = TO_PTR(OSTimer, t_);
+ 
+-    // Determine the time when this timer will trigger off
+-    if (countdown == 0) {
+-        // Set the timestamp based on the interval
+-        t->timestamp = interval + time_now();
+-    } else {
+-        t->timestamp = countdown + time_now();
+-    }
++    // Determine the time when this timer will trigger off (a zero countdown means the interval)
++    const uint64_t timestamp = (countdown == 0 ? interval : countdown) + time_now();
++    t->timestamp = timestamp;
+     t->interval = interval;
+     t->mq = mq;
+     t->msg = msg;
+ 
+-    timer_context.action_queue.enqueue(AddTimerAction{ t_ });
++    // The timer thread works from this copy, never from the OSTimer (see ArmedTimer)
++    timer_context.action_queue.enqueue(AddTimerAction{ ArmedTimer{ t_, timestamp, interval, mq, msg } });
+ 
+     return 0;
+ }
