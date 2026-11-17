@@ -518,6 +518,8 @@ All in `src/game/patches.cpp`, hooked from `aidyn.us.toml`:
     townsfolk who fight once spoken to) after three trips through a door or to another map (its voxel chart). With the
     rule each such win over a group with no conversation is kept with the save (`battle_setup_func`,
     `WriteTo_VoxelChart`), and `some_monsterparty_checker` keeps that group away; townsfolk keep the game's way.
+    It can be turned off later on the ReChronicled page's Fights stay won row (chosen twice), for the rest of that
+    game and never back on; the achievement is given up with it.
     Camping still brings night ambushes, so there is always a fight to be had. Every other group (1,033 of 1,085) has
     a "defeated" flag and never came back in the original either.
   - *Chests stay empty* (Fair Finder): a chest emptied stays empty. A container with no "opened" flag of its own (46 of

@@ -4986,6 +4986,8 @@ bool fair_rule_kept(int i);
 void better_shops_tick(uint8_t* rdram);                            // "Better shops"
 bool sparkle_on();                                                // "Treasure sparkle": this playthrough has it
 void sparkle_turn_on(uint8_t* rdram, recomp_context* ctx);
+bool stay_won_on();                                               // "Fights stay won": this playthrough has it
+void stay_won_turn_off(uint8_t* rdram, recomp_context* ctx);
 
 namespace {
     // The mouse pointer over one of the port's own lists (#44): when it has moved since this list last looked
@@ -5156,6 +5158,7 @@ namespace {
             { "rc_controls", nullptr, "", nullptr, nullptr, nullptr, controls_open },
             { "rc_fair_play", nullptr, "", nullptr, nullptr, nullptr, fair_show },
             { "rc_sparkle", nullptr, "", nullptr, sparkle_on, nullptr, sparkle_turn_on },
+            { "rc_stay_won", nullptr, "", nullptr, stay_won_on, nullptr, stay_won_turn_off },
             { "rc_report", nullptr, "", nullptr, nullptr, nullptr, report_problem },
         };
         if (aidyn_restored_samples_available()) {  // the rechronicled-samples pack ("Restored instrument samples")
@@ -8971,7 +8974,7 @@ namespace {
             { "fair_healer", "Finish the game with the Healer rule on (Fair Play, at New Game)." },
             { "fair_trade", "Finish the game with Fair trade on (Fair Play, at New Game)." },
             { "fair_alchemy", "Finish the game with Honest alchemy on (Fair Play, at New Game)." },
-            { "fair_stay_won", "Finish the game with Fights stay won on (Fair Play, at New Game)." },
+            { "fair_stay_won", "Finish the game with Fights stay won on the whole way (Fair Play, at New Game; turning it off later gives it up)." },
             { "fair_chests", "Finish the game with Chests stay empty on (Fair Play, at New Game)." },
             { "fair_keen_eye", "Finish the game without the treasure sparkle (Fair Play, at New Game)." },
             { "fair_shops", "Finish the Original with its own shops: Better shops off (Fair Play, at New Game)." },
@@ -12187,7 +12190,8 @@ void title_versions_watchdog() {
 // a save without a record (made before) plays with none of them, and its playthrough can't earn their achievements.
 // Always on, outside the panel: Sholeh's intelligence (35 in the original and Aidyn Patch) is saved in 5 bits and came
 // back as 3; any stat a save cut below the character's starting value gets its 32 back (fair_fix_stats).
-// The ReChronicled page's Fair play row says which are on (it can't change them).
+// The ReChronicled page's Fair play row says which are on (it can't change them). Two rows there can: Treasure sparkle
+// (on for good, no Keen Eye) and Fights stay won (off for good, no Settled Scores).
 //   Fights stay won (Settled Scores) a group of monsters beaten stays beaten. The game brings back a group
 //                   that has no "defeated" flag of its own (52 of its 1,085 groups, such as the Gwernia inn cellar's
 //                   bats, and townsfolk who fight once spoken to) after three trips through a door or to another map
@@ -12328,6 +12332,41 @@ void sparkle_turn_on(uint8_t* rdram, recomp_context* ctx) {
     fprintf(stdout, "Fair play: the treasure sparkle turned on\n");
     fflush(stdout);
     notice("The treasure sparkle is on for this game", 3000);
+    rc_sound(rdram, ctx, 0x740, 60);
+}
+
+bool stay_won_on() { return fair.known && fair.stay_won; }
+
+// The ReChronicled page's Fights stay won row (A): off for the rest of this playthrough, once A is pressed twice (the
+// first press says what it costs). The achievement is for finishing with the rule on the whole way, so it is given up
+// (fair_rule_kept). Groups already kept lose their protection: the game brings them back its own way (its voxel chart
+// never got the entry that would have counted them down, so they are simply fightable again). A game without the rule
+// (an older save) has nothing to turn off.
+void stay_won_turn_off(uint8_t* rdram, recomp_context* ctx) {
+    static auto asked = std::chrono::steady_clock::time_point{};
+    const auto now = std::chrono::steady_clock::now();
+    if (!fair.known) {
+        notice("This game plays without Fights stay won", 3000);
+        rc_sound(rdram, ctx, 0x741, 60);
+        return;
+    }
+    if (!fair.stay_won) {
+        notice("Fights stay won is off for this game", 3000);
+        rc_sound(rdram, ctx, 0x741, 60);
+        return;
+    }
+    if (now - asked > std::chrono::seconds(4)) {
+        asked = now;
+        notice("Choose it again: off for good, and no Settled Scores", 4000);
+        rc_sound(rdram, ctx, 0x740, 60);
+        return;
+    }
+    asked = {};
+    fair.stay_won = false;
+    fair.beaten.clear();
+    fprintf(stdout, "Fair play: fights stay won turned off\n");
+    fflush(stdout);
+    notice("Fights stay won is off for this game", 3000);
     rc_sound(rdram, ctx, 0x740, 60);
 }
 
