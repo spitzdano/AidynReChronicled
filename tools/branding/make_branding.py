@@ -840,6 +840,19 @@ def _key_glyph_metrics():
         if len(cols) == 0:
             continue
         ink = m[:, cols.min():cols.max() + 1]
+        if ch == "H":
+            rows = np.nonzero(m.max(axis=1) > 0.5)[0]
+            cap_span = (int(rows.min()), int(rows.max()) + 1)
+        if ch == "I":
+            # Marcellus's I is a plain stroke at this size, which read as a 1 (the title card's "I opens the version list"
+            # went unseen): drawn with serifs instead, a bar across its top and its foot, and wider than a 1.
+            w, stem, bar = round(3.4 * SS), round(1.1 * SS), round(1.0 * SS)
+            r0, r1 = cap_span
+            ink = np.zeros((m.shape[0], w), np.float32)
+            x0 = (w - stem) // 2
+            ink[r0:r1, x0:x0 + stem] = 1.0
+            ink[r0:r0 + bar, :] = 1.0
+            ink[r1 - bar:r1, :] = 1.0
         if ch == "0":  # the font's zero is its O: a little narrower (and two pictures can't share pixels)
             n = round(ink.shape[1] * 0.82)
             src = np.linspace(0, ink.shape[1] - 1, n)
