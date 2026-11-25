@@ -10669,6 +10669,8 @@ namespace {
         return "";
     }
 
+    std::string text_widget_string(uint8_t* rdram, gpr widget);  // (below)
+
     std::vector<ListEntry> list_collect(uint8_t* rdram, int kind, gpr list) {
         std::vector<ListEntry> out;
         const gpr menu = MEM_W(0x80, list);
@@ -10701,7 +10703,16 @@ namespace {
                 const gpr pb = heap_pointer(pw) ? MEM_W(0x6C, pw) : 0;
                 e.portrait = heap_pointer(pb) ? pb : (e.worn ? wearer_portrait(rdram, user) : 0);
                 e.portrait_widget = heap_pointer(pw) && heap_pointer(pb) ? pw : 0;
-                if (quantity > 1) e.qty = std::to_string(quantity);
+                // The count is what the game shows: the row's quantity text widget (SMIItem +0x8C), which it keeps current as a stack is split
+                // (equipping one of "2 Dagger" leaves "1 Dagger"). The row's own quantity byte (+0x80) is only what it was built with and stayed 2:
+                // a tester's 2 Leather Boots, one worn by Brenna, still read "2 Leather Boots" under her pair.
+                int shown = (int)quantity;
+                const gpr qtext = MEM_W(0x8C, row);
+                if (heap_pointer(qtext)) {
+                    const std::string t = text_widget_string(rdram, qtext);
+                    if (!t.empty()) shown = std::atoi(t.c_str());
+                }
+                if (shown > 1) e.qty = std::to_string(shown);
                 e.right = inventory_stat(rdram, row, thing, type, id);
             } else if (kind == 2) {
                 // WidgetSkillInfo: varU16 +0x5E type << 8 | subtype (0 a skill, 1 a weapon skill, 2 the shield); its icon widget +0x80,
@@ -11127,13 +11138,22 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
         return p;
     };
     // A trainer's prices for a row (GetExpPrice, vtable slot 29 at +0xF4; GetGoldPrice, +0xEC): by the row's own ID, whatever is highlighted.
+    // Both prices are of the character the widget's own partyPicker (+0x88) names, which the game sets when the widget is built and
+    // updates (DollMenuLists::UpdateMenus -> InitMenu) only for the lists it keeps in its menus: a trainer's list isn't one of them, so
+    // after the party was turned (RT / LT) it still priced the first member (a tester's Brenna was shown Warrior at 16000 XP, a level 4
+    // Warrior's price, where the game's own "You need ..." said 1000). The shown character is put in for the call and the field put back.
     auto train_price = [&](const ListEntry& e, uint32_t slot_off) -> int {
         if (!tr || e.heading) return -2;
         const gpr vt = MEM_W(0x78, list);
         if ((uint32_t)vt < 0x800C0000u || (uint32_t)vt >= 0x80100000u) return -2;
         recomp_func_t* fn = get_function(MEM_W(slot_off, vt));
         if (fn == nullptr) return -2;
-        return (int32_t)call_game(rdram, ctx, fn, (uint32_t)(list + (int16_t)MEM_HU(slot_off - 4, vt)), (uint32_t)MEM_HU(0x5E, e.row));
+        const uint8_t keep = MEM_BU(0x88, list);
+        const uint8_t shown = heap_pointer(doll_lists) ? MEM_BU(0x91, doll_lists) : keep;  // DollMenuLists::partyPicker: who the page shows
+        if (shown < 4) MEM_BU(0x88, list) = shown;
+        const int price = (int32_t)call_game(rdram, ctx, fn, (uint32_t)(list + (int16_t)MEM_HU(slot_off - 4, vt)), (uint32_t)MEM_HU(0x5E, e.row));
+        MEM_BU(0x88, list) = keep;
+        return price;
     };
     // The mouse: the pointer over a row highlights it (A, or the click that is A, then acts on it), a click on a tab or a chip is that
     // tab's or chip's key. The pointer is in the menus' 320 x 240 units, the page in texels (o.x, o.y and o.sx are screen pixels).
@@ -11234,7 +11254,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             const std::string game_gold = text_widget_string(rdram, MEM_W(0xA4, trainer));
             const bool free_of_gold = game_gold.find_first_not_of(' ') == std::string::npos;
             trainer_card_facts.clear();
-            trainer_card_facts.push_back({ "XP cost", xp < 0 ? "Maxed" : std::to_string(xp) });
+            // (a price of 0 is how the game says this character can't learn it: "You cannot learn this skill.", not that it is free)
+            // (its own label: "XP cost" would draw the XP star after the words)
+            trainer_card_facts.push_back({ xp == 0 ? "Training" : "XP cost", xp < 0 ? "Maxed" : xp == 0 ? "Can't learn" : std::to_string(xp) });
             if (gold > 0 && !free_of_gold && xp >= 0) trainer_card_facts.push_back({ "Gold cost", std::to_string(gold) });
             const gpr sheet = page_sheet(rdram), exp = sheet != 0 ? MEM_W(0x14, sheet) : 0;
             if (heap_pointer(exp)) trainer_card_facts.push_back({ "XP to spend", std::to_string((int32_t)MEM_W(8, exp)) });
@@ -11265,17 +11287,25 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     if (left_chip) g = pic(g, branding_index("mc_chip"), sort_x, chip_y, sort_x + sort_w, chip_y + 8.0f);
     const bool chip_up = !tr && !post_battle_ui && !(chr && (chr_ui.strip || chr_ui.msg_frames > 0));  // the attributes' line takes the Details chip's place while it speaks
     if (chip_up) g = pic(g, branding_index(settings.details ? "mc_chip_on" : "mc_chip"), det_x, chip_y, det_x + det_w, chip_y + 8.0f);
+    // A shop's Buy | Sell prompt with the keyboard is two caps (the camera keys), so it gets 12 texels instead of the single
+    // icon's 6.4, or each cap came out about 3 texels and couldn't be read; the words move right by what it took.
+    const int rs_image = shop ? title_image("prompt_rs") : -1;
+    const bool rs_two_caps = rs_image >= 0 && std::strcmp(aidyn::branding::kImages[rs_image].name, "prompt_rs_k") == 0;
+    const float rs_room = rs_two_caps ? 13.8f : 8.0f;  // from the chip's left to where its words' room starts
     {  // the button icons in the middle of where the slot was (4 texels in, 4 down: the chip is 8 tall), 6.4 texels across
         const int y_icon = title_image("ver_y"), x_icon = title_image("ver_x");
-        auto centred = [&](int image, float chip_x) {
+        auto centred = [&](int image, float chip_x, float across = 6.4f) {
             if (image < 0) return;
             const auto& img = aidyn::branding::kImages[image];
-            const float f = 6.4f / (float)img.w, w = img.w * f, h = img.h * f;
-            g = draw_rgba16(rdram, g, (size_t)image, std::round(o.x + (chip_x + 4.0f) * o.sx - w * o.sx / 2.0f),
+            const float f = across / (float)img.w, w = img.w * f, h = img.h * f;
+            g = draw_rgba16(rdram, g, (size_t)image, std::round(o.x + (chip_x + 0.8f + across / 2.0f) * o.sx - w * o.sx / 2.0f),
                             std::round(o.y + (chip_y + 4.0f) * o.sy - h * o.sy / 2.0f), o.sx * f, o.sy * f);
         };
         if (left_chip) centred(y_icon, sort_x);
-        if (chip_up) centred(shop ? title_image("prompt_rs") : x_icon, det_x);
+        if (chip_up) {
+            if (shop) centred(rs_image, det_x, rs_two_caps ? 12.0f : 6.4f);
+            else centred(x_icon, det_x);
+        }
     }
     // The rows' washes and heading rules.
     const int hl_pic = branding_index("mc_hl"), heading_pic = branding_index("mc_heading");
@@ -11352,7 +11382,7 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
     // The words are centred in the chip's room right of the button (its 8 texels).
     if (left_chip) g = ctl_text(rdram, ctx, g, shop ? "Appraise" : sort_names[mode % 3], X(sort_x + (8.0f + sort_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, ink, alpha, false, true);
     if (chip_up && shop) {  // the right stick: Buy | Sell, the list the cursor is in lit
-        const float cx = det_x + (8.0f + det_w) / 2.0f;
+        const float cx = det_x + (rs_room + det_w) / 2.0f;
         g = ctl_text(rdram, ctx, g, "Buy", X(cx - 3.0f), Y(chip_y + 1.6f), 0.5f, shop_side == 0 ? hot : dim, alpha, true);
         g = ctl_text(rdram, ctx, g, "Sell", X(cx + 3.0f), Y(chip_y + 1.6f), 0.5f, shop_side == 1 ? hot : dim, alpha);
     } else if (chip_up) g = ctl_text(rdram, ctx, g, settings.details ? "Details On" : "Details Off", X(det_x + (8.0f + det_w) / 2.0f), Y(chip_y + 1.6f), 0.5f, settings.details ? hot : ink, alpha, false, true);
@@ -11432,8 +11462,9 @@ gpr list_overlay(uint8_t* rdram, recomp_context* ctx, gpr g, const TitleSeen& o,
             }
         } else if (tr) {  // what training it costs
             const int xp = train_price(e, 0xF4);
-            g = ctl_text(rdram, ctx, g, xp < 0 ? "Max" : std::to_string(xp), X(kListX1 - (xp < 0 ? 2.0f : 10.5f)), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
-            if (xp >= 0) {
+            const bool plain = xp <= 0;  // "Max", or "-" for one this character can't learn (the game's price for it is 0)
+            g = ctl_text(rdram, ctx, g, xp < 0 ? "Max" : xp == 0 ? "-" : std::to_string(xp), X(kListX1 - (plain ? 2.0f : 10.5f)), Y(y + kRowDy), kRowScale, sel ? hot : dim, alpha, true);
+            if (xp > 0) {
                 g = prompt_state(rdram, g, alpha);
                 g = pic(g, branding_index("mk_xp"), kListX1 - 9.5f, y - 0.6f, kListX1 - 1.5f, y + 7.4f);
                 g = ctl_state(rdram, ctx, g);
@@ -12149,8 +12180,23 @@ gpr title_versions_panel(uint8_t* rdram, gpr g) {
     // Who made the highlighted one, under the list (spitzdano: the mods' authors credited; the README says more).
     static const char* kMadeBy[kVersionCount] = { "By H2O Entertainment, published by THQ (2001)", "A rebalance by halibabica",
                                                   "An overhaul by halibabica", "A mod by MDoulos" };
+    // A missing version says why instead: no ROM for it, or a file in the ROMs folder that looked like Aidyn but is none of
+    // the four ROMs (aidyn::rejected_roms: the 1.0 dump with another hash, an older Action Edition, a patch applied to
+    // the wrong base...), so the player isn't left wondering why a ROM they put there doesn't count.
+    std::string under = kMadeBy[vers.sel];
+    if (!version_here(vers.sel)) {
+        const auto& rejected = aidyn::rejected_roms();
+        if (rejected.empty()) {
+            under = "No ROM for this one yet: see the ROMs folder";
+        } else {
+            std::string first = rejected[0];
+            if (first.size() > 24) first = first.substr(0, 22) + "..";
+            under = first + (rejected.size() > 1 ? " and " + std::to_string(rejected.size() - 1) + " more aren't ROMs this game takes"
+                                                 : " isn't a ROM this game accepts");
+        }
+    }
     g = ctl_state(rdram, ctx, g);
-    g = ctl_text(rdram, ctx, g, kMadeBy[vers.sel], centre, kTop + 38.0f + 13.5f * kVersionCount + 5.0f, 0.5f, 0xC8BFA8, fade,
+    g = ctl_text(rdram, ctx, g, under.c_str(), centre, kTop + 38.0f + 13.5f * kVersionCount + 5.0f, 0.5f, 0xC8BFA8, fade,
                  false, true);
     // The hints sit inside the closing bar (16 units, its rails at the top and bottom edges), centred in it: the 11-unit
     // icons at 85% (at full size their rims touched both rails, spitzdano: the A and B looked cut off).
@@ -12988,8 +13034,16 @@ namespace {
             if (mouse_look()) return { "", "key_mouse_move" };
             return { keys_text({ kCamUp, kCamLeft, kCamDown, kCamRight }) };
         }
-        if (button == "RSH") return { keys_text({ kCamLeft, kCamRight }) };  // the right stick left / right: the menu pages
-        if (button == "DPAD") return { keys_text({ kMoveLeft, kMoveRight }) };
+        // The right stick left / right (the menu pages, a shop's Buy | Sell): two caps, one per camera key (draw_button_cap
+        // splits RSH): "[" and "]" on one cap ran together as "[]", which read as a small I.
+        if (button == "RSL") return face_of(kCamLeft);
+        if (button == "RSR") return face_of(kCamRight);
+        if (button == "DPAD") return { keys_text({ kMoveLeft, kMoveRight }) };  // (the game's own text's D-pad symbol: one cap)
+        // The D-pad prompts' two caps, one per direction (draw_button_cap splits DPADLR / DPADUD): the move keys.
+        if (button == "DPL") return face_of(kMoveLeft);
+        if (button == "DPR") return face_of(kMoveRight);
+        if (button == "DPU") return face_of(kMoveUp);
+        if (button == "DPD") return face_of(kMoveDown);
         return { "?" };
     }
 }
@@ -13018,6 +13072,21 @@ static float key_text_width(const std::string& text) {
 // A cap (or a mouse picture) for `button` in a slot w x h texels at (x, y) on screen (pixels, like draw_rgba16's), a texel
 // being sx x sy pixels; cover: no narrower than the round icon it must hide (a page's painted button).
 gpr draw_button_cap(uint8_t* rdram, gpr g, const char* button, float x, float y, float sx, float sy, float w, float h, bool cover, bool text_state) {
+    // The D-pad prompts have two caps, one for each direction, side by side (a tester couldn't read "Left Right" or "AD"
+    // squeezed onto one): DPADLR for Switch and Lists, DPADUD for Scroll and Choose. A slot is 26 texels: a cap each and
+    // a texel between them.
+    if (std::strcmp(button, "DPADLR") == 0 || std::strcmp(button, "DPADUD") == 0) {
+        const bool lr = button[4] == 'L';
+        const float half = (w - 1.0f) / 2.0f;
+        g = draw_button_cap(rdram, g, lr ? "DPL" : "DPU", x, y, sx, sy, half, h, cover, false);
+        return draw_button_cap(rdram, g, lr ? "DPR" : "DPD", x + (half + 1.0f) * sx, y, sx, sy, half, h, cover, text_state);
+    }
+    // The right stick's prompt (RSH: the pause pages' arrow, a shop's Buy | Sell) is two caps too, in its 16 texels.
+    if (std::strcmp(button, "RSH") == 0) {
+        const float half = (w - 0.5f) / 2.0f;
+        g = draw_button_cap(rdram, g, "RSL", x, y, sx, sy, half, h, cover, false);
+        return draw_button_cap(rdram, g, "RSR", x + (half + 0.5f) * sx, y, sx, sy, half, h, cover, text_state);
+    }
     recomp_context* ctx = frame_ctx;
     const gpr font = MEM_W(0, kFontPtr);
     if (ctx == nullptr || !heap_pointer(font)) return g;

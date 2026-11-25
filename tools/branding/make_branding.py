@@ -270,7 +270,10 @@ ROW_W, ROW_H = 84, 7
 # game draws the twin and a key cap or mouse picture in each slot (src/game/patches.cpp, "Keys on the prompts").
 KEYS = {"on": False, "slots": []}
 SLOTS = {}  # name_k -> (icon height, [(x, w, button)])
-SLOT_W = {"LS": 24, "DPAD": 15, "L3": 15, "R3": 13, "RS": 13, "RSH": 16}
+# DPADLR / DPADUD: the D-pad prompts' two caps (left and right: Switch, Lists; up and down: Scroll, Choose), a cap each of
+# 12.5 texels and a texel between (src/game/patches.cpp, draw_button_cap). They stand for the same D-pad icon on a pad.
+SLOT_W = {"LS": 24, "DPAD": 15, "DPADLR": 26, "DPADUD": 26, "L3": 15, "R3": 13, "RS": 13, "RSH": 16}
+ICON_ALIAS = {"DPADLR": "DPAD", "DPADUD": "DPAD"}
 
 
 def slot_width(button):
@@ -297,7 +300,7 @@ def icon(button, h):
     if KEYS["on"]:
         return slot_width(button), None
     w = h
-    px = np.frombuffer(bytes(buttons.icon_for(button, w, h, SS)), np.uint8).reshape(h * SS, w * SS, 4)
+    px = np.frombuffer(bytes(buttons.icon_for(ICON_ALIAS.get(button, button), w, h, SS)), np.uint8).reshape(h * SS, w * SS, 4)
     px = px.astype(np.float32) / 255.0
     px[..., :3] *= px[..., 3:]
     return w, px
@@ -392,10 +395,10 @@ def menu_hint(label, button, light=False):
 
 
 HINTS = [("hint_take", "Take", "A"), ("hint_drop", "Drop", "A"), ("hint_leave", "Leave", "B"),
-         ("hint_switch", "Switch", "DPAD"), ("hint_equip", "Equip", "A"), ("hint_unequip", "Unequip", "A"),
-         ("hint_use", "Use", "A"), ("hint_details", "Details", "CD"), ("hint_lists", "Lists", "DPAD"), ("hint_train", "Train", "A"),
+         ("hint_switch", "Switch", "DPADLR"), ("hint_equip", "Equip", "A"), ("hint_unequip", "Unequip", "A"),
+         ("hint_use", "Use", "A"), ("hint_details", "Details", "CD"), ("hint_lists", "Lists", "DPADLR"), ("hint_train", "Train", "A"),
          ("hint_buy", "Buy", "A"), ("hint_sell", "Sell", "A"), ("hint_appraise", "Appraise", "CU"),
-         ("hint_open", "Open", "A"), ("hint_scroll", "Scroll", "DPAD"), ("hint_close", "Close", "B"),
+         ("hint_open", "Open", "A"), ("hint_scroll", "Scroll", "DPADUD"), ("hint_close", "Close", "B"),
          ("hint_choose", "Choose", "A"), ("hint_return", "Return", "A")]
 
 CONTROLS = [
@@ -555,7 +558,7 @@ IMAGES = [("rechronicled", 96, 16, rechronicled), ("credit", 140, 14, credit),
 IMAGES += [(name, ROW_W, ROW_H, control_row(*pairs)) for name, *pairs in CONTROLS]
 IMAGES += [(name, 60, 11, menu_hint(label, button)) for name, label, button in HINTS]
 # The combat menus held open with Y (items) or X (spells and skills): choosing, and letting go to use.
-IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPAD", True)),
+IMAGES += [("chint_choose", 60, 11, menu_hint("Choose", "DPADUD", True)),
            ("chint_use_items", 90, 11, menu_hint("Release to use", "CU", True)),
            ("chint_use_spells", 90, 11, menu_hint("Release to use", "CD", True))]
 # The combat turn order: "Round" over the round's number (capitals 4 and 9 texels tall), and "+" for "+N".
@@ -1011,7 +1014,7 @@ IMAGES.append(("sparkle", 16, 16, sparkle))
 ICON_BUTTONS = {"prompt_lb": ["L"], "prompt_rb": ["R"], "prompt_rs": ["RS"], "party_prev": ["Z"], "party_next": ["CR"], "ver_x": ["CD"],
                 "ver_y": ["CU"], "rc_hint_change": ["A"], "rc_hint_back": ["B"], "dlg_continue": ["A"], "dlg_choose": ["A"], "dlg_back": ["B"],
                 "dlg_skip": ["START"], "dlg_stop": ["START"],
-                "chint_choose": ["DPAD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
+                "chint_choose": ["DPADUD"], "chint_use_items": ["CU"], "chint_use_spells": ["CD"]}
 ICON_BUTTONS.update({name: [button] for name, _, button in HINTS})
 ICON_BUTTONS.update({name: [b for pairs_ in pairs for b in pairs_[0] if b != "+"] for name, *pairs in CONTROLS})
 _by_name = {n: (w, h, d) for n, w, h, d in IMAGES}

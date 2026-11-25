@@ -33,6 +33,7 @@
 #include "ultramodern/config.hpp"
 #include "librecomp/game.hpp"
 #include "librecomp/rsp.hpp"
+#include "xxHash/xxh3.h"
 
 #ifndef _WIN32  // on Windows SDL2main's WinMain starts the program and calls main() (as SDL_main)
 #define SDL_MAIN_HANDLED
@@ -265,6 +266,12 @@ static const char8_t game_id[] = u8"aidyn.n64.us.1.0";
 static const char8_t game_id_aidyn_patch[] = u8"aidyn.n64.us.1.0.aidyn-patch";
 static const char8_t game_id_aidyn_plus[] = u8"aidyn.n64.us.1.0.aidyn-plus";
 static const char8_t game_id_action_edition[] = u8"aidyn.n64.us.1.0.action-edition";
+
+// Each ROM's XXH3-64 over the big-endian (.z64) bytes (the README's table gives them next to the SHA-1s).
+static constexpr uint64_t kHashOriginal = 0x79127D0E9CAF38BCULL;       // NTSC-U 1.0 (SHA-1 47ae795a...)
+static constexpr uint64_t kHashAidynPatch = 0xAEE228C7FB42F968ULL;     // Aidyn Patch applied to the 1.0 ROM (SHA-1 1f95ad78...)
+static constexpr uint64_t kHashAidynPlus = 0xA72109E848AFF75EULL;      // Aidyn Plus (AidynPlus.bps) applied to the 1.0 ROM (SHA-1 d57f9459...)
+static constexpr uint64_t kHashActionEdition = 0x802056DBBADC0FC0ULL;  // AidynActionFeb072026.z64 (SHA-1 4bbb9fcd...)
 
 static const char8_t* game_id_for(aidyn::settings::RomPatch version) {
     switch (version) {
@@ -503,6 +510,52 @@ static void make_roms_folder() {
 #endif
 }
 
+// Files in the ROMs folder that are Aidyn Chronicles by their header but none of the four ROMs the port runs (a PAL or
+// other release, an overdump, a modified ROM, a patch applied to the wrong base, an older Action Edition...). Nothing
+// is stored from them; the log names them (a player's problem report has the log) and the title screen's version list
+// says why a version is missing (aidyn::rejected_roms).
+static std::vector<std::string> g_rejected_roms;
+
+const std::vector<std::string>& aidyn::rejected_roms() {
+    return g_rejected_roms;
+}
+
+// The file's XXH3-64 over its big-endian (.z64) bytes, whichever byte order it is in; 0 when it can't be read.
+static uint64_t rom_file_hash(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::vector<unsigned char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (data.size() < 4) {
+        return 0;
+    }
+    if (data[0] == 0x37 && data[1] == 0x80) {  // .v64: 16-bit words swapped
+        for (size_t i = 0; i + 1 < data.size(); i += 2) {
+            std::swap(data[i], data[i + 1]);
+        }
+    }
+    else if (data[0] == 0x40 && data[1] == 0x12) {  // .n64: 32-bit words little-endian
+        for (size_t i = 0; i + 3 < data.size(); i += 4) {
+            std::swap(data[i], data[i + 3]);
+            std::swap(data[i + 1], data[i + 2]);
+        }
+    }
+    return XXH3_64bits(data.data(), data.size());
+}
+
+// A folder file no version took: told apart from one that is a version's ROM already stored (which is fine and says
+// nothing) by its hash. Only called for files with the Aidyn header and 32 MiB, so it is rare and cheap.
+static void note_if_rejected(const std::filesystem::path& path) {
+    const uint64_t h = rom_file_hash(path);
+    if (h == kHashOriginal || h == kHashAidynPatch || h == kHashAidynPlus || h == kHashActionEdition) {
+        return;
+    }
+    g_rejected_roms.push_back(path.filename().string());
+    printf("ROMs folder: %s is an Aidyn Chronicles file but none of the ROMs this game accepts (its XXH3-64 is %016" PRIx64
+           "; accepted: the original %016" PRIx64 ", Aidyn Patch %016" PRIx64 ", Aidyn Plus %016" PRIx64
+           ", Action Edition %016" PRIx64 ")\n",
+           path.filename().string().c_str(), h, kHashOriginal, kHashAidynPatch, kHashAidynPlus, kHashActionEdition);
+    fflush(stdout);
+}
+
 // The ROMs folder: the player's ROMs, put in ROMs beside the game (the Windows download, the installed Linux game) or one
 // level up (the unpacked Linux download, which keeps the game in game/). At every start, each version (the 1.0 release,
 // Aidyn Patch, Aidyn Plus) whose ROM isn't stored yet is looked for there and stored when found, whatever the files
@@ -558,13 +611,18 @@ static void store_roms_from_folders() {
             if (std::memcmp(head + 0x20, "AIDYN", 5) != 0) {
                 continue;
             }
+            bool stored = false;
             for (const auto& [id, name] : versions) {
                 if (!recomp::is_rom_valid(id) && recomp::select_rom(entry.path(), id) == recomp::RomValidationError::Good) {
                     printf("Stored %s from %s\n", name, entry.path().string().c_str());
                     fflush(stdout);
                     recomp::check_all_stored_roms();
+                    stored = true;
                     break;
                 }
+            }
+            if (!stored) {
+                note_if_rejected(entry.path());
             }
             if (!missing()) {
                 return;
@@ -757,7 +815,7 @@ int main(int argc, char** argv) {
                                                            : aidyn::settings::RomPatch::None);
     }
     recomp::GameEntry entry{
-        .rom_hash = 0x79127D0E9CAF38BCULL, // XXH3-64 of the big-endian NTSC-U 1.0 ROM (SHA-1 47ae795a...)
+        .rom_hash = kHashOriginal, // XXH3-64 of the big-endian NTSC-U 1.0 ROM (SHA-1 47ae795a...)
         .internal_name = "AIDYN_CHRONICLES",
         .display_name = "Aidyn Chronicles: The First Mage",
         .game_id = game_id,
@@ -770,17 +828,17 @@ int main(int argc, char** argv) {
     };
     recomp::register_game(entry);
     recomp::GameEntry patched = entry;
-    patched.rom_hash = 0xAEE228C7FB42F968ULL; // XXH3-64 of Aidyn Patch applied to the 1.0 ROM (SHA-1 1f95ad78...)
+    patched.rom_hash = kHashAidynPatch; // XXH3-64 of Aidyn Patch applied to the 1.0 ROM (SHA-1 1f95ad78...)
     patched.display_name = "Aidyn Chronicles: The First Mage (Aidyn Patch)";
     patched.game_id = game_id_aidyn_patch;
     recomp::register_game(patched);
     recomp::GameEntry plus = entry;
-    plus.rom_hash = 0xA72109E848AFF75EULL; // XXH3-64 of Aidyn Plus (AidynPlus.bps) applied to the 1.0 ROM (SHA-1 d57f9459...)
+    plus.rom_hash = kHashAidynPlus; // XXH3-64 of Aidyn Plus (AidynPlus.bps) applied to the 1.0 ROM (SHA-1 d57f9459...)
     plus.display_name = "Aidyn Chronicles: The First Mage (Aidyn Plus)";
     plus.game_id = game_id_aidyn_plus;
     recomp::register_game(plus);
     recomp::GameEntry action = entry;
-    action.rom_hash = 0x802056DBBADC0FC0ULL; // XXH3-64 of the Action Edition ROM (AidynActionFeb072026.z64, SHA-1 4bbb9fcd...)
+    action.rom_hash = kHashActionEdition; // XXH3-64 of the Action Edition ROM (AidynActionFeb072026.z64, SHA-1 4bbb9fcd...)
     action.display_name = "Aidyn Chronicles: The First Mage (Action Edition)";
     action.game_id = game_id_action_edition;
     recomp::register_game(action);

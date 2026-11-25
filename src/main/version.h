@@ -2,10 +2,15 @@
 #pragma once
 
 #include "settings.h"
+#include <string>
+#include <vector>
 
 namespace aidyn {
     bool version_available(settings::RomPatch version);  // its ROM is stored (the player's own, checked by its hash)
     void switch_version(settings::RomPatch version);     // remember it and restart into it (returns only if that fails)
+    // The files in the ROMs folder that look like Aidyn Chronicles but are none of the four ROMs (their names), found at
+    // start while a version's ROM was still missing; the title screen's version list says so under a missing version.
+    const std::vector<std::string>& rejected_roms();
     float window_aspect();                               // the window's width / height (0 before it exists)
     // Windowed or borderless, covering the screen (the Display page's Window row, F11 / Alt+Enter), remembered in
     // settings.json unless `save` is false.
