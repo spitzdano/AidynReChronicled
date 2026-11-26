@@ -4234,12 +4234,20 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
             uint32_t edges = 0;
             if (own_lists) {
                 own_drawn = true;
-                menu_keys = (battle_over ? 0u : 0x0004u) | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;  // (X is the game's after a battle)
+                // A pop-up over the page (the Alchemy menu A opens on the skills list, a quantity or a question) has the keys, the left stick
+                // and the pointer, as in a shop: the list is drawn as it is and does nothing, so the pop-up's own rows can be chosen.
+                const gpr handler = MEM_W(0, (gpr)(int32_t)0x800D9690);
+                const bool popup = heap_pointer(handler) && MEM_W(4, handler) != MEM_W(0, (gpr)(int32_t)0x800D9558);
+                menu_keys = popup ? 0u : (battle_over ? 0u : 0x0004u) | 0x0008 | 0x0800 | 0x0400 | 0x0020 | 0x0010;  // (X is the game's after a battle)
                 edges = aidyn::input::take_menu_keys();
+                if (popup) edges = 0u;
                 post_battle_ui = battle_over;
+                list_frozen = popup;
                 g = list_overlay(rdram, frame_ctx, g, inventory_page, on_inventory ? 0 : on_spells ? 1 : 2, on_inventory ? inventory : on_spells ? spells_list : skills_list, edges);
+                list_frozen = false;
+                if (popup) aidyn::controls::set_click_zones(nullptr, -1);
                 post_battle_ui = false;
-                if (on_skills) menu_keys |= chr_ui.keys;  // the attributes row, while it is chosen, keeps left / right and A (and B to refuse)
+                if (on_skills && !popup) menu_keys |= chr_ui.keys;  // the attributes row, while it is chosen, keeps left / right and A (and B to refuse)
             } else {
                 menu_keys = 0x0004;
                 edges = aidyn::input::take_menu_keys();
