@@ -13201,7 +13201,7 @@ gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float 
             // The page arrow's end: its one key's half of the slot, the half next to the arrow (left end: the right half; right end:
             // the left half), a texel in so the cap doesn't touch the arrow's tip.
             const float half = ((float)slot.w - 0.5f) / 2.0f;
-            const float at = std::strcmp(key_slot_only, "RSL") == 0 ? (float)slot.w - half + 0.5f : 1.0f;
+            const float at = std::strcmp(key_slot_only, "RSL") == 0 ? (float)slot.w - half - 0.2f : 1.0f;
             g = draw_button_cap(rdram, g, key_slot_only, x + (slot.x + at) * sx, y, sx, sy, half, (float)keyed->h, false);
             continue;
         }
