@@ -80,6 +80,7 @@ void update_glyph_widths(uint8_t* rdram, recomp_context* ctx);  // "Keys in the 
 recomp_context* frame_ctx = nullptr;  // this frame's context, for the key caps drawn inside picture draws
 
 bool handler_big_seen = false, prompts_early = false, popup_rendering = false;
+const char* key_slot_only = nullptr;  // a keyed picture's right-stick slot (RSH) draws just this key (RSL / RSR) while set: the page arrow's two ends
 int popup_frame = 0;  // frames drawn (the pop-ups' chosen row is the one whose colour moves)  // WidgetHandler::Render: the pause menu's widget has been drawn / the overlays were drawn before a popup
 
 extern "C" void Graphics__EndList(uint8_t* rdram, recomp_context* ctx) {
@@ -4057,12 +4058,16 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
         const auto& icon = aidyn::branding::kImages[lb];
         const float iw = icon.w * a.scale, ih = icon.h * a.scale, y = a.y + (a.h - ih) / 2.0f, gap = a.scale;
         g = prompt_state(rdram, g, a.alpha);
+        // With the keyboard each end shows its own key (the camera keys turn the page left and right), not both on both.
         if (a.left) {
+            key_slot_only = "RSL";
             g = draw_rgba16(rdram, g, lb, a.x - iw - gap, y, a.scale, a.scale);
         }
         if (a.right) {
+            key_slot_only = "RSR";
             g = draw_rgba16(rdram, g, rb, a.x + a.w + gap, y, a.scale, a.scale);
         }
+        key_slot_only = nullptr;
     }
     page_arrows.clear();
     if (treasure_title.seen && treasure_title.alpha != 0) {
@@ -13190,7 +13195,8 @@ gpr draw_key_slots(uint8_t* rdram, gpr g, size_t index, float x, float y, float 
     if (keyed == nullptr) return g;
     for (int n = 0; n < keyed->n; n++) {
         const auto& slot = keyed->slots[n];
-        g = draw_button_cap(rdram, g, slot.button, x + slot.x * sx, y, sx, sy, (float)slot.w, (float)keyed->h, false);
+        const char* button = key_slot_only != nullptr && std::strcmp(slot.button, "RSH") == 0 ? key_slot_only : slot.button;
+        g = draw_button_cap(rdram, g, button, x + slot.x * sx, y, sx, sy, (float)slot.w, (float)keyed->h, false);
     }
     return g;
 }
