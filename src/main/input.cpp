@@ -444,6 +444,8 @@ bool aidyn::input::quicksave_asked() {
 }
 
 bool aidyn::input::keyboard_last() {
+    static const bool forced = std::getenv("AIDYN_FORCE_KEYBOARD") != nullptr;  // a test aid: the pad file counts as a pad, so the key caps never showed in a test run
+    if (forced) return true;
     const int d = last_device.load(std::memory_order_relaxed);
     if (d >= 0) return d == 1;
     std::lock_guard lock{ pad_mutex };

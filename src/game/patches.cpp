@@ -4212,7 +4212,9 @@ gpr aidyn_prompts(uint8_t* rdram, gpr g) {
                 }
             }
             g = draw_hint_row(rdram, g, inventory_page, &a, 1, 8.0f, 204.0f, false, a >= 0);
-            g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, 193.0f, 204.0f, false);
+            // (the game's own words for the other lists, Spells and Character, start where the pad's prompt ends: the keyboard's two
+            // caps are wider, so the row starts that much earlier, in the room the page arrow leaves)
+            g = draw_hint_row(rdram, g, inventory_page, &lists_hint, 1, aidyn::input::keyboard_last() ? 186.0f : 193.0f, 204.0f, false);
         }
         // Details (X) on the inventory list: a switch, remembered (settings.json graphics.details; off in a new game). On, a
         // card for the highlighted item takes the paper doll's place (draw_details_card). Not after a battle (the Train
